@@ -1,0 +1,2 @@
+- o ambiente docker deve rodar em modo stack e não atraves de docker compose
+- todos serviços desse projeto deve rodar com a porta final 5 para não conflitar com outros projetos

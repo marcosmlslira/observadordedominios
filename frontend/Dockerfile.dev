@@ -1,0 +1,23 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Instalar dependências
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Copiar arquivos de configuração
+COPY next.config.js tsconfig.json tailwind.config.ts postcss.config.js components.json ./
+
+# Copiar todo o código fonte
+COPY app ./app
+COPY components ./components
+COPY lib ./lib
+COPY public ./public
+COPY styles ./styles
+
+EXPOSE 3000
+
+# Executar em modo desenvolvimento com hot reload
+CMD ["npm", "run", "dev"]
+

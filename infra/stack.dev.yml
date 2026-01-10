@@ -1,0 +1,45 @@
+services:
+  frontend:
+    image: observadordedominios-frontend:dev
+    ports:
+      - "3005:3000"
+    volumes:
+      - c:\PROJETOS\observadordedominios\frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+      - WATCHPACK_POLLING_INTERVAL=1000
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  backend:
+    image: observadordedominios-backend:dev
+    ports:
+      - "8005:8000"
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+networks:
+  app-network:
+    driver: bridge

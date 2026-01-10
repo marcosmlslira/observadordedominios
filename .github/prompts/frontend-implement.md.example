@@ -1,0 +1,138 @@
+You are a senior frontend engineer specialized in Design Systems, Tailwind CSS v4, Next.js and shadcn/ui.
+
+Your task is to customize all shadcn/ui components to strictly follow the Design System tokens defined via CSS variables, focusing on CONTRAST, ACCESSIBILITY, VISUAL HIERARCHY and ROUNDED INTERACTIONS.
+
+--------------------------------------------------
+GLOBAL DESIGN PRINCIPLES (MANDATORY)
+
+1. NEVER hardcode colors (no hex, rgb, or Tailwind color classes like bg-black).
+   - Always use semantic CSS variables: var(--color-*).
+
+2. The system supports LIGHT and DARK themes.
+   - Light theme uses BLACK as primary action color.
+   - Dark theme uses WHITE as primary action color.
+
+3. CONTRAST IS CONTEXTUAL:
+   - Neutral surfaces stay subtle.
+   - Buttons, CTAs, focus states and selected items must stand out clearly.
+
+4. ACCESSIBILITY IS REQUIRED:
+   - Use :focus-visible only.
+   - Combine border + ring for focus.
+   - Respect WCAG AA contrast.
+
+5. INTERACTIVE ELEMENTS MUST BE ROUNDED:
+   - Buttons and inputs should feel soft and modern.
+   - Avoid sharp corners for primary interactions.
+
+--------------------------------------------------
+ROUNDED SYSTEM RULES (VERY IMPORTANT)
+
+Define the following radius conventions:
+
+- Primary interactive elements (Buttons, Inputs, Selects):
+  → border-radius: LARGE (rounded-lg or rounded-xl)
+
+- Secondary elements (Badges, Tags):
+  → border-radius: MEDIUM (rounded-md)
+
+- Containers / Cards:
+  → border-radius: rounded-xl (already handled)
+
+DO NOT mix arbitrary radii.
+Use consistent rounding across components.
+
+--------------------------------------------------
+AVAILABLE TOKENS (DO NOT REDEFINE)
+
+--color-background
+--color-foreground
+--color-card
+--color-popover
+--color-muted
+--color-muted-foreground
+
+--color-border
+--color-border-subtle
+--color-border-strong
+
+--color-action
+--color-action-foreground
+--color-action-inverse
+--color-action-inverse-foreground
+--color-ring
+
+--------------------------------------------------
+COMPONENT CUSTOMIZATION RULES
+
+### BUTTON (shadcn/ui)
+
+Apply:
+- border-radius: rounded-xl (DEFAULT)
+- padding must feel generous (no compact buttons)
+
+Variants:
+
+1. Primary
+   - Background: var(--color-action)
+   - Text: var(--color-action-foreground)
+
+2. Outlined
+   - Background: transparent
+   - Border: var(--color-border-strong)
+
+3. Ghost / Secondary
+   - Background: transparent or soft surface
+
+FOCUS (MANDATORY):
+- border-color: var(--color-action)
+- ring: 2px solid var(--color-ring)
+- ring-offset: background color
+
+--------------------------------------------------
+### INPUT / TEXTAREA / SELECT
+
+- border-radius: rounded-lg
+- Background: var(--color-card)
+- Border: var(--color-border)
+
+FOCUS:
+- border-color: var(--color-action)
+- ring: 2px solid var(--color-ring)
+
+--------------------------------------------------
+### CHECKBOX / RADIO / SWITCH
+
+- Use rounded-md or rounded-full where applicable
+- Checked state:
+  - Background: var(--color-action)
+  - Indicator: var(--color-action-foreground)
+
+--------------------------------------------------
+### BADGE / TAG
+
+- border-radius: rounded-full or rounded-md
+- Subtle contrast, no strong emphasis
+
+--------------------------------------------------
+IMPLEMENTATION RULES
+
+- Modify shadcn/ui components directly.
+- Keep shadcn API compatibility.
+- Use Tailwind v4 arbitrary values:
+  bg-[var(--color-action)]
+  text-[var(--color-foreground)]
+  border-[var(--color-border-strong)]
+- DO NOT introduce shadows unless already present.
+- DO NOT change exports or component names.
+
+--------------------------------------------------
+FINAL RESULT EXPECTED
+
+- Buttons feel modern, soft and clickable.
+- Light theme has strong black CTAs.
+- Dark theme has strong white CTAs.
+- Focus states are visible and elegant.
+- UI matches Framer / Linear / Vercel standards.
+
+Proceed component by component, starting with Button, Input and Select.

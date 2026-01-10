@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "shadcn": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-shadcn"
+      ],
+      "env": {
+        "VSCODE_WORKSPACE_FOLDER": "${workspaceFolder}/frontend"
+      }
+    }
+  }
+}
