@@ -20,6 +20,39 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8005:8000"
+    environment:
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - S3_BUCKET=observador-zones
+      - S3_FORCE_PATH_STYLE=false
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=obs
+      - POSTGRES_PASSWORD=obs
+      - POSTGRES_DB=obs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  czds_ingestor:
+    image: observadordedominios-backend:latest
+    command: ["python", "-m", "app.worker.czds_ingestor"]
+    environment:
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - S3_BUCKET=observador-zones
+      - S3_FORCE_PATH_STYLE=false
     networks:
       - app-network
     deploy:
@@ -30,3 +63,6 @@ services:
 networks:
   app-network:
     driver: overlay
+
+volumes:
+  pgdata:

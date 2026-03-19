@@ -30,8 +30,18 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - S3_BUCKET=observador-zones
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_FORCE_PATH_STYLE=true
+      - CZDS_ENABLED_TLDS=net,org,info
     networks:
       - app-network
+    depends_on:
+      - postgres
+      - minio
     deploy:
       replicas: 1
       restart_policy:
@@ -40,6 +50,74 @@ services:
         parallelism: 1
         delay: 10s
 
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=obs
+      - POSTGRES_PASSWORD=obs
+      - POSTGRES_DB=obs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  czds_ingestor:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - S3_BUCKET=observador-zones
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_FORCE_PATH_STYLE=true
+      - CZDS_USERNAME=marcosmlslira@gmail.com
+      - CZDS_PASSWORD=mls1509TI@,,2099
+      - CZDS_ENABLED_TLDS=net,org,info
+      - CZDS_SYNC_CRON=0 7 * * *
+      - CZDS_FORCE_COOLDOWN_HOURS=24
+    command: ["python", "-m", "app.worker.czds_ingestor"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+      - minio
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
 networks:
   app-network:
-    driver: bridge
+    driver: overlay
+
+volumes:
+  pgdata:
+  miniodata:

@@ -43,9 +43,14 @@ help:
 	@echo "🧪 Testes:"
 	@echo "  make test-backend    - Executa testes do backend"
 	@echo ""
+	@echo "🗄️  Database:"
+	@echo "  make migrate         - Executa migrações Alembic"
+	@echo "  make migrate-gen     - Gera nova migração Alembic"
+	@echo ""
 	@echo "📦 URLs:"
 	@echo "  Frontend:      http://localhost:3005"
 	@echo "  Backend:       http://localhost:8005/docs"
+	@echo "  MinIO Console: http://localhost:9001"
 	@echo "  Design System: http://localhost:3005/design-system"
 
 # ============================================================================
@@ -98,7 +103,7 @@ deploy: build
 	docker stack deploy -c $(STACK_FILE) $(STACK_NAME)
 	@echo "✅ Stack deployed successfully!"
 	@echo "⏳ Aguarde alguns segundos para os serviços iniciarem..."
-	@sleep 3
+	-@timeout /t 3 >nul 2>&1 || true
 	@$(MAKE) status
 
 deploy-prod: build-prod
@@ -108,16 +113,13 @@ deploy-prod: build-prod
 	@echo "✅ Production stack deployed!"
 
 init-swarm:
-	@if ! docker info --format '{{.Swarm.LocalNodeState}}' | grep -q active; then \
-		echo "🔄 Inicializando Docker Swarm..."; \
-		docker swarm init; \
-	fi
+	-@docker swarm init
 
 # ============================================================================
 # LOGS - Visualização de logs
 # ============================================================================
 
-.PHONY: logs logs-frontend logs-backend logs-10m logs-frontend-10m logs-backend-10m
+.PHONY: logs logs-frontend logs-backend logs-czds logs-postgres logs-minio logs-10m logs-frontend-10m logs-backend-10m
 logs:
 	docker service logs -f $(STACK_NAME)_frontend $(STACK_NAME)_backend
 
@@ -126,6 +128,15 @@ logs-frontend:
 
 logs-backend:
 	docker service logs -f $(STACK_NAME)_backend
+
+logs-czds:
+	docker service logs -f $(STACK_NAME)_czds_ingestor
+
+logs-postgres:
+	docker service logs -f $(STACK_NAME)_postgres
+
+logs-minio:
+	docker service logs -f $(STACK_NAME)_minio
 
 logs-10m:
 	docker service logs --follow --since 10m $(STACK_NAME)_frontend $(STACK_NAME)_backend
@@ -169,13 +180,14 @@ ps:
 # UPDATE - Atualização de serviços
 # ============================================================================
 
-.PHONY: update update-frontend update-backend update-all
+.PHONY: update update-frontend update-backend update-czds update-all
 update: update-all
 
 update-all:
 	@echo "🔄 Atualizando todos os serviços..."
 	-docker service update --force $(STACK_NAME)_frontend
 	-docker service update --force $(STACK_NAME)_backend
+	-docker service update --force $(STACK_NAME)_czds_ingestor
 	@echo "✅ Serviços atualizados!"
 
 update-frontend:
@@ -187,6 +199,11 @@ update-backend:
 	@echo "🔄 Atualizando backend..."
 	docker service update --force $(STACK_NAME)_backend
 	@echo "✅ Backend atualizado!"
+
+update-czds:
+	@echo "🔄 Atualizando CZDS ingestor..."
+	docker service update --force $(STACK_NAME)_czds_ingestor
+	@echo "✅ CZDS ingestor atualizado!"
 
 # Rebuild e update de um serviço específico
 .PHONY: rebuild-frontend rebuild-backend
@@ -214,7 +231,7 @@ down: remove
 
 clean: remove
 	@echo "🧹 Limpando volumes órfãos..."
-	@sleep 5
+	-@timeout /t 5 >nul 2>&1 || true
 	docker volume prune -f
 	@echo "✅ Ambiente limpo!"
 
@@ -244,7 +261,7 @@ prune: prune-volumes prune-images
 # DEBUG - Comandos de debug
 # ============================================================================
 
-.PHONY: exec-frontend exec-backend shell-frontend shell-backend inspect-frontend inspect-backend
+.PHONY: exec-frontend exec-backend exec-czds shell-frontend shell-backend inspect-frontend inspect-backend
 exec-frontend:
 	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_frontend | head -n1); \
 	if [ -z "$$container_id" ]; then echo "❌ Container frontend não encontrado"; exit 1; fi; \
@@ -253,6 +270,11 @@ exec-frontend:
 exec-backend:
 	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_backend | head -n1); \
 	if [ -z "$$container_id" ]; then echo "❌ Container backend não encontrado"; exit 1; fi; \
+	docker exec -it $$container_id bash
+
+exec-czds:
+	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_czds_ingestor | head -n1); \
+	if [ -z "$$container_id" ]; then echo "❌ Container czds_ingestor não encontrado"; exit 1; fi; \
 	docker exec -it $$container_id bash
 
 shell-frontend: exec-frontend
@@ -295,6 +317,25 @@ test-backend-docker:
 test-frontend:
 	@echo "🧪 Executando testes do frontend..."
 	cd frontend && npm test
+
+# ============================================================================
+# DATABASE - Migrações Alembic
+# ============================================================================
+
+.PHONY: migrate migrate-gen
+migrate:
+	@echo "🗄️  Executando migrações Alembic..."
+	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_backend | head -n1); \
+	if [ -z "$$container_id" ]; then echo "❌ Container backend não encontrado"; exit 1; fi; \
+	docker exec $$container_id alembic upgrade head
+	@echo "✅ Migrações aplicadas!"
+
+migrate-gen:
+	@echo "🗄️  Gerando nova migração Alembic..."
+	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_backend | head -n1); \
+	if [ -z "$$container_id" ]; then echo "❌ Container backend não encontrado"; exit 1; fi; \
+	docker exec $$container_id alembic revision --autogenerate -m "$(msg)"
+	@echo "✅ Migração gerada!"
 
 # ============================================================================
 # INSTALL - Instalação de dependências
@@ -356,8 +397,8 @@ open-design-system:
 # HEALTH - Verificação de saúde
 # ============================================================================
 
-.PHONY: health health-frontend health-backend
-health: health-frontend health-backend
+.PHONY: health health-frontend health-backend health-minio
+health: health-frontend health-backend health-minio
 
 health-frontend:
 	@echo "🏥 Verificando saúde do frontend..."
@@ -366,6 +407,10 @@ health-frontend:
 health-backend:
 	@echo "🏥 Verificando saúde do backend..."
 	@curl -f http://localhost:8005/health > /dev/null 2>&1 && echo "✅ Backend OK" || echo "❌ Backend DOWN"
+
+health-minio:
+	@echo "🏥 Verificando saúde do MinIO..."
+	@curl -f http://localhost:9000/minio/health/live > /dev/null 2>&1 && echo "✅ MinIO OK" || echo "❌ MinIO DOWN"
 
 # ============================================================================
 # WATCH - Observar mudanças (experimental)
