@@ -1,0 +1,347 @@
+// ==========================================
+// DBML Schema - Observador de Dominios
+// Versao: 1.1.0
+// Renderizacao: Copie e cole este codigo em https://dbdiagram.io
+// ==========================================
+
+// ------------------------------------------
+// 1. Identity & Access (Tenants e Autenticacao)
+// ------------------------------------------
+
+TableGroup Identity_and_Access {
+  organization
+  user_account
+  organization_membership
+  sso_connection
+  sso_connection_domain
+  user_session
+  auth_event
+}
+
+Table organization {
+  id uuid [primary key, note: 'UUID v7']
+  name varchar [not null]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+}
+
+Table user_account {
+  id uuid [primary key, note: 'UUID v7']
+  email varchar [unique, not null]
+  password_hash varchar
+  account_status varchar [note: 'enum: pending_email, active, locked, disabled']
+  created_at timestamptz [default: `now()`]
+}
+
+Table organization_membership {
+  organization_id uuid [ref: > organization.id]
+  user_id uuid [ref: > user_account.id]
+  membership_role varchar [note: 'enum: owner, admin, analyst, viewer']
+  created_at timestamptz [default: `now()`]
+  
+  indexes {
+    (organization_id, user_id) [unique]
+  }
+}
+
+Table sso_connection {
+  id uuid [primary key, note: 'UUID v7']
+  organization_id uuid [ref: > organization.id]
+  sso_protocol varchar [note: 'enum: oidc, saml']
+  is_active boolean [default: true]
+}
+
+Table sso_connection_domain {
+  id uuid [primary key]
+  sso_connection_id uuid [ref: > sso_connection.id]
+  domain varchar [unique, not null]
+}
+
+Table user_session {
+  id uuid [primary key, note: 'UUID v7']
+  user_id uuid [ref: > user_account.id]
+  token varchar [unique, not null]
+  expires_at timestamptz [not null]
+  created_at timestamptz [default: `now()`]
+}
+
+Table auth_event {
+  id uuid [primary key]
+  user_id uuid [ref: > user_account.id]
+  event_type varchar [not null]
+  ip_address varchar
+  created_at timestamptz [default: `now()`]
+}
+
+
+// ------------------------------------------
+// 2. Billing (Stripe e Assinaturas)
+// ------------------------------------------
+
+TableGroup Billing {
+  billing_plan
+  billing_price
+  organization_subscription
+  organization_usage_limit
+}
+
+Table billing_plan {
+  id uuid [primary key]
+  name varchar [not null]
+  description text
+}
+
+Table billing_price {
+  id uuid [primary key]
+  billing_plan_id uuid [ref: > billing_plan.id]
+  stripe_price_id varchar [unique, not null]
+  currency varchar [default: 'BRL']
+  unit_amount int [not null]
+}
+
+Table organization_subscription {
+  id uuid [primary key]
+  organization_id uuid [ref: > organization.id]
+  billing_plan_id uuid [ref: > billing_plan.id]
+  stripe_subscription_id varchar [unique]
+  subscription_status varchar [note: 'enum: trialing, active, past_due, canceled']
+  current_period_end timestamptz
+  created_at timestamptz [default: `now()`]
+}
+
+Table organization_usage_limit {
+  organization_id uuid [primary key, ref: > organization.id]
+  monitored_domains_limit int [not null]
+  api_calls_limit int [not null]
+  custom_reports_limit int [not null]
+}
+
+
+// ------------------------------------------
+// 3. Domain Intelligence Global (Global System Tables)
+// ------------------------------------------
+
+TableGroup Domain_Intelligence_Global {
+  domain
+  domain_source
+  domain_observation
+  dns_snapshot
+  ingestion_run
+  ingestion_checkpoint
+  zone_file_artifact
+  czds_tld_policy
+  nsec_tld_policy
+}
+
+Table domain {
+  id uuid [primary key, note: 'UUID v7']
+  name varchar [unique, not null, note: 'Canonical: lowercase, punycode, no trailing dot']
+  etld1 varchar [not null]
+  tld varchar [not null]
+  first_seen_at timestamptz [not null]
+  last_seen_at timestamptz [not null]
+  registered_at_best timestamptz
+  registered_at_confidence int
+  status varchar [note: 'enum: active, deleted, inactive, unknown']
+  deleted_at timestamptz [note: 'Soft delete. Preenchido quando dominio sai da zone file']
+  embedding "vector(384)" [note: 'pgvector - usado pelo Similarity Service para busca semantica']
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz
+  
+  indexes {
+    (etld1, first_seen_at)
+    (tld, last_seen_at)
+    (status, tld)
+  }
+}
+
+Table domain_source {
+  id uuid [primary key, note: 'UUID v7']
+  name varchar [unique, not null, note: 'Ex: CT Logs, Zone Files, pDNS']
+  source_status varchar [note: 'enum: ready, running, failed, paused']
+}
+
+Table domain_observation {
+  id uuid [primary key, note: 'Append-Only, particionado mensalmente']
+  domain_id uuid [ref: > domain.id]
+  source_id uuid [ref: > domain_source.id]
+  observed_at timestamptz [not null]
+  record_fingerprint varchar [not null, note: 'Hash for idempotency']
+  raw_payload jsonb
+  
+  indexes {
+    (domain_id, observed_at)
+    (source_id, observed_at)
+    (domain_id, source_id, observed_at, record_fingerprint) [unique]
+  }
+}
+
+Table dns_snapshot {
+  id uuid [primary key, note: 'Particionado mensalmente']
+  domain_id uuid [ref: > domain.id]
+  collected_at timestamptz [not null]
+  status varchar [note: 'timeout, nx_domain, servfail, success']
+  records jsonb [note: 'A, AAAA, NS, MX, TXT, CNAME']
+}
+
+Table ingestion_run {
+  id uuid [primary key]
+  source_id uuid [ref: > domain_source.id]
+  tld varchar [not null, note: 'TLD processado nesta execucao']
+  status varchar [note: 'queued, running, succeeded, failed']
+  started_at timestamptz
+  finished_at timestamptz
+  artifact_id uuid [ref: > zone_file_artifact.id]
+  domains_seen bigint [default: 0]
+  domains_inserted bigint [default: 0]
+  domains_reactivated bigint [default: 0]
+  domains_deleted bigint [default: 0]
+  error_message text
+  
+  indexes {
+    (source_id, tld, started_at)
+  }
+}
+
+Table ingestion_checkpoint {
+  source varchar [not null, note: 'czds, nsec, pdns, etc.']
+  tld varchar [not null]
+  last_successful_run_id uuid [ref: > ingestion_run.id]
+  last_successful_run_at timestamptz
+  
+  indexes {
+    (source, tld) [pk]
+  }
+}
+
+Table zone_file_artifact {
+  id uuid [primary key]
+  source varchar [not null, note: 'czds, nsec']
+  tld varchar [not null]
+  bucket varchar [not null]
+  object_key text [not null, note: 'Ex: zones/czds/net/2026/02/28/<run_id>/net.zone.gz']
+  etag varchar
+  sha256 "char(64)" [not null]
+  size_bytes bigint [not null]
+  downloaded_at timestamptz [not null]
+  
+  indexes {
+    (tld, downloaded_at)
+  }
+}
+
+Table czds_tld_policy {
+  tld varchar [primary key]
+  is_enabled boolean [default: true]
+  priority int [default: 0]
+  cooldown_hours int [default: 24]
+  notes text
+  updated_at timestamptz
+}
+
+Table nsec_tld_policy {
+  tld varchar [primary key]
+  walk_enabled boolean [default: true]
+  priority int [default: 0]
+  cooldown_hours int [default: 24]
+  queries_per_second int [default: 8]
+  max_runtime_minutes int [default: 480]
+  authoritative_nameservers jsonb [note: 'Lista de NS autoritativos para o walk']
+  notes text
+  updated_at timestamptz
+}
+
+
+// ------------------------------------------
+// 4. Monitoring Workspace (Ferramentas Tenant-Aware)
+// ------------------------------------------
+
+TableGroup Monitoring_Workspace {
+  organization_monitored_domain
+  tool_execution
+  tool_screenshot_result
+  tool_dns_result
+  tool_whois_result
+}
+
+Table organization_monitored_domain {
+  organization_id uuid [ref: > organization.id]
+  domain_id uuid [ref: > domain.id]
+  risk_level varchar [note: 'enum: low, medium, high, inconclusive']
+  tags varchar[]
+  added_at timestamptz [default: `now()`]
+  
+  indexes {
+    (organization_id, domain_id) [unique]
+  }
+}
+
+Table tool_execution {
+  id uuid [primary key, note: 'UUID v7']
+  organization_id uuid [ref: > organization.id]
+  target_domain varchar [not null]
+  tool_type varchar [not null, note: 'dns_lookup, whois, ssl_check, screenshot, suspicious_page, quick_analysis']
+  tool_status varchar [note: 'queued, running, partial_success, success, failed, timeout']
+  latency_ms int
+  created_at timestamptz [default: `now()`]
+  
+  indexes {
+    (organization_id, created_at)
+    (organization_id, target_domain, created_at)
+  }
+}
+
+Table tool_screenshot_result {
+  id uuid [primary key]
+  tool_execution_id uuid [ref: > tool_execution.id]
+  object_key_s3 varchar [not null, note: 'S3/R2 path. DO NOT store binary here.']
+}
+
+Table tool_dns_result {
+  id uuid [primary key]
+  tool_execution_id uuid [ref: > tool_execution.id]
+  records jsonb
+}
+
+Table tool_whois_result {
+  id uuid [primary key]
+  tool_execution_id uuid [ref: > tool_execution.id]
+  raw_whois_text text
+  parsed_data jsonb
+}
+
+
+// ------------------------------------------
+// 5. Platform Ops & Audit (Logs de Auditoria)
+// ------------------------------------------
+
+TableGroup Platform_Ops_And_Audit {
+  audit_event
+  job_queue
+  job_attempt
+}
+
+Table audit_event {
+  id uuid [primary key, note: 'Append-Only, particionado']
+  action varchar [not null]
+  actor_id uuid [note: 'Optional user/system ID']
+  target_resource varchar
+  payload jsonb
+  created_at timestamptz [default: `now()`]
+}
+
+Table job_queue {
+  id uuid [primary key]
+  job_name varchar [not null]
+  job_status varchar [note: 'queued, running, succeeded, failed, dead_letter']
+  payload jsonb
+  execution_time timestamptz
+}
+
+Table job_attempt {
+  id uuid [primary key]
+  job_queue_id uuid [ref: > job_queue.id]
+  error_reason text
+  duration_ms int
+  attempt_time timestamptz [default: `now()`]
+}

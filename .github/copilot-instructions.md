@@ -3,6 +3,9 @@ sempre leve em consideração os arquivos:
 - `.github\frontend.instructions.md` quando trabalhando na pasta frontend
 - `.github\backend.instructions.md` quando estiver trabalhando na pasta backend
 
+a Definição do produto está em `.specs/product_definition.md` e deve ser consultada antes de iniciar o desenvolvimento para garantir alinhamento com os requisitos do produto.
+
+Os arquivos PRD e especificações dos produtos estão em `.specs/` e devem ser consultados antes de iniciar o desenvolvimento para garantir alinhamento com os requisitos do produto.
 ---
 
 ## 📁 Organização
@@ -66,4 +69,18 @@ Consulte sempre:
 - `README.md` - Quick start
 - `docs/docker-commands.md` - Comandos Docker completos
 - `docs/design-system.md` - Componentes frontend
+
+---
+
+## 🗂️ Gestão de Refinamentos (`.specs/todos`)
+
+- Todo refinamento técnico aprovado deve ganhar um item em `.specs/todos`.
+- A numeração é sequencial de 3 dígitos (`001`, `002`, `003`...).
+- Cada item deve conter:
+	- `.specs/todos/<NNN>/plan.md`
+	- `.specs/todos/<NNN>/references.md`
+	- `.specs/todos/<NNN>/status.md`
+- O arquivo `.specs/todos/_registry.md` é obrigatório para controlar ordem e status geral.
+- Sempre atualizar `_registry.md` junto com `status.md` quando o status mudar.
+- Status permitidos: `todo`, `in_progress`, `blocked`, `done`.
 

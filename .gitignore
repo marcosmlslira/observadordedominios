@@ -16,3 +16,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Local agent/tooling state
+.claude/
+CLAUDE.md
+skills-lock.json
+
+# Local environment secrets
+backend/.env
+
+# Local debugging artifacts
+czds_fix_logs.txt
+czds_logs.txt
+stack_err.txt
+

@@ -8,13 +8,12 @@
 
 ## Project Structure
 ```
-
 /
 ├── frontend/
-│   ├── app/                # Next.js App Router
-│   ├── components/         # UI components (Geist + shadcn + Magic UI)
-│   ├── lib/                # Helpers, hooks, utils
-│   ├── styles/             # Global styles and tokens
+│   ├── app/                 # Next.js App Router
+│   ├── components/          # UI components (Geist + shadcn + Magic UI)
+│   ├── lib/                 # Helpers, hooks, utils
+│   ├── styles/              # Global styles and tokens
 │   ├── public/
 │   ├── package.json
 │   ├── next.config.js
@@ -35,15 +34,95 @@
 │   └── Dockerfile
 │
 ├── infra/
-│   ├── stack.yml            # Docker Swarm stack
-│   └── env/                 # Environment files
+│   ├── stack.yml             # Docker Swarm stack
+│   └── env/                  # Environment files
+│
+├── .agents/
+│   ├── skills/               # Extensible agent skills
+│   │   ├── architecture-blueprint-generator/
+│   │   ├── chrome-devtools/
+│   │   ├── database-modeling/
+│   │   ├── email-best-practices/
+│   │   ├── fastapi-templates/
+│   │   ├── front-end-responsive/
+│   │   ├── interface-design/
+│   │   ├── next-best-practices/
+│   │   ├── next-upgrade/
+│   │   ├── nextjs-micro-ux-expert/
+│   │   ├── react-email/
+│   │   ├── resend/
+│   │   ├── responsive-design-expert/
+│   │   ├── stripe-best-practices/
+│   │   └── upgrade-stripe/
+│   └── workflows/            # Automated agent workflows
 │
 ├── .github/
-│   └── workflows/
-│       └── deploy.yml       # CI/CD pipeline
+│   ├── agents/               # Custom GitHub Copilot agents
+│   │   ├── AGENT-tech-refiner.md
+│   │   ├── arch.agent.md
+│   │   ├── debug.agent.md
+│   │   ├── devops-expert.agent.md
+│   │   ├── expert-nextjs-developer.agent.md
+│   │   ├── postgresql-dba.agent.md
+│   │   ├── prd.agent.md
+│   │   ├── principal-software-engineer.agent.md
+│   │   └── python-mcp-expert.agent.md
+│   ├── instructions/         # Contextual instructions for agents
+│   │   ├── backend.instructions.md
+│   │   ├── frontend.instructions.md
+│   │   └── modeling.instructions.md
+│   ├── prompts/              # Reusable prompt templates
+│   │   ├── especification.md
+│   │   ├── execution.md
+│   │   ├── frontend-implement.md.example
+│   │   └── planning.md
+│   ├── skills/               # Shared skills (mirrors .agents/skills)
+│   ├── workflows/            # GitHub Actions CI/CD pipelines
+│   └── copilot-instructions.md
 │
-└── AGENT.md
-
+├── .specs/
+│   ├── product_definition.md # Core product definition
+│   ├── features/             # Feature PRDs (Product Requirements)
+│   │   ├── auth/
+│   │   │   ├── prd_auth_simples.md
+│   │   │   └── prd_sso.md
+│   │   ├── domain-database/
+│   │   │   └── prd.md
+│   │   ├── domain_similarity/
+│   │   ├── freetools/
+│   │   │   ├── prd.md
+│   │   │   ├── prd_dns_lookup.md
+│   │   │   ├── prd_pagina_suspeita.md
+│   │   │   ├── prd_screenshot.md
+│   │   │   ├── prd_ssl_check.md
+│   │   │   └── prd_whois.md
+│   │   ├── notifications/
+│   │   ├── payment/
+│   │   │   └── pagameto.md
+│   │   ├── ssl_monitoring/
+│   │   └── uptime_monitoring/
+│   ├── setup_project/        # Initial project setup guides
+│   │   ├── 001-frontend-desgin.md
+│   │   ├── 002-ambiente-docker.md
+│   │   ├── 003-make-file.md
+│   │   └── 004-page-design-system.md
+│   └── todos/                # Task tracking
+│       ├── README.md
+│       ├── _registry.md
+│       ├── 001/
+│       │   ├── plan.md
+│       │   ├── references.md
+│       │   └── status.md
+│       ├── 002/
+│       │   ├── plan.md
+│       │   ├── references.md
+│       │   └── status.md
+│       └── 003/
+│           ├── plan.md
+│           ├── references.md
+│           └── status.md
+│
+└── AGENTS.md
 ```
 
 ## Frontend
@@ -97,5 +176,4 @@
 - Do not change design system
 - Do not use docker-compose
 - Do not mix responsibilities
-- Prefer clarity and maintainability
-```
+- Prefer clarity and maintainability
