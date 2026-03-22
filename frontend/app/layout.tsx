@@ -1,8 +1,9 @@
-import './globals.css'
+import "./globals.css"
+import { AuthWrapper } from "./auth-wrapper"
 
 export const metadata = {
-  title: 'Hello World',
-  description: 'Frontend (Next.js)',
+  title: "Observador de Dominios — Admin",
+  description: "Admin panel for domain monitoring and threat intelligence",
 }
 
 export default function RootLayout({
@@ -12,7 +13,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning>{children}</body>
+      <body suppressHydrationWarning>
+        <AuthWrapper>{children}</AuthWrapper>
+      </body>
     </html>
   )
 }

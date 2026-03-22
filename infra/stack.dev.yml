@@ -11,6 +11,7 @@ services:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - WATCHPACK_POLLING_INTERVAL=1000
+      - NEXT_PUBLIC_API_URL=http://localhost:8005
     networks:
       - app-network
     deploy:
@@ -38,6 +39,10 @@ services:
       - S3_SECRET_ACCESS_KEY=minioadmin
       - S3_FORCE_PATH_STYLE=true
       - CZDS_ENABLED_TLDS=net,org,info
+      - ADMIN_EMAIL=admin@observador.com
+      - ADMIN_PASSWORD_HASH=$$2b$$12$$Z3xwD2M0fUiVKq151s47g.QsuOmfw3plR5lCIFtnO2K3JDSwjRIA2
+      - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
+      - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
     networks:
       - app-network
     depends_on:

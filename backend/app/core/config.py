@@ -10,6 +10,16 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     APP_TITLE: str = "Observador de Domínios — Backend API"
 
+    # ── Admin Auth ──────────────────────────────────────────
+    ADMIN_EMAIL: str = "admin@observador.com"
+    ADMIN_PASSWORD_HASH: str = ""
+    JWT_SECRET_KEY: str = "change-me-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+
+    # ── CORS ───────────────────────────────────────────────
+    CORS_ORIGINS: str = "http://localhost:3005,http://localhost:3000"
+
     # ── Database ─────────────────────────────────────────────
     DATABASE_URL: str = "postgresql://obs:obs@postgres:5432/obs"
 

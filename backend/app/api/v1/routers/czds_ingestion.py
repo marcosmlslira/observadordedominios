@@ -9,6 +9,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_admin
+
 from app.infra.db.session import SessionLocal, get_db
 from app.core.config import settings
 from app.repositories.ingestion_run_repository import IngestionRunRepository
@@ -26,7 +28,11 @@ from app.services.use_cases.sync_czds_tld import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1/czds", tags=["CZDS Ingestion"])
+router = APIRouter(
+    prefix="/v1/czds",
+    tags=["CZDS Ingestion"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 
 def _run_sync_in_background(tld: str, force: bool, run_id: UUID) -> None:

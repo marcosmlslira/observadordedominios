@@ -1,9 +1,11 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 
 from app.api import health
-from app.api.v1.routers import czds_ingestion, monitored_brands, similarity
+from app.api.v1.routers import auth, czds_ingestion, monitored_brands, similarity
+from app.core.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +26,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(czds_ingestion.router)
 app.include_router(monitored_brands.router)
 app.include_router(similarity.router)

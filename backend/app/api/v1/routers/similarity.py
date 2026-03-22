@@ -8,6 +8,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_admin
+
 from app.infra.db.session import get_db
 from app.repositories.similarity_repository import SimilarityRepository
 from app.schemas.similarity import (
@@ -26,7 +28,11 @@ from app.services.use_cases.search_similarity import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1", tags=["Similarity"])
+router = APIRouter(
+    prefix="/v1",
+    tags=["Similarity"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 
 @router.post(

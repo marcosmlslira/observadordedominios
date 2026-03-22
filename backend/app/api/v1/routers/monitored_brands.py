@@ -9,6 +9,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_admin
+
 from app.infra.db.session import SessionLocal, get_db
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
 from app.repositories.similarity_repository import SimilarityRepository
@@ -22,7 +24,11 @@ from app.schemas.similarity import ScanResultResponse, ScanSummaryResponse
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1/brands", tags=["Monitored Brands"])
+router = APIRouter(
+    prefix="/v1/brands",
+    tags=["Monitored Brands"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 # TODO: Replace with real auth dependency when identity domain is built
 PLACEHOLDER_ORG_ID = UUID("00000000-0000-0000-0000-000000000001")
