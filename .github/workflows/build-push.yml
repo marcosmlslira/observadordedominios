@@ -1,0 +1,78 @@
+name: Build & Push Images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-push
+  cancel-in-progress: true
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  GHCR_OWNER: ${{ vars.GHCR_OWNER }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+
+  build-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login "$GHCR_REGISTRY" --username "$GHCR_OWNER" --password-stdin
+      - name: Build and push backend
+        run: |
+          IMAGE="$GHCR_REGISTRY/$GHCR_OWNER/observador-backend:latest"
+          docker build -t "$IMAGE" backend/
+          docker push "$IMAGE"
+
+  build-frontend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login "$GHCR_REGISTRY" --username "$GHCR_OWNER" --password-stdin
+      - name: Build and push frontend
+        run: |
+          IMAGE="$GHCR_REGISTRY/$GHCR_OWNER/observador-frontend:latest"
+          docker build -t "$IMAGE" frontend/
+          docker push "$IMAGE"
+
+  trigger-deploy:
+    needs: [build-backend, build-frontend]
+    if: always() && (needs.build-backend.result == 'success' || needs.build-frontend.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy on docker-stack-infra
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.INFRA_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/${{ vars.GHCR_OWNER }}/docker-stack-infra/dispatches \
+            -d '{"event_type":"deploy-stack","client_payload":{"stack":"observador"}}'
