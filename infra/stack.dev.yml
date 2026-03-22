@@ -27,6 +27,7 @@ services:
       - "8005:8000"
     volumes:
       - c:\PROJETOS\observadordedominios\backend:/app
+      - zonedata:/data
     environment:
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=development
@@ -89,6 +90,7 @@ services:
     image: observadordedominios-backend:dev
     volumes:
       - c:\PROJETOS\observadordedominios\backend:/app
+      - zonedata:/data
     environment:
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=development
@@ -114,6 +116,25 @@ services:
       restart_policy:
         condition: on-failure
 
+  similarity_worker:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - SIMILARITY_SCAN_CRON=0 9 * * *
+    command: ["python", "-m", "app.worker.similarity_worker"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
 networks:
   app-network:
     driver: overlay
@@ -121,3 +142,4 @@ networks:
 volumes:
   pgdata:
   miniodata:
+  zonedata:

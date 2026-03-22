@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.api import health
-from app.api.v1.routers import czds_ingestion
+from app.api.v1.routers import czds_ingestion, monitored_brands, similarity
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,3 +26,5 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(czds_ingestion.router)
+app.include_router(monitored_brands.router)
+app.include_router(similarity.router)

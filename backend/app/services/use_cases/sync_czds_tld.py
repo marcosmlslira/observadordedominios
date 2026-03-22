@@ -7,6 +7,7 @@ import os
 import shutil
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -19,6 +20,25 @@ from app.repositories.zone_artifact_repository import ZoneArtifactRepository
 from app.services.use_cases.apply_zone_delta import apply_zone_delta
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_partition(db: Session, tld: str) -> None:
+    """Create a partition for the TLD if it doesn't exist yet."""
+    safe_tld = tld.replace("-", "_")
+    partition_name = f"domain_{safe_tld}"
+
+    exists = db.execute(
+        text("SELECT 1 FROM pg_class WHERE relname = :name"),
+        {"name": partition_name},
+    ).scalar()
+
+    if not exists:
+        db.execute(text(
+            f"CREATE TABLE {partition_name} PARTITION OF domain "
+            f"FOR VALUES IN ('{tld}')"
+        ))
+        db.commit()
+        logger.info("Created partition %s for TLD=%s", partition_name, tld)
 
 
 class SyncAlreadyRunningError(Exception):
@@ -38,6 +58,7 @@ def sync_czds_tld(
     force: bool = False,
     czds_client: CZDSClient | None = None,
     s3_storage: S3Storage | None = None,
+    run_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
     """
     Full orchestration: lock → cooldown check → download → S3 → delta → checkpoint.
@@ -51,7 +72,7 @@ def sync_czds_tld(
     s3 = s3_storage or S3Storage()
 
     # ── 1. Check for already-running sync ───────────────────
-    if run_repo.has_running_run(source, tld):
+    if run_repo.has_running_run(source, tld, exclude_run_id=run_id):
         raise SyncAlreadyRunningError(f"Sync already running for TLD={tld}")
 
     # ── 2. Advisory lock per TLD (prevent parallel workers) ─
@@ -63,6 +84,9 @@ def sync_czds_tld(
         raise SyncAlreadyRunningError(f"Could not acquire lock for TLD={tld}")
 
     try:
+        # ── 2b. Ensure TLD partition exists ───────────────────
+        _ensure_partition(db, tld)
+
         # ── 3. Cooldown check ───────────────────────────────
         if not force:
             checkpoint = run_repo.get_checkpoint(source, tld)
@@ -74,14 +98,41 @@ def sync_czds_tld(
                         f"Last sync: {checkpoint.last_successful_run_at}"
                     )
 
-        # ── 4. Create ingestion run ─────────────────────────
-        run = run_repo.create_run(source, tld)
+        # ── 4. Create or fetch ingestion run ────────────────
+        if run_id:
+            run = run_repo.get_run(run_id)
+            if not run:
+                run = run_repo.create_run(source, tld)
+        else:
+            run = run_repo.create_run(source, tld)
         db.commit()
         logger.info("Created ingestion run %s for TLD=%s", run.id, tld)
 
         try:
-            # ── 5. Download zone file ───────────────────────
-            local_path, sha256, size_bytes = czds.download_zone(tld)
+            # ── 5. Download zone file or reuse local ────────
+            data_dir = Path("/data/czds")
+            data_dir.mkdir(parents=True, exist_ok=True)
+            local_path = data_dir / f"{tld}.zone.gz"
+
+            download_needed = True
+            if local_path.exists():
+                mtime = datetime.fromtimestamp(local_path.stat().st_mtime, timezone.utc)
+                if datetime.now(timezone.utc) - mtime < timedelta(hours=24):
+                    logger.info("Local zone file %s is recent, skipping download.", local_path)
+                    download_needed = False
+            
+            if download_needed:
+                local_path, sha256, size_bytes = czds.download_zone(tld, dest_dir=str(data_dir))
+            else:
+                import hashlib
+                hasher = hashlib.sha256()
+                size_bytes = 0
+                logger.info("Hashing local zone file: %s", local_path)
+                with open(local_path, "rb") as f:
+                    for chunk in iter(lambda: f.read(8192 * 4), b""):
+                        hasher.update(chunk)
+                        size_bytes += len(chunk)
+                sha256 = hasher.hexdigest()
 
             # ── 6. Upload to S3 ─────────────────────────────
             s3.ensure_bucket()
@@ -118,6 +169,14 @@ def sync_czds_tld(
             run_repo.upsert_checkpoint(source, tld, run)
             db.commit()
 
+            # Clean up local cache after successful sync (R4)
+            if local_path.exists():
+                try:
+                    local_path.unlink()
+                    logger.info("Cleaned up local cache: %s", local_path)
+                except OSError:
+                    logger.warning("Failed to delete local cache: %s", local_path, exc_info=True)
+
             logger.info(
                 "Sync SUCCESS: run_id=%s tld=%s metrics=%s",
                 run.id, tld, metrics,
@@ -127,15 +186,32 @@ def sync_czds_tld(
         except Exception as exc:
             logger.exception("Sync FAILED for TLD=%s run_id=%s", tld, run.id)
             db.rollback()
+
+            # Cleanup S3 artifact from failed run (avoid orphans)
+            if "object_key" in locals():
+                try:
+                    s3.delete_object(object_key)
+                    logger.info("Cleaned up orphan S3 artifact: %s", object_key)
+                except Exception:
+                    logger.warning("Failed to cleanup S3 artifact: %s", object_key, exc_info=True)
+
+            # Cleanup artifact DB record if it was created
+            if "artifact" in locals():
+                try:
+                    db.delete(artifact)
+                    db.flush()
+                except Exception:
+                    logger.warning("Failed to cleanup artifact DB record", exc_info=True)
+
             run_repo.finish_run(run, status="failed", error_message=str(exc))
             db.commit()
             raise
 
         finally:
-            # Clean up temp files
+            # Clean up temp files ONLY if we used tempfile (not /data/)
             if "local_path" in locals():
                 parent = local_path.parent
-                if parent.name.startswith("czds_"):
+                if "czds_" in parent.name and "/data" not in str(parent):
                     shutil.rmtree(parent, ignore_errors=True)
 
     finally:

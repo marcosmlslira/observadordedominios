@@ -1,33 +1,25 @@
-"""Use case: apply zone delta — parse zone file, stage, and apply to DB."""
+"""Use case: apply zone delta — parse zone file and upsert to DB."""
 
 from __future__ import annotations
 
 import gzip
 import logging
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.repositories.domain_repository import DomainRepository
 
 logger = logging.getLogger(__name__)
 
-# We only care about NS-delegated names (type "NS" or the domain names from the zone).
-# A zone file line looks like:
-# example.net.  172800  IN  NS  ns1.example.net.
-# We extract the leftmost label as the FQDN being delegated.
-
 _BATCH_SIZE = 50_000
 
 
 def _parse_zone_stream(path: Path, tld: str):
-    """
-    Generator that yields normalised domain names from a gzipped zone file.
-
-    Yields only second-level domains (e.g. "example.net") from NS records.
-    """
-    suffix = f".{tld}."
+    """Generator: yield normalised second-level domain names from gzipped zone file."""
     seen_in_batch: set[str] = set()
 
     opener = gzip.open if str(path).endswith(".gz") else open
@@ -39,24 +31,17 @@ def _parse_zone_stream(path: Path, tld: str):
             parts = line.split()
             if len(parts) < 4:
                 continue
-            # We only care about the owner name (first column)
+
             owner = parts[0].lower().rstrip(".")
             if not owner.endswith(f".{tld}") and owner != tld:
-                # Only consider second-level: "example.{tld}"
+                continue
+            if owner == tld:
                 continue
 
-            # Normalise: strip trailing dot, lowercase
-            domain_name = owner
+            if owner not in seen_in_batch:
+                seen_in_batch.add(owner)
+                yield owner
 
-            # Skip the bare TLD itself
-            if domain_name == tld:
-                continue
-
-            if domain_name not in seen_in_batch:
-                seen_in_batch.add(domain_name)
-                yield domain_name
-
-                # Periodically clear set to limit memory
                 if len(seen_in_batch) >= 500_000:
                     seen_in_batch.clear()
 
@@ -68,34 +53,42 @@ def apply_zone_delta(
     tld: str,
     run_id: uuid.UUID,
 ) -> dict[str, int]:
-    """
-    Parse a zone file in streaming mode, load into staging table,
-    then apply the delta (insert / reactivate / soft-delete).
-    """
+    """Parse zone file in streaming mode and upsert directly into domain."""
+    ts = datetime.now(timezone.utc)
     repo = DomainRepository(db)
-    staging_table = repo.create_staging_table(run_id)
 
-    # Stream-parse and batch-insert into staging
     batch: list[str] = []
     total_parsed = 0
 
     for domain_name in _parse_zone_stream(zone_file_path, tld):
-        # Sanitise for SQL safety (basic check — names are already validated)
-        safe_name = domain_name.replace("'", "''")
-        batch.append(safe_name)
+        batch.append(domain_name)
 
         if len(batch) >= _BATCH_SIZE:
-            repo.bulk_insert_staging(staging_table, batch)
+            repo.bulk_upsert(batch, tld, ts)
             total_parsed += len(batch)
-            logger.info("Staged %d domains so far…", total_parsed)
+            logger.info("Upserted %d domains so far...", total_parsed)
+            db.execute(
+                text("UPDATE ingestion_run SET domains_seen = :total WHERE id = :id"),
+                {"total": total_parsed, "id": run_id},
+            )
+            db.commit()
             batch.clear()
 
     if batch:
-        repo.bulk_insert_staging(staging_table, batch)
+        repo.bulk_upsert(batch, tld, ts)
         total_parsed += len(batch)
 
-    logger.info("Total domains staged: %d", total_parsed)
+    db.execute(
+        text("UPDATE ingestion_run SET domains_seen = :total WHERE id = :id"),
+        {"total": total_parsed, "id": run_id},
+    )
+    db.commit()
 
-    # Apply the delta
-    metrics = repo.apply_delta(staging_table, tld, run_id)
-    return metrics
+    logger.info("Total domains upserted: %d", total_parsed)
+
+    return {
+        "seen": total_parsed,
+        "inserted": total_parsed,
+        "reactivated": 0,
+        "deleted": 0,
+    }

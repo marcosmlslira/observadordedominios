@@ -1,22 +1,18 @@
-"""Domain entity — canonical global domain record."""
+"""Domain entity — canonical global domain record (partitioned by TLD)."""
 
-import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, DateTime, Index, String
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base
 
 
-class Domain(Base, TimestampMixin):
+class Domain(Base):
     __tablename__ = "domain"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(253), unique=True, nullable=False, index=True)
-    tld = Column(String(24), nullable=False)
-    status = Column(String(16), nullable=False, default="active")  # active | deleted
+    name = Column(String(253), primary_key=True)
+    tld = Column(String(24), primary_key=True)
+    label = Column(String, nullable=False)
     first_seen_at = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -27,15 +23,10 @@ class Domain(Base, TimestampMixin):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
-    # ── Relationships ───────────────────────────────────────
-    observations = relationship(
-        "DomainObservation", back_populates="domain", cascade="all, delete-orphan"
-    )
-
-    # ── Indexes ─────────────────────────────────────────────
     __table_args__ = (
-        Index("ix_domain_tld_last_seen", "tld", last_seen_at.desc()),
-        Index("ix_domain_status_tld", "status", "tld"),
+        Index("ix_domain_label_trgm", "label", postgresql_using="gin",
+              postgresql_ops={"label": "gin_trgm_ops"}),
+        Index("ix_domain_first_seen", "tld", first_seen_at.desc()),
+        Index("ix_domain_last_seen", "tld", last_seen_at.desc()),
     )

@@ -59,20 +59,33 @@ class IngestionRunRepository:
         return run
 
     def get_run(self, run_id: uuid.UUID) -> IngestionRun | None:
+        """Fetch a specific ingestion run."""
         return self.db.get(IngestionRun, run_id)
 
-    def has_running_run(self, source: str, tld: str) -> bool:
-        """Check if there is already a running run for this source/TLD."""
+    def list_runs(self, limit: int = 20, offset: int = 0) -> list[IngestionRun]:
+        """List ingestion runs ordered by newest first."""
         return (
+            self.db.query(IngestionRun)
+            .order_by(IngestionRun.started_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+    def has_running_run(self, source: str, tld: str, exclude_run_id: uuid.UUID | None = None) -> bool:
+        """Check if there is already a running run for this source/TLD."""
+        query = (
             self.db.query(IngestionRun)
             .filter(
                 IngestionRun.source == source,
                 IngestionRun.tld == tld,
                 IngestionRun.status == "running",
             )
-            .first()
-            is not None
         )
+        if exclude_run_id:
+            query = query.filter(IngestionRun.id != exclude_run_id)
+            
+        return query.first() is not None
 
     # ── Checkpoint ──────────────────────────────────────────
     def upsert_checkpoint(self, source: str, tld: str, run: IngestionRun) -> None:

@@ -91,3 +91,9 @@ class S3Storage:
         etag = head.get("ETag", "").strip('"')
         logger.info("Upload complete: ETag=%s", etag)
         return etag
+
+    # ── Delete ─────────────────────────────────────────────
+    def delete_object(self, object_key: str) -> None:
+        """Delete a single object from S3."""
+        logger.info("Deleting s3://%s/%s", self.bucket, object_key)
+        self.client.delete_object(Bucket=self.bucket, Key=object_key)

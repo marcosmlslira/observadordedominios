@@ -5,10 +5,10 @@ import uuid
 from sqlalchemy import BigInteger, Column, DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
 
 
-class ZoneFileArtifact(Base):
+class ZoneFileArtifact(Base, TimestampMixin):
     __tablename__ = "zone_file_artifact"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
