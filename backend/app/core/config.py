@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     CZDS_ENABLED_TLDS: str = "net,org,info"
     CZDS_SYNC_CRON: str = "0 7 * * *"
     CZDS_FORCE_COOLDOWN_HOURS: int = 24
+    CZDS_RUNNING_STALE_MINUTES: int = 180
     CZDS_BASE_URL: str = "https://czds-api.icann.org"
 
     model_config = {"env_file": ".env", "case_sensitive": True}

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -86,6 +86,47 @@ class IngestionRunRepository:
             query = query.filter(IngestionRun.id != exclude_run_id)
             
         return query.first() is not None
+
+    def recover_stale_runs(
+        self,
+        source: str,
+        tld: str,
+        *,
+        stale_after_minutes: int,
+        exclude_run_id: uuid.UUID | None = None,
+    ) -> list[IngestionRun]:
+        """Mark orphaned running runs as failed so the TLD can progress again."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_after_minutes)
+        query = (
+            self.db.query(IngestionRun)
+            .filter(
+                IngestionRun.source == source,
+                IngestionRun.tld == tld,
+                IngestionRun.status == "running",
+                IngestionRun.started_at < cutoff,
+            )
+            .order_by(IngestionRun.started_at.asc())
+        )
+        if exclude_run_id:
+            query = query.filter(IngestionRun.id != exclude_run_id)
+
+        stale_runs = query.all()
+        if not stale_runs:
+            return []
+
+        now = datetime.now(timezone.utc)
+        for run in stale_runs:
+            run.status = "failed"
+            run.finished_at = now
+            run.updated_at = now
+            age_minutes = int((now - run.started_at).total_seconds() // 60)
+            run.error_message = (
+                f"Run marked as failed automatically after exceeding the stale timeout "
+                f"({age_minutes} minutes without completion)"
+            )
+
+        self.db.flush()
+        return stale_runs
 
     # ── Checkpoint ──────────────────────────────────────────
     def upsert_checkpoint(self, source: str, tld: str, run: IngestionRun) -> None:

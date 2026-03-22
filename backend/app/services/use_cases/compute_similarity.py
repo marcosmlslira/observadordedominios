@@ -6,6 +6,7 @@ brand containment, keyword risk, and homograph detection.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 # ── Homograph / Confusable Maps ────────────────────────────────
@@ -123,6 +124,8 @@ W_BRAND_HIT = 0.20
 W_KEYWORD = 0.15
 W_HOMOGRAPH = 0.10
 
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
 
 def compute_scores(
     label: str,
@@ -153,13 +156,23 @@ def compute_scores(
         edit_dist = _levenshtein(label, brand_label)
         score_levenshtein = 1.0 - (edit_dist / max_len)
 
-    # 3. Brand containment (binary)
-    score_brand_hit = 1.0 if brand_label in label else 0.0
+    exact_match = label == brand_label
+
+    # 3. Brand containment (boundary-aware to avoid cases like "authority" -> "itau")
+    score_brand_hit = 1.0 if _has_brand_boundary_match(label, brand_label) else 0.0
 
     # 4. Keyword risk scoring
     label_lower = label.lower()
-    risk_hits = sum(1 for kw in RISK_KEYWORDS if kw in label_lower)
-    brand_kw_hits = sum(1 for kw in brand_keywords if kw in label_lower)
+    residual_text = label_lower.replace(brand_label.lower(), " ")
+    residual_tokens = _extract_tokens(residual_text)
+    risk_hits = sum(
+        1 for kw in RISK_KEYWORDS
+        if _has_keyword_hit(residual_text, residual_tokens, kw)
+    )
+    brand_kw_hits = sum(
+        1 for kw in brand_keywords
+        if _has_keyword_hit(residual_text, residual_tokens, kw)
+    )
     score_keyword = min(1.0, risk_hits * 0.3 + brand_kw_hits * 0.2)
 
     # 5. Homograph similarity
@@ -187,9 +200,16 @@ def compute_scores(
     )
 
     # Risk level
-    if score_final >= 0.85 or (score_brand_hit == 1.0 and score_keyword > 0):
+    if exact_match and score_keyword == 0:
+        risk_level = "high"
+    elif (
+        not exact_match
+        and score_brand_hit == 1.0
+        and score_keyword >= 0.3
+        and score_final >= 0.55
+    ) or score_final >= 0.9:
         risk_level = "critical"
-    elif score_final >= 0.70:
+    elif score_final >= 0.72:
         risk_level = "high"
     elif score_final >= 0.50:
         risk_level = "medium"
@@ -199,7 +219,7 @@ def compute_scores(
     # Reasons
     reasons = _detect_reasons(
         score_trigram, score_levenshtein, score_brand_hit,
-        score_keyword, score_homograph,
+        score_keyword, score_homograph, exact_match=exact_match,
     )
 
     return {
@@ -215,20 +235,72 @@ def compute_scores(
 
 
 def _detect_reasons(
-    trigram: float, lev: float, brand: float, keyword: float, homograph: float,
+    trigram: float,
+    lev: float,
+    brand: float,
+    keyword: float,
+    homograph: float,
+    *,
+    exact_match: bool,
 ) -> list[str]:
     reasons: list[str] = []
-    if lev >= 0.7 and trigram >= 0.4:
+    if exact_match:
+        reasons.append("exact_label_match")
+    elif lev >= 0.75 and trigram >= 0.45:
         reasons.append("typosquatting")
-    if brand >= 1.0:
+    if brand >= 1.0 and not exact_match:
         reasons.append("brand_containment")
     if keyword > 0:
         reasons.append("risky_keywords")
-    if homograph >= 0.9 and homograph > trigram:
+    if not exact_match and homograph >= 0.95 and homograph > trigram:
         reasons.append("homograph_attack")
     if not reasons:
         reasons.append("lexical_similarity")
     return reasons
+
+
+def _extract_tokens(text: str) -> set[str]:
+    return {token for token in _TOKEN_RE.findall(text.lower()) if token}
+
+
+def _has_keyword_hit(residual_text: str, residual_tokens: set[str], keyword: str) -> bool:
+    normalized = keyword.lower().strip()
+    if not normalized:
+        return False
+
+    if normalized in residual_tokens:
+        return True
+
+    # Short tokens create a lot of noise via substring matching ("auth" in "authority").
+    if len(normalized) <= 4:
+        return False
+
+    return normalized in residual_text
+
+
+def _has_brand_boundary_match(label: str, brand_label: str) -> bool:
+    if not brand_label:
+        return False
+
+    if label == brand_label:
+        return True
+
+    start = 0
+    while True:
+        idx = label.find(brand_label, start)
+        if idx == -1:
+            return False
+
+        end = idx + len(brand_label)
+        prev_char = label[idx - 1] if idx > 0 else ""
+        next_char = label[end] if end < len(label) else ""
+        prev_is_letter = prev_char.isalpha()
+        next_is_letter = next_char.isalpha()
+
+        if not prev_is_letter or not next_is_letter:
+            return True
+
+        start = idx + 1
 
 
 def _levenshtein(s1: str, s2: str) -> int:

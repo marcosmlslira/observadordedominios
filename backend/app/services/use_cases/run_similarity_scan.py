@@ -23,13 +23,15 @@ from app.services.use_cases.compute_similarity import (
 logger = logging.getLogger(__name__)
 
 # Minimum composite score to persist a match
-SCORE_THRESHOLD = 0.30
+SCORE_THRESHOLD = 0.40
 
 
 def run_similarity_scan(
     db: Session,
     brand: MonitoredBrand,
     tld: str,
+    *,
+    force_full: bool = False,
 ) -> dict[str, int]:
     """Run a similarity scan for a single brand × TLD combination.
 
@@ -40,14 +42,17 @@ def run_similarity_scan(
 
     # Determine watermark for delta scans
     watermark_at = None
-    if cursor.scan_phase == "delta" and cursor.watermark_at:
+    if not force_full and cursor.scan_phase == "delta" and cursor.watermark_at:
         watermark_at = cursor.watermark_at
         logger.info(
             "Delta scan for brand=%s tld=%s watermark=%s",
             brand.brand_label, tld, watermark_at,
         )
     else:
-        logger.info("Initial scan for brand=%s tld=%s", brand.brand_label, tld)
+        logger.info(
+            "Full scan for brand=%s tld=%s force_full=%s",
+            brand.brand_label, tld, force_full,
+        )
 
     repo.start_scan(cursor)
     db.commit()
@@ -105,8 +110,33 @@ def run_similarity_scan(
 
         # ── 4. Persist matches ─────────────────────────────────
         matched_count = repo.upsert_matches(matches_to_upsert)
+        kept_domain_names = sorted({match["domain_name"] for match in matches_to_upsert})
+        candidate_domain_names = sorted({cand["name"] for cand in candidates})
+
+        removed_subdomain_matches = repo.delete_subdomain_matches(brand.id, tld)
+        removed_stale_matches = 0
+        if force_full or watermark_at is None:
+            removed_stale_matches = repo.reconcile_matches_for_brand_tld(
+                brand.id,
+                tld,
+                kept_domain_names,
+            )
+        else:
+            removed_stale_matches = repo.delete_matches_for_brand_tld(
+                brand.id,
+                tld,
+                sorted(set(candidate_domain_names) - set(kept_domain_names)),
+            )
+
         logger.info("Upserted %d matches for brand=%s tld=%s",
                      matched_count, brand.brand_label, tld)
+        logger.info(
+            "Pruned %d stale matches and %d subdomain matches for brand=%s tld=%s",
+            removed_stale_matches,
+            removed_subdomain_matches,
+            brand.brand_label,
+            tld,
+        )
 
         # ── 5. Update watermark ────────────────────────────────
         # Set watermark to the max first_seen_at across ALL domains in this TLD
@@ -129,6 +159,7 @@ def run_similarity_scan(
             "candidates": len(candidates),
             "matched": matched_count,
             "scanned": len(candidates),
+            "removed": removed_stale_matches + removed_subdomain_matches,
         }
 
         logger.info(
@@ -154,6 +185,8 @@ def run_similarity_scan(
 def run_similarity_scan_all(
     db: Session,
     brand: MonitoredBrand,
+    *,
+    force_full: bool = False,
 ) -> dict[str, dict[str, int]]:
     """Run similarity scan across all TLDs for a brand.
 
@@ -184,7 +217,12 @@ def run_similarity_scan_all(
     results: dict[str, dict[str, int]] = {}
     for tld in tlds:
         try:
-            results[tld] = run_similarity_scan(db, brand, tld)
+            results[tld] = run_similarity_scan(
+                db,
+                brand,
+                tld,
+                force_full=force_full,
+            )
         except Exception:
             logger.exception("Failed scan for brand=%s tld=%s", brand.brand_label, tld)
             results[tld] = {"candidates": 0, "matched": 0, "scanned": 0, "error": True}

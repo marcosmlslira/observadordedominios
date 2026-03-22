@@ -71,6 +71,20 @@ def sync_czds_tld(
     czds = czds_client or CZDSClient()
     s3 = s3_storage or S3Storage()
 
+    stale_runs = run_repo.recover_stale_runs(
+        source,
+        tld,
+        stale_after_minutes=settings.CZDS_RUNNING_STALE_MINUTES,
+        exclude_run_id=run_id,
+    )
+    if stale_runs:
+        db.commit()
+        logger.warning(
+            "Recovered %d stale running runs for TLD=%s",
+            len(stale_runs),
+            tld,
+        )
+
     # ── 1. Check for already-running sync ───────────────────
     if run_repo.has_running_run(source, tld, exclude_run_id=run_id):
         raise SyncAlreadyRunningError(f"Sync already running for TLD={tld}")
@@ -107,6 +121,10 @@ def sync_czds_tld(
             run = run_repo.create_run(source, tld)
         db.commit()
         logger.info("Created ingestion run %s for TLD=%s", run.id, tld)
+
+        object_key: str | None = None
+        artifact = None
+        local_path: Path | None = None
 
         try:
             # ── 5. Download zone file or reuse local ────────
@@ -188,7 +206,7 @@ def sync_czds_tld(
             db.rollback()
 
             # Cleanup S3 artifact from failed run (avoid orphans)
-            if "object_key" in locals():
+            if object_key is not None:
                 try:
                     s3.delete_object(object_key)
                     logger.info("Cleaned up orphan S3 artifact: %s", object_key)
@@ -196,7 +214,7 @@ def sync_czds_tld(
                     logger.warning("Failed to cleanup S3 artifact: %s", object_key, exc_info=True)
 
             # Cleanup artifact DB record if it was created
-            if "artifact" in locals():
+            if artifact is not None:
                 try:
                     db.delete(artifact)
                     db.flush()
@@ -209,7 +227,7 @@ def sync_czds_tld(
 
         finally:
             # Clean up temp files ONLY if we used tempfile (not /data/)
-            if "local_path" in locals():
+            if local_path is not None:
                 parent = local_path.parent
                 if "czds_" in parent.name and "/data" not in str(parent):
                     shutil.rmtree(parent, ignore_errors=True)

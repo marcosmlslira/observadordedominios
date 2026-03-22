@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.infra.db.session import SessionLocal, get_db
+from app.core.config import settings
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.schemas.czds_ingestion import (
     ErrorResponse,
@@ -57,6 +58,19 @@ def trigger_sync(
     Returns 409 if a sync is already running for this TLD.
     """
     run_repo = IngestionRunRepository(db)
+
+    stale_runs = run_repo.recover_stale_runs(
+        "czds",
+        body.tld,
+        stale_after_minutes=settings.CZDS_RUNNING_STALE_MINUTES,
+    )
+    if stale_runs:
+        db.commit()
+        logger.warning(
+            "Recovered %d stale runs before triggering sync for TLD=%s",
+            len(stale_runs),
+            body.tld,
+        )
 
     # Pre-flight check
     if run_repo.has_running_run("czds", body.tld):

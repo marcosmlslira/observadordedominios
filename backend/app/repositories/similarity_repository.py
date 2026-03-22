@@ -27,6 +27,7 @@ class SimilarityRepository:
         typo_candidates: list[str],
         *,
         watermark_at: datetime | None = None,
+        include_subdomains: bool = False,
         limit: int = 5000,
     ) -> list[dict]:
         """Unified candidate query: trigram + substring + typo exact match.
@@ -48,6 +49,8 @@ class SimilarityRepository:
             wm_filter = "AND first_seen_at > :watermark_at"
             params["watermark_at"] = watermark_at
 
+        subdomain_filter = "" if include_subdomains else "AND label NOT LIKE '%.%'"
+
         # Typo candidates sub-query (only if we have candidates)
         typo_union = ""
         if typo_candidates:
@@ -61,6 +64,7 @@ class SimilarityRepository:
                 FROM domain
                 WHERE tld = :tld
                   AND label = ANY(:typo_candidates)
+                  {subdomain_filter}
                   {wm_filter}
             """
 
@@ -68,7 +72,7 @@ class SimilarityRepository:
         # to avoid excessive false positives from trigram matching
         sim_threshold = 0.5 if len(brand_label) <= 5 else 0.3
         self.db.execute(
-            text("SET pg_trgm.similarity_threshold = :t"),
+            text("SET LOCAL pg_trgm.similarity_threshold = :t"),
             {"t": sim_threshold},
         )
 
@@ -81,6 +85,7 @@ class SimilarityRepository:
                 FROM domain
                 WHERE tld = :tld
                   AND label % :brand_label
+                  {subdomain_filter}
                   {wm_filter}
 
                 UNION
@@ -92,6 +97,7 @@ class SimilarityRepository:
                 FROM domain
                 WHERE tld = :tld
                   AND label LIKE :brand_like
+                  {subdomain_filter}
                   {wm_filter}
 
                 {typo_union}
@@ -108,11 +114,189 @@ class SimilarityRepository:
                 "tld": r.tld,
                 "label": r.label,
                 "first_seen_at": r.first_seen_at,
+                "last_seen_at": getattr(r, "last_seen_at", None),
                 "sim_trigram": float(r.sim_trigram),
                 "edit_dist": int(r.edit_dist),
             }
             for r in rows
         ]
+
+    def search_candidates(
+        self,
+        query_label: str,
+        typo_candidates: list[str],
+        *,
+        tld_allowlist: list[str] | None = None,
+        include_subdomains: bool = False,
+        use_fuzzy: bool = True,
+        use_typo: bool = True,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Search candidates across TLDs for the synchronous similarity API."""
+        params: dict = {
+            "brand_label": query_label,
+            "brand_like": f"%{query_label}%",
+            "limit": limit,
+            "offset": offset,
+        }
+
+        base_filters: list[str] = []
+        if tld_allowlist:
+            params["tld_allowlist"] = tld_allowlist
+            base_filters.append("tld = ANY(:tld_allowlist)")
+        if not include_subdomains:
+            base_filters.append("label NOT LIKE '%.%'")
+        base_where = " AND ".join(base_filters) if base_filters else "TRUE"
+
+        sim_threshold = 0.5 if len(query_label) <= 5 else 0.3
+        self.db.execute(
+            text("SET LOCAL pg_trgm.similarity_threshold = :t"),
+            {"t": sim_threshold},
+        )
+
+        candidate_queries: list[str] = []
+        if use_fuzzy:
+            candidate_queries.extend(
+                [
+                    f"""
+                    SELECT DISTINCT name, tld, label, first_seen_at, last_seen_at,
+                           similarity(label, :brand_label) AS sim_trigram,
+                           levenshtein(label, :brand_label) AS edit_dist
+                    FROM domain
+                    WHERE {base_where}
+                      AND label % :brand_label
+                    """,
+                    f"""
+                    SELECT DISTINCT name, tld, label, first_seen_at, last_seen_at,
+                           similarity(label, :brand_label) AS sim_trigram,
+                           levenshtein(label, :brand_label) AS edit_dist
+                    FROM domain
+                    WHERE {base_where}
+                      AND label LIKE :brand_like
+                    """,
+                ]
+            )
+
+        if use_typo and typo_candidates:
+            params["typo_candidates"] = typo_candidates
+            candidate_queries.append(
+                f"""
+                SELECT DISTINCT name, tld, label, first_seen_at, last_seen_at,
+                       similarity(label, :brand_label) AS sim_trigram,
+                       levenshtein(label, :brand_label) AS edit_dist
+                FROM domain
+                WHERE {base_where}
+                  AND label = ANY(:typo_candidates)
+                """
+            )
+
+        if not candidate_queries:
+            return []
+
+        sql = f"""
+            WITH candidates AS (
+                {" UNION ".join(candidate_queries)}
+            )
+            SELECT * FROM candidates
+            ORDER BY sim_trigram DESC, last_seen_at DESC, name ASC
+            OFFSET :offset
+            LIMIT :limit
+        """
+
+        rows = self.db.execute(text(sql), params).fetchall()
+        return [
+            {
+                "name": r.name,
+                "tld": r.tld,
+                "label": r.label,
+                "first_seen_at": r.first_seen_at,
+                "last_seen_at": r.last_seen_at,
+                "sim_trigram": float(r.sim_trigram),
+                "edit_dist": int(r.edit_dist),
+            }
+            for r in rows
+        ]
+
+    def delete_matches_for_brand_tld(
+        self,
+        brand_id: uuid.UUID,
+        tld: str,
+        domain_names: list[str],
+    ) -> int:
+        """Delete persisted matches for a brand/TLD and a known set of domains."""
+        if not domain_names:
+            return 0
+
+        result = self.db.execute(
+            text("""
+                DELETE FROM similarity_match
+                WHERE brand_id = :brand_id
+                  AND tld = :tld
+                  AND domain_name = ANY(:domain_names)
+            """),
+            {
+                "brand_id": brand_id,
+                "tld": tld,
+                "domain_names": domain_names,
+            },
+        )
+        return result.rowcount or 0
+
+    def reconcile_matches_for_brand_tld(
+        self,
+        brand_id: uuid.UUID,
+        tld: str,
+        keep_domain_names: list[str],
+    ) -> int:
+        """Replace the persisted set for a brand/TLD with the provided domains."""
+        if keep_domain_names:
+            result = self.db.execute(
+                text("""
+                    DELETE FROM similarity_match
+                    WHERE brand_id = :brand_id
+                      AND tld = :tld
+                      AND NOT (domain_name = ANY(:keep_domain_names))
+                """),
+                {
+                    "brand_id": brand_id,
+                    "tld": tld,
+                    "keep_domain_names": keep_domain_names,
+                },
+            )
+        else:
+            result = self.db.execute(
+                text("""
+                    DELETE FROM similarity_match
+                    WHERE brand_id = :brand_id
+                      AND tld = :tld
+                """),
+                {
+                    "brand_id": brand_id,
+                    "tld": tld,
+                },
+            )
+        return result.rowcount or 0
+
+    def delete_subdomain_matches(
+        self,
+        brand_id: uuid.UUID,
+        tld: str,
+    ) -> int:
+        """Drop stored subdomain/hostname matches from the alert stream."""
+        result = self.db.execute(
+            text("""
+                DELETE FROM similarity_match
+                WHERE brand_id = :brand_id
+                  AND tld = :tld
+                  AND label LIKE '%.%'
+            """),
+            {
+                "brand_id": brand_id,
+                "tld": tld,
+            },
+        )
+        return result.rowcount or 0
 
     # ── Cursor Operations ──────────────────────────────────────
 
@@ -177,21 +361,35 @@ class SimilarityRepository:
         if not matches:
             return 0
 
-        for m in matches:
-            self.db.execute(text("""
+        BATCH_SIZE = 500
+        for i in range(0, len(matches), BATCH_SIZE):
+            batch = matches[i : i + BATCH_SIZE]
+
+            # Build VALUES placeholders with numbered suffixes
+            values_clauses = []
+            params: dict = {}
+            for idx, m in enumerate(batch):
+                suffix = f"_{idx}"
+                values_clauses.append(
+                    f"(gen_random_uuid(), :brand_id{suffix}, :domain_name{suffix}, "
+                    f":tld{suffix}, :label{suffix}, :score_final{suffix}, "
+                    f":score_trigram{suffix}, :score_levenshtein{suffix}, "
+                    f":score_brand_hit{suffix}, :score_keyword{suffix}, "
+                    f":score_homograph{suffix}, :reasons{suffix}, "
+                    f":risk_level{suffix}, :first_detected_at{suffix}, "
+                    f":domain_first_seen{suffix}, 'new')"
+                )
+                for key, value in m.items():
+                    params[f"{key}{suffix}"] = value
+
+            sql = f"""
                 INSERT INTO similarity_match (
                     id, brand_id, domain_name, tld, label,
                     score_final, score_trigram, score_levenshtein,
                     score_brand_hit, score_keyword, score_homograph,
                     reasons, risk_level, first_detected_at, domain_first_seen,
                     status
-                ) VALUES (
-                    gen_random_uuid(), :brand_id, :domain_name, :tld, :label,
-                    :score_final, :score_trigram, :score_levenshtein,
-                    :score_brand_hit, :score_keyword, :score_homograph,
-                    :reasons, :risk_level, :first_detected_at, :domain_first_seen,
-                    'new'
-                )
+                ) VALUES {", ".join(values_clauses)}
                 ON CONFLICT (brand_id, domain_name) DO UPDATE SET
                     score_final = EXCLUDED.score_final,
                     score_trigram = EXCLUDED.score_trigram,
@@ -201,7 +399,8 @@ class SimilarityRepository:
                     score_homograph = EXCLUDED.score_homograph,
                     reasons = EXCLUDED.reasons,
                     risk_level = EXCLUDED.risk_level
-            """), m)
+            """
+            self.db.execute(text(sql), params)
 
         return len(matches)
 

@@ -13,12 +13,44 @@ from app.repositories.similarity_repository import SimilarityRepository
 from app.schemas.similarity import (
     MatchListResponse,
     MatchResponse,
+    SimilarityHealthResponse,
+    SimilaritySearchRequest,
+    SimilaritySearchResponse,
     UpdateMatchStatusRequest,
+)
+from app.services.use_cases.search_similarity import (
+    InvalidSimilarityQuery,
+    get_similarity_search_health,
+    search_similarity_domains,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["Similarity"])
+
+
+@router.post(
+    "/similarity/search",
+    response_model=SimilaritySearchResponse,
+    summary="Search similar domains synchronously",
+)
+def search_similarity(
+    body: SimilaritySearchRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return search_similarity_domains(db, body)
+    except InvalidSimilarityQuery as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/similarity/health",
+    response_model=SimilarityHealthResponse,
+    summary="Health and lightweight telemetry for similarity search",
+)
+def similarity_health():
+    return get_similarity_search_health()
 
 
 @router.get(

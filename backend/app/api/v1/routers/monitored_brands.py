@@ -141,7 +141,7 @@ def delete_brand(
     db.commit()
 
 
-def _run_scan_in_background(brand_id: UUID, tld: str | None) -> None:
+def _run_scan_in_background(brand_id: UUID, tld: str | None, force_full: bool) -> None:
     """Execute similarity scan in a background thread."""
     db = SessionLocal()
     try:
@@ -157,9 +157,9 @@ def _run_scan_in_background(brand_id: UUID, tld: str | None) -> None:
             return
 
         if tld:
-            run_similarity_scan(db, brand, tld)
+            run_similarity_scan(db, brand, tld, force_full=force_full)
         else:
-            run_similarity_scan_all(db, brand)
+            run_similarity_scan_all(db, brand, force_full=force_full)
     except Exception:
         logger.exception("Background scan failed for brand=%s", brand_id)
     finally:
@@ -175,6 +175,10 @@ def _run_scan_in_background(brand_id: UUID, tld: str | None) -> None:
 def trigger_scan(
     brand_id: UUID,
     tld: str | None = Query(None, description="Specific TLD to scan"),
+    force_full: bool = Query(
+        False,
+        description="Reprocess current domains for the target TLDs and reconcile old matches",
+    ),
     db: Session = Depends(get_db),
 ):
     repo = MonitoredBrandRepository(db)
@@ -185,7 +189,7 @@ def trigger_scan(
     # Dispatch to background thread
     thread = threading.Thread(
         target=_run_scan_in_background,
-        args=(brand_id, tld),
+        args=(brand_id, tld, force_full),
         daemon=True,
     )
     thread.start()
@@ -198,6 +202,7 @@ def trigger_scan(
             tld=t,
             candidates=0,
             matched=0,
+            removed=0,
             status="queued",
         )
         for t in tlds
