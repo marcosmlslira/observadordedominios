@@ -6,12 +6,12 @@ echo "Waiting for postgres..."
 while ! python -c "
 import socket
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(3)
 try:
     s.connect(('postgres', 5432))
     s.close()
-    exit(0)
-except:
-    exit(1)
+except Exception:
+    raise SystemExit(1)
 " 2>/dev/null; do
   sleep 2
 done
