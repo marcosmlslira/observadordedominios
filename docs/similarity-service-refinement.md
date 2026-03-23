@@ -9,7 +9,7 @@ Definir o microserviço `similarity-service` responsável por busca de similarid
 - **Domínio:** monitoring
 - **Subdomínio:** domain-similarity
 - **Responsabilidade primária:** consulta read-heavy por candidatos semelhantes a um domínio de entrada.
-- **Fora de escopo:** ingestão CZDS/NSEC, execução de enrichment, publicação em fila.
+- **Fora de escopo:** ingestão CZDS, execução de enrichment, publicação em fila.
 
 ## Endpoint principal
 
@@ -26,7 +26,7 @@ Definir o microserviço `similarity-service` responsável por busca de similarid
   "max_results": 50,
   "include_deleted": false,
   "tld_allowlist": ["com", "net", "org", "br"],
-  "sources": ["czds", "nsec"],
+  "sources": ["czds"],
   "offset": 0
 }
 ```
@@ -110,7 +110,7 @@ Tabela `domain` (ou tabela especializada de leitura) deve suportar:
 
 - `domain_name` normalizado (`citext` ou `text` + normalização consistente)
 - `tld`
-- `source` (`czds` / `nsec`)
+- `source` (`czds`)
 - `status` (`active`, `deleted`, etc.)
 - `deleted_at`
 - `embedding vector(384)`

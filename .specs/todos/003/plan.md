@@ -3,7 +3,7 @@
 ## Escopo da fase
 
 - Criar microserviço `similarity-service` para busca de domínios semelhantes.
-- Operar apenas sobre domínios já ingeridos (`source=czds|nsec`).
+- Operar apenas sobre domínios já ingeridos via pipeline ativa.
 - Expor endpoint HTTP versionado e orientado a leitura.
 - Manter enrichment desacoplado por fila/worker.
 

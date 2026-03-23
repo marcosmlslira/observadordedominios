@@ -26,7 +26,7 @@ Na pratica:
 
 ## Decisao sobre `domain_observation`
 
-A decisao documentada de **nao popular `domain_observation` para fontes snapshot como CZDS/NSEC faz sentido**.
+A decisao documentada de **nao popular `domain_observation` para fontes snapshot como CZDS faz sentido**.
 
 Base documental revisada:
 

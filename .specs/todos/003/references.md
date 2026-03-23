@@ -12,7 +12,7 @@
 - S3: busca híbrida inicial (`typo`, `fuzzy`, `vector`) com score composto.
 - S4: serviço não executa enrichment síncrono.
 - S5: enriquecimento roda assíncrono em worker via fila.
-- S6: filtros por `source` (`czds`/`nsec`) e por TLD são obrigatórios no contrato.
+- S6: filtros por fonte devem refletir apenas pipelines efetivamente suportadas.
 
 ## Objetivo técnico
 

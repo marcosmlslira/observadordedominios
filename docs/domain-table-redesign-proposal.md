@@ -18,13 +18,11 @@ A tabela `domain` tenta ser duas coisas ao mesmo tempo:
 1. **Registro de presença no zone file** — "este nome apareceu no zone do CZDS hoje"
 2. **Entidade canônica do produto** — "o que sabemos sobre este domínio"
 
-Isso gera complexidade desnecessária: staging table, upsert com status, soft-delete massivo por TLD, e ambiguidade quando múltiplas fontes (CZDS, NSEC, CT Logs) escrevem na mesma tabela.
+Isso gera complexidade desnecessária: staging table, upsert com status, soft-delete massivo por TLD, e ambiguidade quando múltiplas fontes (CZDS, CT Logs) escrevem na mesma tabela.
 
 ### Insight chave
 
 O zone file CZDS **é a verdade completa** para aquele TLD. Se `example.net` está no zone file, ele está ativo. Se não está, não está. **A presença no zone file É o status** — não precisa de flag.
-
-A mesma lógica vale para NSEC zone walking: o resultado do walk é a lista completa.
 
 ---
 
@@ -243,20 +241,19 @@ Não é possível no PostgreSQL nativo. A partition key DEVE estar na PK.
 
 ---
 
-## 6. Compatibilidade com Multi-Fonte (CZDS + NSEC + Futuras)
+## 6. Compatibilidade com Multi-Fonte (CZDS + Futuras)
 
 ### Cenário atual e planejado
 
 | Fonte | Tipo | TLDs | Overlap |
 |---|---|---|---|
 | **CZDS** | Zone file completo (snapshot) | gTLDs: com, net, org, info... | — |
-| **NSEC** | Zone walk completo (snapshot) | ccTLDs: br, ... | Mínimo com CZDS |
-| **CT Logs** (futuro) | Eventos individuais | Todos | Alto — domínios já em CZDS/NSEC |
-| **pDNS** (futuro) | Eventos individuais | Todos | Alto — domínios já em CZDS/NSEC |
+| **CT Logs** (futuro) | Eventos individuais | Todos | Alto — domínios já em CZDS |
+| **pDNS** (futuro) | Eventos individuais | Todos | Alto — domínios já em CZDS |
 
 ### Como cada fonte escreve no `domain`
 
-**Fontes de snapshot (CZDS, NSEC):** upsert massivo, batch de 50k.
+**Fontes de snapshot (CZDS):** upsert massivo, batch de 50k.
 ```sql
 INSERT INTO domain (name, tld, first_seen_at, last_seen_at)
 SELECT unnest(:names), :tld, :ts, :ts
@@ -305,7 +302,7 @@ A tabela `domain_observation` existe no schema mas tem **0 rows**. Nunca foi pop
 
 ### Recomendação
 
-**Não popular `domain_observation` para fontes de snapshot (CZDS, NSEC).** O audit trail para essas fontes é:
+**Não popular `domain_observation` para fontes de snapshot (CZDS).** O audit trail para essas fontes é:
 - `domain.first_seen_at` / `last_seen_at` — timeline
 - `ingestion_run` — métricas por execução
 - Zone file artifact no S3 — raw data completo
@@ -344,7 +341,7 @@ CREATE TABLE domain_source (
 );
 ```
 
-**Não implementar agora.** Implementar apenas quando a segunda fonte de ingestão (NSEC ou CT Logs) entrar em produção e houver necessidade real de filtrar por fonte.
+**Não implementar agora.** Implementar apenas quando uma segunda fonte de ingestão entrar em produção e houver necessidade real de filtrar por fonte.
 
 Razão: YAGNI. CZDS é a única fonte hoje. Adicionar esta tabela agora duplicaria o storage sem benefício.
 
@@ -639,7 +636,7 @@ Remover o arquivo `backend/app/models/domain_observation.py` e a relationship no
 
 ## 11. Criação Dinâmica de Partições
 
-Quando um novo TLD for habilitado em `czds_tld_policy` ou `nsec_tld_policy`, a partição deve ser criada antes da primeira ingestão.
+Quando um novo TLD for habilitado em `czds_tld_policy`, a partição deve ser criada antes da primeira ingestão.
 
 ### Implementação em `sync_czds_tld.py`
 

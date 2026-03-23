@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 SimilarityAlgorithm = Literal["fuzzy", "typo", "vector", "hybrid"]
-SimilaritySource = Literal["czds", "nsec"]
+SimilaritySource = Literal["czds"]
 
 
 # ── Request ──────────────────────────────────────────────────

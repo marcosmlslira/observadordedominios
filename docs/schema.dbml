@@ -130,7 +130,6 @@ TableGroup Domain_Intelligence_Global {
   ingestion_checkpoint
   zone_file_artifact
   czds_tld_policy
-  nsec_tld_policy
 }
 
 Table domain {
@@ -204,7 +203,7 @@ Table ingestion_run {
 }
 
 Table ingestion_checkpoint {
-  source varchar [not null, note: 'czds, nsec, pdns, etc.']
+  source varchar [not null, note: 'czds, pdns, etc.']
   tld varchar [not null]
   last_successful_run_id uuid [ref: > ingestion_run.id]
   last_successful_run_at timestamptz
@@ -216,7 +215,7 @@ Table ingestion_checkpoint {
 
 Table zone_file_artifact {
   id uuid [primary key]
-  source varchar [not null, note: 'czds, nsec']
+  source varchar [not null, note: 'czds']
   tld varchar [not null]
   bucket varchar [not null]
   object_key text [not null, note: 'Ex: zones/czds/net/2026/02/28/<run_id>/net.zone.gz']
@@ -238,19 +237,6 @@ Table czds_tld_policy {
   notes text
   updated_at timestamptz
 }
-
-Table nsec_tld_policy {
-  tld varchar [primary key]
-  walk_enabled boolean [default: true]
-  priority int [default: 0]
-  cooldown_hours int [default: 24]
-  queries_per_second int [default: 8]
-  max_runtime_minutes int [default: 480]
-  authoritative_nameservers jsonb [note: 'Lista de NS autoritativos para o walk']
-  notes text
-  updated_at timestamptz
-}
-
 
 // ------------------------------------------
 // 4. Monitoring Workspace (Ferramentas Tenant-Aware)

@@ -73,7 +73,7 @@ Executado no banco atual (31M rows, sample de 1%):
 │   Índices: PK(name,tld) + GIN trigram(label)            │
 │   + ix(tld, first_seen_at DESC)                         │
 │                                                         │
-│   Escrita: CZDS/NSEC upsert em batch                    │
+│   Escrita: CZDS upsert em batch                         │
 │   Leitura: Similarity worker lê novos domínios          │
 └─────────────────────────┬───────────────────────────────┘
                           │ lê
