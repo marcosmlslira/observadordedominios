@@ -117,6 +117,7 @@ def list_runs(
     return [
         RunStatusResponse(
             run_id=run.id,
+            source=run.source,
             tld=run.tld,
             status=run.status,
             started_at=run.started_at,

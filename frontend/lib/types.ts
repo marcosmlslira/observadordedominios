@@ -46,6 +46,7 @@ export interface UpdateBrandRequest {
 
 export interface IngestionRun {
   run_id: string
+  source: string
   tld: string
   status: string
   started_at: string
@@ -56,6 +57,19 @@ export interface IngestionRun {
   domains_deleted: number
   artifact_key: string | null
   error_message: string | null
+}
+
+export interface SourceSummary {
+  source: string
+  total_runs: number
+  successful_runs: number
+  failed_runs: number
+  running_now: number
+  last_run_at: string | null
+  last_success_at: string | null
+  last_status: string | null
+  total_domains_seen: number
+  total_domains_inserted: number
 }
 
 export interface TriggerSyncRequest {

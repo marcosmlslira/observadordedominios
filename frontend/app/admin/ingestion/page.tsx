@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
-import type { IngestionRun, TriggerSyncResponse } from "@/lib/types"
+import type { IngestionRun, SourceSummary, TriggerSyncResponse } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,7 +24,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Play, RefreshCw } from "lucide-react"
+import {
+  Play,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Activity,
+} from "lucide-react"
+
+const SOURCE_LABELS: Record<string, string> = {
+  czds: "CZDS",
+  certstream: "CertStream",
+  crtsh: "crt.sh",
+  "crtsh-bulk": "crt.sh Bulk",
+}
+
+const ALL_SOURCES = ["all", "czds", "certstream", "crtsh", "crtsh-bulk"] as const
 
 function statusVariant(status: string) {
   switch (status) {
@@ -40,9 +56,40 @@ function statusVariant(status: string) {
   }
 }
 
+function sourceLabel(source: string) {
+  return SOURCE_LABELS[source] || source
+}
+
+function StatusIcon({ status }: { status: string | null }) {
+  switch (status) {
+    case "success":
+      return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+    case "running":
+      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+    case "failed":
+      return <XCircle className="h-4 w-4 text-red-500" />
+    default:
+      return <Activity className="h-4 w-4 text-muted-foreground" />
+  }
+}
+
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return "never"
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
 export default function IngestionPage() {
   const [runs, setRuns] = useState<IngestionRun[]>([])
+  const [summaries, setSummaries] = useState<SourceSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeSource, setActiveSource] = useState<string>("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [syncTld, setSyncTld] = useState("net")
   const [syncForce, setSyncForce] = useState(false)
@@ -50,26 +97,32 @@ export default function IngestionPage() {
   const [syncError, setSyncError] = useState("")
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchRuns = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const data = await api.get<IngestionRun[]>("/v1/czds/runs?limit=50")
-      setRuns(data)
+      const sourceParam = activeSource === "all" ? "" : `&source=${activeSource}`
+      const [runsData, summaryData] = await Promise.all([
+        api.get<IngestionRun[]>(`/v1/ingestion/runs?limit=50${sourceParam}`),
+        api.get<SourceSummary[]>("/v1/ingestion/summary"),
+      ])
+      setRuns(runsData)
+      setSummaries(summaryData)
     } catch {
       // ignore
     }
-  }, [])
+  }, [activeSource])
 
   useEffect(() => {
-    fetchRuns().then(() => setLoading(false))
-  }, [fetchRuns])
+    setLoading(true)
+    fetchData().then(() => setLoading(false))
+  }, [fetchData])
 
-  // Auto-refresh when there are running/queued runs
+  // Auto-refresh when there are running runs
   useEffect(() => {
     const hasActive = runs.some(
       (r) => r.status === "running" || r.status === "queued",
     )
     if (hasActive && !pollRef.current) {
-      pollRef.current = setInterval(fetchRuns, 10_000)
+      pollRef.current = setInterval(fetchData, 10_000)
     } else if (!hasActive && pollRef.current) {
       clearInterval(pollRef.current)
       pollRef.current = null
@@ -77,7 +130,7 @@ export default function IngestionPage() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
     }
-  }, [runs, fetchRuns])
+  }, [runs, fetchData])
 
   async function handleTriggerSync() {
     setSyncing(true)
@@ -88,7 +141,7 @@ export default function IngestionPage() {
         force: syncForce,
       })
       setDialogOpen(false)
-      await fetchRuns()
+      await fetchData()
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : "Sync failed")
     } finally {
@@ -99,7 +152,12 @@ export default function IngestionPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Ingestion Runs</h1>
+        <h1 className="text-2xl font-semibold">Ingestion Monitoring</h1>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
         <Skeleton className="h-96 rounded-xl" />
       </div>
     )
@@ -108,9 +166,9 @@ export default function IngestionPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Ingestion Runs</h1>
+        <h1 className="text-2xl font-semibold">Ingestion Monitoring</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchRuns}>
+          <Button variant="outline" size="sm" onClick={fetchData}>
             <RefreshCw className="h-3 w-3 mr-1" />
             Refresh
           </Button>
@@ -118,7 +176,7 @@ export default function IngestionPage() {
             <DialogTrigger asChild>
               <Button size="sm">
                 <Play className="h-3 w-3 mr-1" />
-                Trigger Sync
+                Trigger CZDS Sync
               </Button>
             </DialogTrigger>
             <DialogContent>
@@ -146,7 +204,7 @@ export default function IngestionPage() {
                   <Label htmlFor="force">Force (ignore cooldown)</Label>
                 </div>
                 {syncError && (
-                  <p className="text-sm text-error">{syncError}</p>
+                  <p className="text-sm text-red-500">{syncError}</p>
                 )}
                 <Button
                   onClick={handleTriggerSync}
@@ -161,11 +219,77 @@ export default function IngestionPage() {
         </div>
       </div>
 
+      {/* Source health cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {summaries.map((s) => (
+          <Card
+            key={s.source}
+            className={`cursor-pointer transition-colors ${
+              activeSource === s.source ? "ring-2 ring-primary" : ""
+            }`}
+            onClick={() =>
+              setActiveSource(activeSource === s.source ? "all" : s.source)
+            }
+          >
+            <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+              <CardTitle className="text-sm font-medium">
+                {sourceLabel(s.source)}
+              </CardTitle>
+              <StatusIcon status={s.last_status} />
+            </CardHeader>
+            <CardContent className="px-4 pb-3">
+              <div className="text-xl font-bold tabular-nums">
+                {s.total_domains_inserted.toLocaleString()}
+              </div>
+              <p className="text-xs text-muted-foreground">domains inserted</p>
+              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                <span>{s.successful_runs} ok</span>
+                {s.failed_runs > 0 && (
+                  <span className="text-red-500">{s.failed_runs} failed</span>
+                )}
+                {s.running_now > 0 && (
+                  <span className="text-blue-500">
+                    {s.running_now} running
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Last: {timeAgo(s.last_run_at)}
+              </p>
+            </CardContent>
+          </Card>
+        ))}
+        {summaries.length === 0 && (
+          <p className="col-span-4 text-sm text-muted-foreground">
+            No ingestion data yet
+          </p>
+        )}
+      </div>
+
+      {/* Source filter tabs */}
+      <div className="flex gap-1 border-b border-border-subtle">
+        {ALL_SOURCES.map((src) => (
+          <button
+            key={src}
+            onClick={() => setActiveSource(src)}
+            className={`px-3 py-1.5 text-sm transition-colors border-b-2 ${
+              activeSource === src
+                ? "border-primary text-foreground font-medium"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {src === "all" ? "All Sources" : sourceLabel(src)}
+          </button>
+        ))}
+      </div>
+
+      {/* Runs table */}
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Source</TableHead>
                 <TableHead>TLD</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Started</TableHead>
@@ -179,14 +303,25 @@ export default function IngestionPage() {
             <TableBody>
               {runs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell
+                    colSpan={9}
+                    className="text-center text-muted-foreground py-8"
+                  >
                     No ingestion runs found
+                    {activeSource !== "all" && ` for ${sourceLabel(activeSource)}`}
                   </TableCell>
                 </TableRow>
               ) : (
                 runs.map((run) => (
                   <TableRow key={run.run_id}>
-                    <TableCell className="font-mono">.{run.tld}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {sourceLabel(run.source)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      .{run.tld}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(run.status)}>
                         {run.status}
@@ -209,7 +344,7 @@ export default function IngestionPage() {
                     <TableCell className="text-right tabular-nums">
                       {run.domains_deleted.toLocaleString()}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate text-xs text-error">
+                    <TableCell className="max-w-[200px] truncate text-xs text-red-500">
                       {run.error_message || "—"}
                     </TableCell>
                   </TableRow>

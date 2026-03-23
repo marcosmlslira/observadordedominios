@@ -3,43 +3,79 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { api } from "@/lib/api"
-import type { BrandListResponse, IngestionRun } from "@/lib/types"
+import type { BrandListResponse, SourceSummary } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Shield, Download, Search, Plus } from "lucide-react"
+import {
+  Shield,
+  Download,
+  Search,
+  Plus,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Activity,
+} from "lucide-react"
 
-function statusColor(status: string) {
+const SOURCE_LABELS: Record<string, string> = {
+  czds: "CZDS",
+  certstream: "CertStream",
+  crtsh: "crt.sh",
+  "crtsh-bulk": "crt.sh Bulk",
+}
+
+function StatusIcon({ status }: { status: string | null }) {
   switch (status) {
     case "success":
-      return "default"
+      return <CheckCircle2 className="h-4 w-4 text-emerald-500" />
     case "running":
-    case "queued":
-      return "secondary"
+      return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
     case "failed":
-      return "destructive"
+      return <XCircle className="h-4 w-4 text-red-500" />
     default:
-      return "outline"
+      return <Activity className="h-4 w-4 text-muted-foreground" />
   }
+}
+
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return "never"
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }
 
 export default function DashboardPage() {
   const [brands, setBrands] = useState<BrandListResponse | null>(null)
-  const [runs, setRuns] = useState<IngestionRun[] | null>(null)
+  const [summaries, setSummaries] = useState<SourceSummary[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       api.get<BrandListResponse>("/v1/brands?active_only=false"),
-      api.get<IngestionRun[]>("/v1/czds/runs?limit=5"),
+      api.get<SourceSummary[]>("/v1/ingestion/summary"),
     ])
-      .then(([b, r]) => {
+      .then(([b, s]) => {
         setBrands(b)
-        setRuns(r)
+        setSummaries(s)
       })
       .finally(() => setLoading(false))
   }, [])
+
+  const totalDomains = summaries.reduce(
+    (acc, s) => acc + s.total_domains_inserted,
+    0,
+  )
+  const totalRunning = summaries.reduce((acc, s) => acc + s.running_now, 0)
+  const anyFailed = summaries.some(
+    (s) => s.last_status === "failed" && s.failed_runs > 0,
+  )
 
   if (loading) {
     return (
@@ -58,7 +94,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
 
-      {/* Summary cards */}
+      {/* Top summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -78,14 +114,26 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Recent Ingestion Runs
+              Total Domains Ingested
             </CardTitle>
             <Download className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{runs?.length ?? 0}</div>
+            <div className="text-2xl font-bold tabular-nums">
+              {totalDomains.toLocaleString()}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {runs?.filter((r) => r.status === "success").length ?? 0} successful
+              {summaries.length} sources
+              {totalRunning > 0 && (
+                <span className="text-blue-500 ml-1">
+                  ({totalRunning} running)
+                </span>
+              )}
+              {anyFailed && (
+                <span className="text-red-500 ml-1">
+                  (has failures)
+                </span>
+              )}
             </p>
           </CardContent>
         </Card>
@@ -105,43 +153,60 @@ export default function DashboardPage() {
               </Link>
             </Button>
             <Button size="sm" variant="outline" asChild>
-              <Link href="/admin/ingestion">Trigger Sync</Link>
+              <Link href="/admin/ingestion">View Ingestion</Link>
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent runs */}
-      {runs && runs.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent Ingestion Runs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {runs.map((run) => (
-                <div
-                  key={run.run_id}
-                  className="flex items-center justify-between text-sm py-2 border-b border-border-subtle last:border-0"
-                >
-                  <div className="flex items-center gap-3">
-                    <Badge variant={statusColor(run.status)}>
-                      {run.status}
+      {/* Per-source health */}
+      <div>
+        <h2 className="text-base font-semibold mb-3">Ingestion Sources</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {summaries.map((s) => (
+            <Link key={s.source} href={`/admin/ingestion`}>
+              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                  <CardTitle className="text-sm font-medium">
+                    {SOURCE_LABELS[s.source] || s.source}
+                  </CardTitle>
+                  <StatusIcon status={s.last_status} />
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  <div className="text-lg font-bold tabular-nums">
+                    {s.total_domains_inserted.toLocaleString()}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    domains inserted
+                  </p>
+                  <div className="flex items-center gap-2 mt-2 text-xs">
+                    <Badge
+                      variant={
+                        s.last_status === "success"
+                          ? "default"
+                          : s.last_status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                      className="text-[10px] px-1.5 py-0"
+                    >
+                      {s.last_status || "—"}
                     </Badge>
-                    <span className="font-mono text-xs">.{run.tld}</span>
+                    <span className="text-muted-foreground">
+                      {timeAgo(s.last_run_at)}
+                    </span>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {run.domains_seen.toLocaleString()} domains seen
-                    {run.finished_at && (
-                      <> &middot; {new Date(run.finished_at).toLocaleString()}</>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+          {summaries.length === 0 && (
+            <p className="col-span-4 text-sm text-muted-foreground">
+              No ingestion data yet. Deploy workers to start ingesting domains.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

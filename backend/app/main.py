@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.api import health
-from app.api.v1.routers import auth, czds_ingestion, monitored_brands, similarity
+from app.api.v1.routers import auth, czds_ingestion, ingestion, monitored_brands, similarity
 from app.core.config import settings
 
 logging.basicConfig(
@@ -38,5 +38,6 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(czds_ingestion.router)
+app.include_router(ingestion.router)
 app.include_router(monitored_brands.router)
 app.include_router(similarity.router)

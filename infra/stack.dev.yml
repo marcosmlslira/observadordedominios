@@ -38,7 +38,7 @@ services:
       - S3_ACCESS_KEY_ID=minioadmin
       - S3_SECRET_ACCESS_KEY=minioadmin
       - S3_FORCE_PATH_STYLE=true
-      - CZDS_ENABLED_TLDS=net,org,info
+      - CZDS_ENABLED_TLDS=com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
       - ADMIN_EMAIL=admin@observador.com
       - ADMIN_PASSWORD_HASH=$$2b$$12$$Z3xwD2M0fUiVKq151s47g.QsuOmfw3plR5lCIFtnO2K3JDSwjRIA2
       - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
@@ -107,7 +107,7 @@ services:
       - S3_FORCE_PATH_STYLE=true
       - CZDS_USERNAME=marcosmlslira@gmail.com
       - CZDS_PASSWORD=mls1509TI@,,2099
-      - CZDS_ENABLED_TLDS=net,org,info
+      - CZDS_ENABLED_TLDS=com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
       - CZDS_SYNC_CRON=0 7 * * *
       - CZDS_FORCE_COOLDOWN_HOURS=24
     command: ["python", "-m", "app.worker.czds_ingestor"]
@@ -116,6 +116,42 @@ services:
     depends_on:
       - postgres
       - minio
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  certstream_server:
+    image: 0rickyy0/certstream-server-go:latest
+    volumes:
+      - c:\PROJETOS\observadordedominios\infra\certstream-config.yaml:/app/config.yaml
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  ct_ingestor:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - CT_CERTSTREAM_ENABLED=true
+      - CT_CERTSTREAM_URL=ws://certstream_server:8080/
+      - CT_CRTSH_ENABLED=true
+      - CT_CRTSH_SYNC_CRON=0 5 * * *
+      - CT_BUFFER_FLUSH_SIZE=5000
+      - CT_BUFFER_FLUSH_SECONDS=30
+    command: ["python", "-m", "app.worker.ct_ingestor"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+      - certstream_server
     deploy:
       replicas: 1
       restart_policy:

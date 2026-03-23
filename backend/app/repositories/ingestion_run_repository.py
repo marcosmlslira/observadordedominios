@@ -62,15 +62,74 @@ class IngestionRunRepository:
         """Fetch a specific ingestion run."""
         return self.db.get(IngestionRun, run_id)
 
-    def list_runs(self, limit: int = 20, offset: int = 0) -> list[IngestionRun]:
-        """List ingestion runs ordered by newest first."""
+    def list_runs(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        source: str | None = None,
+        status: str | None = None,
+    ) -> list[IngestionRun]:
+        """List ingestion runs ordered by newest first, with optional filters."""
+        query = self.db.query(IngestionRun)
+        if source:
+            query = query.filter(IngestionRun.source == source)
+        if status:
+            query = query.filter(IngestionRun.status == status)
         return (
-            self.db.query(IngestionRun)
-            .order_by(IngestionRun.started_at.desc())
+            query.order_by(IngestionRun.started_at.desc())
             .offset(offset)
             .limit(limit)
             .all()
         )
+
+    def get_source_summary(self) -> list[dict]:
+        """Aggregate stats per ingestion source."""
+        rows = self.db.execute(
+            text("""
+                SELECT
+                    source,
+                    count(*) AS total_runs,
+                    count(*) FILTER (WHERE status = 'success') AS successful_runs,
+                    count(*) FILTER (WHERE status = 'failed') AS failed_runs,
+                    count(*) FILTER (WHERE status = 'running') AS running_now,
+                    max(started_at) AS last_run_at,
+                    max(finished_at) FILTER (WHERE status = 'success') AS last_success_at,
+                    coalesce(sum(domains_seen), 0) AS total_domains_seen,
+                    coalesce(sum(domains_inserted), 0) AS total_domains_inserted
+                FROM ingestion_run
+                GROUP BY source
+                ORDER BY source
+            """)
+        ).fetchall()
+        results = []
+        for row in rows:
+            # Get the status of the most recent run
+            latest = (
+                self.db.query(IngestionRun)
+                .filter(IngestionRun.source == row.source)
+                .order_by(IngestionRun.started_at.desc())
+                .first()
+            )
+            results.append({
+                "source": row.source,
+                "total_runs": row.total_runs,
+                "successful_runs": row.successful_runs,
+                "failed_runs": row.failed_runs,
+                "running_now": row.running_now,
+                "last_run_at": row.last_run_at,
+                "last_success_at": row.last_success_at,
+                "last_status": latest.status if latest else None,
+                "total_domains_seen": int(row.total_domains_seen),
+                "total_domains_inserted": int(row.total_domains_inserted),
+            })
+        return results
+
+    def list_checkpoints(self, source: str | None = None) -> list[IngestionCheckpoint]:
+        """List all checkpoints, optionally filtered by source."""
+        query = self.db.query(IngestionCheckpoint)
+        if source:
+            query = query.filter(IngestionCheckpoint.source == source)
+        return query.order_by(IngestionCheckpoint.source, IngestionCheckpoint.tld).all()
 
     def has_running_run(self, source: str, tld: str, exclude_run_id: uuid.UUID | None = None) -> bool:
         """Check if there is already a running run for this source/TLD."""

@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.monitored_brand import MonitoredBrand
+from app.repositories.domain_repository import list_partition_tlds
 from app.repositories.similarity_repository import SimilarityRepository
 from app.services.use_cases.compute_similarity import (
     compute_scores,
@@ -198,17 +199,17 @@ def run_similarity_scan_all(
     if brand.tld_scope:
         tlds = brand.tld_scope
     else:
-        # Get all TLD partitions from the database
-        rows = db.execute(text("""
-            SELECT DISTINCT tld FROM similarity_scan_cursor WHERE brand_id = :bid
-            UNION
-            SELECT REPLACE(relname, 'domain_', '') AS tld
-            FROM pg_class
-            WHERE relname LIKE 'domain_%'
-              AND relkind = 'r'
-              AND relname != 'domain_old'
-        """), {"bid": brand.id}).fetchall()
-        tlds = [r[0] for r in rows] if rows else []
+        # Get all TLD partitions from partition bounds (handles multi-level TLDs
+        # like "com.br" correctly, unlike parsing partition table names)
+        partition_tlds = list_partition_tlds(db)
+
+        # Also include TLDs from existing scan cursors for this brand
+        cursor_rows = db.execute(text(
+            "SELECT DISTINCT tld FROM similarity_scan_cursor WHERE brand_id = :bid"
+        ), {"bid": brand.id}).fetchall()
+        cursor_tlds = {r[0] for r in cursor_rows}
+
+        tlds = sorted(set(partition_tlds) | cursor_tlds)
 
     if not tlds:
         logger.warning("No TLDs found for brand=%s", brand.brand_label)

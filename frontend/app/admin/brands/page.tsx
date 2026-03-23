@@ -32,6 +32,18 @@ import {
 } from "@/components/ui/table"
 import { Plus, Search, Trash2, RefreshCw } from "lucide-react"
 
+const DEFAULT_TLD_SCOPE =
+  "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun," +
+  "club,vip,icu,live,digital,world,today,email,solutions,services," +
+  "support,group,company,center,zone,agency,systems,network,works," +
+  "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
+  "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
+  "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
+  "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
+  "academy,education,school,host,hosting,domains,security,safe," +
+  "protect,chat,social,community,team,studio,design,marketing," +
+  "consulting,partners,ventures,holdings,international"
+
 export default function BrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +52,7 @@ export default function BrandsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState("")
   const [newKeywords, setNewKeywords] = useState("")
-  const [newTlds, setNewTlds] = useState("net,org,info")
+  const [newTlds, setNewTlds] = useState(DEFAULT_TLD_SCOPE)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState("")
 
@@ -82,7 +94,7 @@ export default function BrandsPage() {
       setCreateOpen(false)
       setNewName("")
       setNewKeywords("")
-      setNewTlds("net,org,info")
+      setNewTlds(DEFAULT_TLD_SCOPE)
       await fetchBrands()
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Create failed")
@@ -179,7 +191,7 @@ export default function BrandsPage() {
                     id="tlds"
                     value={newTlds}
                     onChange={(e) => setNewTlds(e.target.value)}
-                    placeholder="net,org,info"
+                    placeholder={DEFAULT_TLD_SCOPE}
                   />
                 </div>
                 {createError && (

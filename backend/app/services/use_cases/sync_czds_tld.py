@@ -15,30 +15,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.infra.external.czds_client import CZDSClient
 from app.infra.external.s3_storage import S3Storage
+from app.repositories.domain_repository import ensure_partition
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.zone_artifact_repository import ZoneArtifactRepository
 from app.services.use_cases.apply_zone_delta import apply_zone_delta
 
 logger = logging.getLogger(__name__)
-
-
-def _ensure_partition(db: Session, tld: str) -> None:
-    """Create a partition for the TLD if it doesn't exist yet."""
-    safe_tld = tld.replace("-", "_")
-    partition_name = f"domain_{safe_tld}"
-
-    exists = db.execute(
-        text("SELECT 1 FROM pg_class WHERE relname = :name"),
-        {"name": partition_name},
-    ).scalar()
-
-    if not exists:
-        db.execute(text(
-            f"CREATE TABLE {partition_name} PARTITION OF domain "
-            f"FOR VALUES IN ('{tld}')"
-        ))
-        db.commit()
-        logger.info("Created partition %s for TLD=%s", partition_name, tld)
 
 
 class SyncAlreadyRunningError(Exception):
@@ -99,7 +81,7 @@ def sync_czds_tld(
 
     try:
         # ── 2b. Ensure TLD partition exists ───────────────────
-        _ensure_partition(db, tld)
+        ensure_partition(db, tld)
 
         # ── 3. Cooldown check ───────────────────────────────
         if not force:

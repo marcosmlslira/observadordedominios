@@ -65,6 +65,34 @@ services:
       restart_policy:
         condition: on-failure
 
+  certstream_server:
+    image: 0rickyy0/certstream-server-go:latest
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  ct_ingestor:
+    image: observadordedominios-backend:latest
+    command: ["python", "-m", "app.worker.ct_ingestor"]
+    environment:
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - CT_CERTSTREAM_ENABLED=true
+      - CT_CERTSTREAM_URL=ws://certstream_server:8080/
+      - CT_CRTSH_ENABLED=true
+      - CT_CRTSH_SYNC_CRON=0 5 * * *
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+      - certstream_server
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
 networks:
   app-network:
     driver: overlay

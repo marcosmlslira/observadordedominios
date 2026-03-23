@@ -39,11 +39,34 @@ class Settings(BaseSettings):
     # ── CZDS ─────────────────────────────────────────────────
     CZDS_USERNAME: str = ""
     CZDS_PASSWORD: str = ""
-    CZDS_ENABLED_TLDS: str = "net,org,info"
+    CZDS_ENABLED_TLDS: str = (
+        "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,"
+        "club,vip,icu,live,digital,world,today,email,solutions,services,"
+        "support,group,company,center,zone,agency,systems,network,works,"
+        "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,"
+        "finance,financial,money,credit,loan,bank,capital,fund,exchange,"
+        "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,"
+        "blog,press,link,click,one,pro,name,life,plus,now,global,expert,"
+        "academy,education,school,host,hosting,domains,security,safe,"
+        "protect,chat,social,community,team,studio,design,marketing,"
+        "consulting,partners,ventures,holdings,international"
+    )
     CZDS_SYNC_CRON: str = "0 7 * * *"
     CZDS_FORCE_COOLDOWN_HOURS: int = 24
     CZDS_RUNNING_STALE_MINUTES: int = 180
     CZDS_BASE_URL: str = "https://czds-api.icann.org"
+
+    # ── CT Logs (CertStream + crt.sh) ──────────────────────────
+    CT_CERTSTREAM_URL: str = "ws://certstream_server:8080/"
+    CT_CERTSTREAM_ENABLED: bool = True
+    CT_CERTSTREAM_RECONNECT_MAX_BACKOFF: int = 60
+    CT_BUFFER_FLUSH_SIZE: int = 5000
+    CT_BUFFER_FLUSH_SECONDS: int = 30
+    CT_CRTSH_ENABLED: bool = True
+    CT_CRTSH_SYNC_CRON: str = "0 5 * * *"
+    CT_CRTSH_COOLDOWN_HOURS: int = 20
+    CT_CRTSH_QUERY_OVERLAP_HOURS: int = 25
+    CT_BR_SUBTLDS: str = "br,com.br,net.br,org.br,gov.br,edu.br,mil.br,app.br,dev.br,log.br,ong.br"
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

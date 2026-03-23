@@ -1,0 +1,28 @@
+webserver:
+  listen_addr: "0.0.0.0"
+  listen_port: 8080
+  full_url: "/full-stream"
+  lite_url: "/"
+  domains_only_url: "/domains-only"
+  cert_path: ""
+  cert_key_path: ""
+  compression_enabled: false
+
+prometheus:
+  enabled: true
+  listen_addr: "0.0.0.0"
+  listen_port: 8080
+  metrics_url: "/metrics"
+  expose_system_metrics: false
+  real_ip: false
+  whitelist:
+    - "127.0.0.1/8"
+    - "10.0.0.0/8"
+
+general:
+  additional_logs: []
+  buffer_sizes:
+    websocket: 2000
+    ctlog: 2000
+    broadcastmanager: 50000
+  drop_old_logs: true
