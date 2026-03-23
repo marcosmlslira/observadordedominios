@@ -18,7 +18,12 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     # ── CORS ───────────────────────────────────────────────
-    CORS_ORIGINS: str = "http://localhost:3005,http://localhost:3000"
+    CORS_ORIGINS: str = (
+        "http://localhost:3005,"
+        "http://localhost:3000,"
+        "https://observadordedominios.com.br,"
+        "https://www.observadordedominios.com.br"
+    )
 
     # ── Database ─────────────────────────────────────────────
     DATABASE_URL: str = "postgresql://obs:obs@postgres:5432/obs"

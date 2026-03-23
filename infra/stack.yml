@@ -6,6 +6,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3005:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=https://api.observadordedominios.com.br
     networks:
       - app-network
     deploy:
@@ -21,9 +24,11 @@ services:
     ports:
       - "8005:8000"
     environment:
+      - ENVIRONMENT=production
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - S3_BUCKET=observador-zones
       - S3_FORCE_PATH_STYLE=false
+      - CORS_ORIGINS=https://observadordedominios.com.br,https://www.observadordedominios.com.br
     networks:
       - app-network
     deploy:

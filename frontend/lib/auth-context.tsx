@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from "react"
+import { API_BASE_URL } from "./config"
 import type { TokenResponse } from "./types"
 
 interface AuthContextValue {
@@ -18,9 +19,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8005"
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null)

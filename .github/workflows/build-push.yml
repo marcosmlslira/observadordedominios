@@ -12,6 +12,7 @@ concurrency:
 env:
   GHCR_REGISTRY: ghcr.io
   GHCR_OWNER: ${{ vars.GHCR_OWNER }}
+  FRONTEND_API_URL: https://api.observadordedominios.com.br
 
 jobs:
   detect-changes:
@@ -61,7 +62,7 @@ jobs:
       - name: Build and push frontend
         run: |
           IMAGE="$GHCR_REGISTRY/$GHCR_OWNER/observador-frontend:latest"
-          docker build -t "$IMAGE" frontend/
+          docker build --build-arg NEXT_PUBLIC_API_URL="$FRONTEND_API_URL" -t "$IMAGE" frontend/
           docker push "$IMAGE"
 
   trigger-deploy:
