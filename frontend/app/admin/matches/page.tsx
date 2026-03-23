@@ -65,8 +65,9 @@ function statusVariant(status: string) {
   }
 }
 
-const STATUSES = ["", "new", "reviewing", "dismissed", "confirmed_threat"]
-const RISK_LEVELS = ["", "low", "medium", "high", "critical"]
+const ALL_FILTER_VALUE = "all"
+const STATUSES = ["new", "reviewing", "dismissed", "confirmed_threat"]
+const RISK_LEVELS = ["low", "medium", "high", "critical"]
 
 export default function MatchesPage() {
   const [brands, setBrands] = useState<Brand[]>([])
@@ -194,13 +195,18 @@ export default function MatchesPage() {
         </div>
         <div className="w-40">
           <Label className="text-xs text-muted-foreground">Status</Label>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select
+            value={statusFilter || ALL_FILTER_VALUE}
+            onValueChange={(value) =>
+              setStatusFilter(value === ALL_FILTER_VALUE ? "" : value)
+            }
+          >
             <SelectTrigger>
               <SelectValue placeholder="All" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
-              {STATUSES.filter(Boolean).map((s) => (
+              <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
+              {STATUSES.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
                 </SelectItem>
@@ -210,13 +216,18 @@ export default function MatchesPage() {
         </div>
         <div className="w-40">
           <Label className="text-xs text-muted-foreground">Risk Level</Label>
-          <Select value={riskFilter} onValueChange={setRiskFilter}>
+          <Select
+            value={riskFilter || ALL_FILTER_VALUE}
+            onValueChange={(value) =>
+              setRiskFilter(value === ALL_FILTER_VALUE ? "" : value)
+            }
+          >
             <SelectTrigger>
               <SelectValue placeholder="All" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
-              {RISK_LEVELS.filter(Boolean).map((r) => (
+              <SelectItem value={ALL_FILTER_VALUE}>All</SelectItem>
+              {RISK_LEVELS.map((r) => (
                 <SelectItem key={r} value={r}>
                   {r}
                 </SelectItem>
