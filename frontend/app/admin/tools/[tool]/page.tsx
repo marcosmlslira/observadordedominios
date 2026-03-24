@@ -75,7 +75,11 @@ export default function ToolPage() {
         </div>
       </div>
 
-      <ToolExecutionForm onSubmit={handleSubmit} loading={loading} />
+      <ToolExecutionForm
+        onSubmit={handleSubmit}
+        loading={loading}
+        placeholder={tool.type === "website_clone" ? "target.com|reference.com" : "example.com"}
+      />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
