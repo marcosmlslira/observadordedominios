@@ -13,8 +13,11 @@ from app.core.dependencies import get_current_admin
 
 from app.infra.db.session import SessionLocal, get_db
 from app.core.config import settings
+from app.repositories.czds_policy_repository import CzdsPolicyRepository
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.schemas.czds_ingestion import (
+    CzdsPolicyResponse,
+    CzdsPolicyUpdateRequest,
     ErrorResponse,
     RunStatusResponse,
     TriggerSyncRequest,
@@ -33,6 +36,13 @@ router = APIRouter(
     tags=["CZDS Ingestion"],
     dependencies=[Depends(get_current_admin)],
 )
+
+
+def _env_fallback_tlds() -> list[str]:
+    raw = settings.CZDS_ENABLED_TLDS
+    if not raw:
+        return []
+    return [t.strip().lower() for t in raw.split(",") if t.strip()]
 
 
 def _run_sync_in_background(tld: str, force: bool, run_id: UUID) -> None:
@@ -98,6 +108,52 @@ def trigger_sync(
     thread.start()
 
     return TriggerSyncResponse(run_id=run.id, status="queued")
+
+
+@router.get(
+    "/policy",
+    response_model=CzdsPolicyResponse,
+    summary="Get the active CZDS TLD policy",
+)
+def get_policy(
+    db: Session = Depends(get_db),
+):
+    repo = CzdsPolicyRepository(db)
+    items = repo.list_enabled()
+
+    if items:
+        return CzdsPolicyResponse(
+            source="database",
+            tlds=[item.tld for item in items],
+            items=items,
+        )
+
+    fallback_tlds = _env_fallback_tlds()
+    return CzdsPolicyResponse(
+        source="env",
+        tlds=fallback_tlds,
+        items=[],
+    )
+
+
+@router.put(
+    "/policy",
+    response_model=CzdsPolicyResponse,
+    summary="Replace the active CZDS TLD policy",
+)
+def replace_policy(
+    body: CzdsPolicyUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    repo = CzdsPolicyRepository(db)
+    items = repo.replace_enabled_tlds(body.tlds)
+    db.commit()
+
+    return CzdsPolicyResponse(
+        source="database",
+        tlds=[item.tld for item in items],
+        items=items,
+    )
 
 
 @router.get(

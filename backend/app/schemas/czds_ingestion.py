@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Request ─────────────────────────────────────────────────
@@ -14,10 +14,54 @@ class TriggerSyncRequest(BaseModel):
     force: bool = False
 
 
+class CzdsPolicyUpdateRequest(BaseModel):
+    tlds: list[str] = Field(default_factory=list)
+
+    @field_validator("tlds")
+    @classmethod
+    def normalize_tlds(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+
+        for raw_tld in value:
+            tld = raw_tld.strip().lower().lstrip(".")
+            if not tld:
+                continue
+            if len(tld) < 2 or len(tld) > 24:
+                raise ValueError(f"Invalid TLD length: {raw_tld}")
+            if not all(char.isalnum() or char == "-" for char in tld):
+                raise ValueError(f"Invalid TLD format: {raw_tld}")
+            if tld in seen:
+                continue
+            seen.add(tld)
+            normalized.append(tld)
+
+        if not normalized:
+            raise ValueError("At least one TLD must be provided")
+
+        return normalized
+
+
 # ── Responses ───────────────────────────────────────────────
 class TriggerSyncResponse(BaseModel):
     run_id: UUID
     status: str
+
+
+class CzdsPolicyItemResponse(BaseModel):
+    tld: str
+    is_enabled: bool
+    priority: int
+    cooldown_hours: int
+    notes: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CzdsPolicyResponse(BaseModel):
+    source: str
+    tlds: list[str]
+    items: list[CzdsPolicyItemResponse]
 
 
 class RunStatusResponse(BaseModel):

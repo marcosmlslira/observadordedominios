@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "@/lib/api"
-import type { IngestionRun, SourceSummary, TriggerSyncResponse } from "@/lib/types"
+import type {
+  CzdsPolicyResponse,
+  IngestionRun,
+  SourceSummary,
+  TriggerSyncResponse,
+} from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +36,7 @@ import {
   XCircle,
   Loader2,
   Activity,
+  Save,
 } from "lucide-react"
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -95,17 +101,24 @@ export default function IngestionPage() {
   const [syncForce, setSyncForce] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncError, setSyncError] = useState("")
+  const [policyText, setPolicyText] = useState("")
+  const [policySource, setPolicySource] = useState<"database" | "env">("env")
+  const [policySaving, setPolicySaving] = useState(false)
+  const [policyError, setPolicyError] = useState("")
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
       const sourceParam = activeSource === "all" ? "" : `&source=${activeSource}`
-      const [runsData, summaryData] = await Promise.all([
+      const [runsData, summaryData, policyData] = await Promise.all([
         api.get<IngestionRun[]>(`/v1/ingestion/runs?limit=50${sourceParam}`),
         api.get<SourceSummary[]>("/v1/ingestion/summary"),
+        api.get<CzdsPolicyResponse>("/v1/czds/policy"),
       ])
       setRuns(runsData)
       setSummaries(summaryData)
+      setPolicyText(policyData.tlds.join("\n"))
+      setPolicySource(policyData.source)
     } catch {
       // ignore
     }
@@ -146,6 +159,29 @@ export default function IngestionPage() {
       setSyncError(err instanceof Error ? err.message : "Sync failed")
     } finally {
       setSyncing(false)
+    }
+  }
+
+  async function handleSavePolicy() {
+    setPolicySaving(true)
+    setPolicyError("")
+
+    try {
+      const tlds = policyText
+        .split(/[\s,]+/)
+        .map((item) => item.trim().toLowerCase().replace(/^\./, ""))
+        .filter(Boolean)
+
+      const response = await api.put<CzdsPolicyResponse>("/v1/czds/policy", {
+        tlds,
+      })
+
+      setPolicyText(response.tlds.join("\n"))
+      setPolicySource(response.source)
+    } catch (err) {
+      setPolicyError(err instanceof Error ? err.message : "Failed to save policy")
+    } finally {
+      setPolicySaving(false)
     }
   }
 
@@ -218,6 +254,61 @@ export default function IngestionPage() {
           </Dialog>
         </div>
       </div>
+
+      <Card className="border-border-subtle bg-background/70">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-base">CZDS Scope</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                One worker, one queue. The order below is the exact priority order
+                used by the CZDS ingestor.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline">
+                Source: {policySource === "database" ? "database" : "env fallback"}
+              </Badge>
+              <Badge variant="secondary">
+                {policyText
+                  .split(/[\s,]+/)
+                  .map((item) => item.trim())
+                  .filter(Boolean).length}{" "}
+                active TLDs
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <textarea
+            value={policyText}
+            onChange={(e) => setPolicyText(e.target.value)}
+            spellCheck={false}
+            className="min-h-[220px] w-full rounded-xl border border-border bg-background px-3 py-3 font-mono text-sm leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40"
+            placeholder={"com\nnet\norg"}
+          />
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <p>
+                Save updates `czds_tld_policy` immediately. New order applies to the
+                next worker cycle.
+              </p>
+              <p>
+                For an immediate single-TLD run, keep using <span className="font-medium">Trigger CZDS Sync</span>.
+              </p>
+              {policyError && <p className="text-red-500">{policyError}</p>}
+            </div>
+            <Button
+              onClick={handleSavePolicy}
+              disabled={policySaving || !policyText.trim()}
+              className="min-w-40"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {policySaving ? "Saving..." : "Save CZDS Scope"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Source health cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

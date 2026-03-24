@@ -82,6 +82,24 @@ export interface TriggerSyncResponse {
   status: string
 }
 
+export interface CzdsPolicyItem {
+  tld: string
+  is_enabled: boolean
+  priority: number
+  cooldown_hours: number
+  notes: string | null
+}
+
+export interface CzdsPolicyResponse {
+  source: "database" | "env"
+  tlds: string[]
+  items: CzdsPolicyItem[]
+}
+
+export interface CzdsPolicyUpdateRequest {
+  tlds: string[]
+}
+
 // ── Similarity Matches ──────────────────────────────────
 
 export interface SimilarityMatch {
