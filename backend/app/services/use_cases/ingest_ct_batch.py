@@ -70,11 +70,11 @@ def ingest_ct_batch(
     # 4. Update ingestion run metrics if provided
     if run_id:
         run_repo = IngestionRunRepository(db)
-        run = run_repo.get_run(run_id)
-        if run:
-            run.domains_seen = (run.domains_seen or 0) + domains_seen
-            run.domains_inserted = (run.domains_inserted or 0) + total_inserted
-            db.flush()
+        run_repo.add_progress(
+            run_id,
+            domains_seen_delta=domains_seen,
+            domains_inserted_delta=total_inserted,
+        )
 
     # Caller owns transaction — do NOT commit here.
     # CertStream flush loop commits per-flush; sync_crtsh commits per-cycle.

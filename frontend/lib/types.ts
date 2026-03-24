@@ -70,6 +70,9 @@ export interface SourceSummary {
   last_status: string | null
   total_domains_seen: number
   total_domains_inserted: number
+  mode: string | null
+  status_hint: string | null
+  next_expected_run_hint: string | null
 }
 
 export interface TriggerSyncRequest {

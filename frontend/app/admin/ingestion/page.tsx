@@ -47,6 +47,7 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 
 const ALL_SOURCES = ["all", "czds", "certstream", "crtsh", "crtsh-bulk"] as const
+const SUMMARY_SOURCES = ALL_SOURCES.filter((source) => source !== "all")
 
 function statusVariant(status: string) {
   switch (status) {
@@ -64,6 +65,26 @@ function statusVariant(status: string) {
 
 function sourceLabel(source: string) {
   return SOURCE_LABELS[source] || source
+}
+
+function sourceSummary(summaryMap: Map<string, SourceSummary>, source: string): SourceSummary {
+  return (
+    summaryMap.get(source) || {
+      source,
+      total_runs: 0,
+      successful_runs: 0,
+      failed_runs: 0,
+      running_now: 0,
+      last_run_at: null,
+      last_success_at: null,
+      last_status: null,
+      total_domains_seen: 0,
+      total_domains_inserted: 0,
+      mode: null,
+      status_hint: null,
+      next_expected_run_hint: null,
+    }
+  )
 }
 
 function StatusIcon({ status }: { status: string | null }) {
@@ -312,7 +333,9 @@ export default function IngestionPage() {
 
       {/* Source health cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {summaries.map((s) => (
+        {SUMMARY_SOURCES.map((source) => {
+          const s = sourceSummary(new Map(summaries.map((item) => [item.source, item])), source)
+          return (
           <Card
             key={s.source}
             className={`cursor-pointer transition-colors ${
@@ -333,6 +356,9 @@ export default function IngestionPage() {
                 {s.total_domains_inserted.toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">domains inserted</p>
+              {s.mode && (
+                <p className="mt-1 text-xs text-muted-foreground">{s.mode}</p>
+              )}
               <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                 <span>{s.successful_runs} ok</span>
                 {s.failed_runs > 0 && (
@@ -347,9 +373,20 @@ export default function IngestionPage() {
               <p className="text-xs text-muted-foreground mt-1">
                 Last: {timeAgo(s.last_run_at)}
               </p>
+              {s.status_hint && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {s.status_hint}
+                </p>
+              )}
+              {s.next_expected_run_hint && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Next expected: {new Date(s.next_expected_run_hint).toLocaleString()}
+                </p>
+              )}
             </CardContent>
           </Card>
-        ))}
+          )
+        })}
         {summaries.length === 0 && (
           <p className="col-span-4 text-sm text-muted-foreground">
             No ingestion data yet

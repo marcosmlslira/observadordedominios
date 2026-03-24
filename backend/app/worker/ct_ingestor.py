@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import logging
 import signal
-import sys
 import threading
 import time
 import uuid
@@ -189,6 +188,34 @@ def _finalize_run(run_id: uuid.UUID) -> None:
         db.close()
 
 
+def _recover_orphaned_certstream_runs() -> int:
+    """Fail leftover CertStream runs before creating a new live session."""
+    db = SessionLocal()
+    try:
+        run_repo = IngestionRunRepository(db)
+        recovered = run_repo.mark_running_runs_failed(
+            "certstream",
+            "br",
+            error_message=(
+                "Marked as failed on worker startup because a previous "
+                "CertStream session did not finalize cleanly"
+            ),
+        )
+        if recovered:
+            db.commit()
+            logger.warning(
+                "Recovered %d orphaned CertStream run(s) before startup.",
+                len(recovered),
+            )
+        return len(recovered)
+    except Exception:
+        logger.exception("Failed to recover orphaned CertStream runs")
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 # ── Main ─────────────────────────────────────────────────────
 
 
@@ -198,19 +225,23 @@ def main() -> None:
     # 1. Ensure .br partitions
     _ensure_br_partitions()
 
-    # 2. Create daily ingestion run
+    # 2. Recover orphaned runs from previous worker sessions
+    _recover_orphaned_certstream_runs()
+
+    # 3. Create daily ingestion run
     run_id = _create_daily_run()
 
-    # 3. Initialize buffer
+    # 4. Initialize buffer
     buffer = CTBuffer(
         flush_size=settings.CT_BUFFER_FLUSH_SIZE,
         flush_interval_seconds=settings.CT_BUFFER_FLUSH_SECONDS,
     )
 
-    # 4. Stop event for graceful shutdown
+    # 5. Stop event for graceful shutdown
     stop_event = threading.Event()
+    shutdown_requested = threading.Event()
 
-    # 5. Start crt.sh scheduler if enabled (BackgroundScheduler)
+    # 6. Start crt.sh scheduler if enabled (BackgroundScheduler)
     scheduler = None
     if settings.CT_CRTSH_ENABLED:
         try:
@@ -233,13 +264,20 @@ def main() -> None:
                 id="crtsh_sync", replace_existing=True,
             )
             scheduler.start()
-            logger.info("crt.sh scheduler started: cron=%s", settings.CT_CRTSH_SYNC_CRON)
+            job = scheduler.get_job("crtsh_sync")
+            next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+            logger.info(
+                "crt.sh scheduler started: cron=%s next_run=%s",
+                settings.CT_CRTSH_SYNC_CRON,
+                next_run or "pending",
+            )
+            logger.info("crt.sh is cron-only in production. No startup backfill will run.")
         except ImportError:
             logger.warning("sync_crtsh not yet implemented, skipping crt.sh scheduler")
         except Exception:
             logger.exception("Failed to start crt.sh scheduler")
 
-    # 6. Start flush loop (daemon thread)
+    # 7. Start flush loop (daemon thread)
     flush_thread = threading.Thread(
         target=_flush_loop,
         args=(buffer, run_id, stop_event),
@@ -248,40 +286,44 @@ def main() -> None:
     )
     flush_thread.start()
 
-    # 7. Initialize CertStream client ref BEFORE signal handler (avoids UnboundLocalError)
+    # 8. Initialize CertStream client ref BEFORE signal handler
     certstream_client = None
 
-    # 8. Graceful shutdown handler
+    # 9. Graceful shutdown handler
     def _shutdown(signum, frame):
-        logger.info("Received signal %s, shutting down...", signum)
+        logger.info("Received signal %s, draining CertStream session before exit...", signum)
+        shutdown_requested.set()
         stop_event.set()
         if scheduler:
             scheduler.shutdown(wait=False)
         if certstream_client:
             certstream_client.stop()
-        # Wait for flush thread to finish final flush
-        flush_thread.join(timeout=10)
-        # Finalize the CertStream ingestion run
-        _finalize_run(run_id)
-        logger.info("CT Ingestor Worker stopped.")
-        sys.exit(0)
 
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    # 9. Start CertStream (blocks main thread)
-    if settings.CT_CERTSTREAM_ENABLED:
-        from app.infra.external.certstream_client import CertStreamClient
+    # 10. Start CertStream (blocks main thread)
+    try:
+        if settings.CT_CERTSTREAM_ENABLED:
+            from app.infra.external.certstream_client import CertStreamClient
 
-        certstream_client = CertStreamClient(
-            on_domains_callback=buffer.add,
-            filter_suffix=".br",
-        )
-        logger.info("Starting CertStream client...")
-        certstream_client.start()  # Blocks until stop() is called
-    else:
-        logger.info("CertStream disabled. Worker running crt.sh scheduler only.")
-        stop_event.wait()
+            certstream_client = CertStreamClient(
+                on_domains_callback=buffer.add,
+                filter_suffix=".br",
+            )
+            logger.info("Starting CertStream client...")
+            certstream_client.start()  # Blocks until stop() is called
+        else:
+            logger.info("CertStream disabled. Worker running crt.sh scheduler only.")
+            stop_event.wait()
+    finally:
+        stop_event.set()
+        flush_thread.join()
+        _finalize_run(run_id)
+        if shutdown_requested.is_set():
+            logger.info("CT Ingestor Worker stopped after graceful drain.")
+        else:
+            logger.info("CT Ingestor Worker stopped.")
 
 
 if __name__ == "__main__":

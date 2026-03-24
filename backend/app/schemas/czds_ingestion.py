@@ -92,6 +92,9 @@ class SourceSummaryResponse(BaseModel):
     last_status: str | None = None
     total_domains_seen: int = 0
     total_domains_inserted: int = 0
+    mode: str | None = None
+    status_hint: str | None = None
+    next_expected_run_hint: str | None = None
 
 
 class CheckpointResponse(BaseModel):

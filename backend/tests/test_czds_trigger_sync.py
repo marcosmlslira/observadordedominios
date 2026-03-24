@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.api.v1.routers import czds_ingestion
+from app.core.dependencies import get_current_admin
 from app.infra.db.session import get_db
 from app.main import app
 from app.repositories.ingestion_run_repository import IngestionRunRepository
@@ -30,6 +31,9 @@ def test_trigger_sync_recovers_stale_runs_before_queueing(monkeypatch) -> None:
 
     def override_get_db():
         yield db
+
+    def override_admin():
+        return "admin@observador.com"
 
     def fake_recover(self, source, tld, *, stale_after_minutes, exclude_run_id=None):
         observed["recover"] = {
@@ -59,6 +63,7 @@ def test_trigger_sync_recovers_stale_runs_before_queueing(monkeypatch) -> None:
     monkeypatch.setattr(IngestionRunRepository, "create_run", fake_create_run)
     monkeypatch.setattr(czds_ingestion.threading, "Thread", DummyThread)
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_admin] = override_admin
 
     try:
         client = TestClient(app)

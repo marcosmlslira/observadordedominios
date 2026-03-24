@@ -202,6 +202,41 @@ class IngestionRunRepository:
         self.db.flush()
         return run
 
+    def mark_running_runs_failed(
+        self,
+        source: str,
+        tld: str,
+        *,
+        error_message: str,
+        exclude_run_id: uuid.UUID | None = None,
+    ) -> list[IngestionRun]:
+        """Fail all currently running runs for a source/TLD pair."""
+        query = (
+            self.db.query(IngestionRun)
+            .filter(
+                IngestionRun.source == source,
+                IngestionRun.tld == tld,
+                IngestionRun.status == "running",
+            )
+            .order_by(IngestionRun.started_at.asc())
+        )
+        if exclude_run_id:
+            query = query.filter(IngestionRun.id != exclude_run_id)
+
+        runs = query.all()
+        if not runs:
+            return []
+
+        now = datetime.now(timezone.utc)
+        for run in runs:
+            run.status = "failed"
+            run.finished_at = now
+            run.updated_at = now
+            run.error_message = error_message
+
+        self.db.flush()
+        return runs
+
     def update_progress(self, run_id: uuid.UUID, *, domains_seen: int) -> None:
         """Persist progress counters and refresh heartbeat for long-running syncs."""
         self.db.execute(
@@ -216,6 +251,32 @@ class IngestionRunRepository:
             {
                 "id": run_id,
                 "domains_seen": domains_seen,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+
+    def add_progress(
+        self,
+        run_id: uuid.UUID,
+        *,
+        domains_seen_delta: int = 0,
+        domains_inserted_delta: int = 0,
+    ) -> None:
+        """Accumulate metrics and refresh heartbeat for streaming ingestors."""
+        self.db.execute(
+            text(
+                """
+                UPDATE ingestion_run
+                SET domains_seen = COALESCE(domains_seen, 0) + :domains_seen_delta,
+                    domains_inserted = COALESCE(domains_inserted, 0) + :domains_inserted_delta,
+                    updated_at = :updated_at
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": run_id,
+                "domains_seen_delta": domains_seen_delta,
+                "domains_inserted_delta": domains_inserted_delta,
                 "updated_at": datetime.now(timezone.utc),
             },
         )

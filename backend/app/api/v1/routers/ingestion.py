@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.dependencies import get_current_admin
 from app.infra.db.session import get_db
 from app.repositories.ingestion_run_repository import IngestionRunRepository
@@ -22,6 +25,92 @@ router = APIRouter(
     tags=["Ingestion"],
     dependencies=[Depends(get_current_admin)],
 )
+
+SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh", "crtsh-bulk")
+
+
+def _next_cron_hint(cron_expr: str) -> str | None:
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+
+        trigger = CronTrigger.from_crontab(cron_expr, timezone=timezone.utc)
+        now = datetime.now(timezone.utc)
+        next_fire = trigger.get_next_fire_time(None, now)
+        if not next_fire:
+            return None
+        local_dt = next_fire.astimezone(ZoneInfo("America/Sao_Paulo"))
+        return local_dt.isoformat()
+    except Exception:
+        parts = cron_expr.split()
+        if len(parts) != 5:
+            return None
+        minute, hour, day, month, weekday = parts
+        if any(part == "*" for part in (day, month, weekday)):
+            if minute.isdigit() and hour.isdigit():
+                now = datetime.now(timezone.utc)
+                candidate = now.replace(
+                    hour=int(hour),
+                    minute=int(minute),
+                    second=0,
+                    microsecond=0,
+                )
+                if candidate <= now:
+                    from datetime import timedelta
+
+                    candidate = candidate + timedelta(days=1)
+                return candidate.astimezone(ZoneInfo("America/Sao_Paulo")).isoformat()
+        return None
+
+
+def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
+    indexed = {row["source"]: row for row in run_repo.get_source_summary()}
+    rows: list[dict] = []
+
+    for source in SUMMARY_SOURCE_ORDER:
+        row = {
+            "source": source,
+            "total_runs": 0,
+            "successful_runs": 0,
+            "failed_runs": 0,
+            "running_now": 0,
+            "last_run_at": None,
+            "last_success_at": None,
+            "last_status": None,
+            "total_domains_seen": 0,
+            "total_domains_inserted": 0,
+            "mode": None,
+            "status_hint": None,
+            "next_expected_run_hint": None,
+        }
+        row.update(indexed.get(source, {}))
+
+        if source == "certstream":
+            row["mode"] = "Realtime stream"
+            if row["running_now"] > 0:
+                row["status_hint"] = "Streaming continuously from CertStream."
+            elif row["last_success_at"]:
+                row["status_hint"] = "Last CertStream session finished cleanly."
+            else:
+                row["status_hint"] = "No CertStream session completed yet."
+        elif source == "crtsh":
+            row["mode"] = "Daily cron"
+            row["next_expected_run_hint"] = _next_cron_hint(settings.CT_CRTSH_SYNC_CRON)
+            if row["running_now"] > 0:
+                row["status_hint"] = "crt.sh batch is running now."
+            elif row["last_run_at"]:
+                row["status_hint"] = "crt.sh runs only on its daily cron."
+            else:
+                row["status_hint"] = "crt.sh is scheduled and waiting for the next daily cron."
+        elif source == "crtsh-bulk":
+            row["mode"] = "Manual backfill"
+            row["status_hint"] = "Manual historical backfill. No automatic scheduler."
+        elif source == "czds":
+            row["mode"] = "Serial worker"
+            row["status_hint"] = "Processes enabled TLDs one by one in priority order."
+
+        rows.append(row)
+
+    return rows
 
 
 @router.get(
@@ -100,7 +189,7 @@ def get_summary(
 ):
     """Per-source aggregation: total runs, success/fail counts, last run, totals."""
     run_repo = IngestionRunRepository(db)
-    return [SourceSummaryResponse(**row) for row in run_repo.get_source_summary()]
+    return [SourceSummaryResponse(**row) for row in _build_source_summary_rows(run_repo)]
 
 
 @router.get(

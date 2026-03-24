@@ -49,6 +49,26 @@ py scripts/prod_server.py test-login --email admin@observador.com --password mls
 py scripts/prod_server.py restart --service observador_backend
 ```
 
+## Rodar backfill manual do crt.sh Bulk
+```powershell
+py scripts/prod_server.py run-crtsh-bulk
+```
+
+Dry-run:
+```powershell
+py scripts/prod_server.py run-crtsh-bulk --dry-run
+```
+
+Escopo controlado:
+```powershell
+py scripts/prod_server.py run-crtsh-bulk --subtlds com.br,net.br
+```
+
+Observacao:
+- `crtsh-bulk` continua manual de proposito.
+- Ele nao faz parte do scheduler regular de producao.
+- O comando roda dentro do container ativo de `observador_ct_ingestor`.
+
 ## Regra operacional
 - Corrija primeiro a origem em `docker-stack-infra`.
 - So use restart manual depois de confirmar que o stack ja contem as envs corretas.
