@@ -5,7 +5,8 @@ WORKDIR /app
 RUN pip install poetry
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry config virtualenvs.create false && poetry install --no-root --no-interaction --no-ansi --only main
+RUN poetry config virtualenvs.create false && poetry install --no-root --no-interaction --no-ansi --only main && \
+    playwright install chromium --with-deps
 
 COPY . .
 

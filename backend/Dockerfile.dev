@@ -8,7 +8,8 @@ RUN pip install poetry
 # Copiar arquivos de dependências
 COPY pyproject.toml ./
 RUN poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction --no-ansi
+    poetry install --no-root --no-interaction --no-ansi && \
+    playwright install chromium --with-deps
 
 # O código será montado via volume
 EXPOSE 8000

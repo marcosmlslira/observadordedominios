@@ -68,6 +68,33 @@ class Settings(BaseSettings):
     CT_CRTSH_QUERY_OVERLAP_HOURS: int = 25
     CT_BR_SUBTLDS: str = "br,com.br,net.br,org.br,gov.br,edu.br,mil.br,app.br,dev.br,log.br,ong.br"
 
+    # ── Free Tools ─────────────────────────────────────────────
+    TOOLS_DEFAULT_TIMEOUT_SECONDS: int = 30
+    TOOLS_SCREENSHOT_TIMEOUT_SECONDS: int = 45
+    TOOLS_PLACEHOLDER_ORG_ID: str = "00000000-0000-0000-0000-000000000001"
+
+    # Cache TTLs (seconds)
+    TOOLS_CACHE_DNS_LOOKUP: int = 300
+    TOOLS_CACHE_WHOIS: int = 86400
+    TOOLS_CACHE_SSL_CHECK: int = 3600
+    TOOLS_CACHE_SCREENSHOT: int = 1800
+    TOOLS_CACHE_SUSPICIOUS_PAGE: int = 1800
+    TOOLS_CACHE_HTTP_HEADERS: int = 900
+    TOOLS_CACHE_BLACKLIST_CHECK: int = 3600
+    TOOLS_CACHE_EMAIL_SECURITY: int = 21600
+    TOOLS_CACHE_REVERSE_IP: int = 21600
+    TOOLS_CACHE_IP_GEOLOCATION: int = 86400
+    TOOLS_CACHE_DOMAIN_SIMILARITY: int = 86400
+    TOOLS_CACHE_WEBSITE_CLONE: int = 3600
+
+    # Rate limits (per hour per org)
+    TOOLS_RATE_PER_TOOL: int = 30
+    TOOLS_RATE_QUICK_ANALYSIS: int = 10
+    TOOLS_RATE_GLOBAL: int = 200
+
+    # S3 bucket for tool artifacts (screenshots etc.)
+    TOOLS_S3_BUCKET: str = "observador-tools"
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 

@@ -11,7 +11,7 @@
 
 Este documento define as ferramentas essenciais de análise pontual de domínios no Observador de Domínios para dois públicos: clientes finais e uso interno da operação. O objetivo é transformar consultas técnicas isoladas em um fluxo simples, padronizado e acionável para prevenção de fraude, phishing e abuso de marca.
 
-No escopo inicial, as ferramentas cobertas são: DNS Lookup, WHOIS, SSL Check, Screenshot de página e Detector de Página Suspeita. Essas ferramentas devem funcionar de forma independente para consulta pontual e também ser reutilizáveis internamente em pipelines de monitoramento e triagem.
+No escopo inicial, as ferramentas cobertas são: DNS Lookup, WHOIS, SSL Check, Screenshot de página e Detector de Página Suspeita. Na segunda onda, são adicionadas: HTTP Headers Analysis, Blacklist Check, Email Security Check (SPF/DKIM/DMARC), Reverse IP Lookup, IP Geolocation, Domain Similarity Generator e Website Clone Detector. Todas as ferramentas devem funcionar de forma independente para consulta pontual e também ser reutilizáveis internamente em pipelines de monitoramento e triagem.
 
 ## 2. Goals
 

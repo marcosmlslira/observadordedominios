@@ -65,3 +65,33 @@ export const api = {
   delete: (path: string) =>
     request<void>(path, { method: "DELETE" }),
 }
+
+// ── Free Tools API ──────────────────────────────────────
+
+export const toolsApi = {
+  run: (slug: string, target: string, force = false) =>
+    api.post<import("./types").ToolResponse>(
+      `/v1/tools/${slug}?force=${force}`,
+      { target },
+    ),
+
+  quickAnalysis: (target: string, tools?: string[]) =>
+    api.post<import("./types").QuickAnalysisResponse>(
+      "/v1/tools/quick-analysis",
+      { target, ...(tools ? { tools } : {}) },
+    ),
+
+  history: (params?: { target?: string; tool_type?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.target) qs.set("target", params.target)
+    if (params?.tool_type) qs.set("tool_type", params.tool_type)
+    if (params?.limit) qs.set("limit", String(params.limit))
+    if (params?.offset) qs.set("offset", String(params.offset))
+    return api.get<import("./types").HistoryListResponse>(
+      `/v1/tools/history?${qs}`,
+    )
+  },
+
+  getExecution: (id: string) =>
+    api.get<import("./types").ToolResponse>(`/v1/tools/history/${id}`),
+}

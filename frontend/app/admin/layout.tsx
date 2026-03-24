@@ -11,6 +11,7 @@ import {
   Download,
   Shield,
   Search,
+  Wrench,
   LogOut,
 } from "lucide-react"
 
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/admin/ingestion", label: "Ingestion Runs", icon: Download },
   { href: "/admin/brands", label: "Monitored Brands", icon: Shield },
   { href: "/admin/matches", label: "Similarity Matches", icon: Search },
+  { href: "/admin/tools", label: "Free Tools", icon: Wrench },
 ]
 
 export default function AdminLayout({

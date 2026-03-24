@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.api import health
-from app.api.v1.routers import auth, czds_ingestion, ingestion, monitored_brands, similarity
+from app.api.v1.routers import auth, czds_ingestion, ingestion, monitored_brands, similarity, tools
 from app.core.config import settings
+from app.services.use_cases.tools.registry import register_all_tools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,3 +42,7 @@ app.include_router(czds_ingestion.router)
 app.include_router(ingestion.router)
 app.include_router(monitored_brands.router)
 app.include_router(similarity.router)
+app.include_router(tools.router)
+
+# Register free tool services
+register_all_tools()
