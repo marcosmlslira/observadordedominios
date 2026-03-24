@@ -1,6 +1,6 @@
 """Expand default CZDS TLD policy scope.
 
-Revision ID: 008_expand_czds_tld_policy_defaults
+Revision ID: 008_expand_czds_scope
 Revises: 007_ct_br_partitions
 Create Date: 2026-03-24
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "008_expand_czds_tld_policy_defaults"
+revision: str = "008_expand_czds_scope"
 down_revision: Union[str, None] = "007_ct_br_partitions"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
