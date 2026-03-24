@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.infra.db.session import SessionLocal
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
 from app.services.use_cases.run_similarity_scan import run_similarity_scan_all
+from app.services.use_cases.sync_monitoring_profile import ensure_monitoring_profile_integrity
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +43,8 @@ def run_scan_cycle() -> None:
         logger.info("Starting similarity scan cycle for %d brands", len(brands))
 
         for brand in brands:
+            ensure_monitoring_profile_integrity(repo, brand)
+            db.commit()
             logger.info("Scanning brand=%s (label=%s)", brand.brand_name, brand.brand_label)
             try:
                 results = run_similarity_scan_all(db, brand)

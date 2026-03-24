@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from app.services.monitoring_profile import CHANNEL_MULTIPLIERS
+
 # ── Homograph / Confusable Maps ────────────────────────────────
 
 # Characters commonly used in homograph attacks (leet speak + unicode confusables)
@@ -234,6 +236,40 @@ def compute_scores(
     }
 
 
+def compute_seeded_scores(
+    label: str,
+    seed_value: str,
+    brand_keywords: list[str],
+    *,
+    trigram_sim: float,
+    seed_weight: float,
+    channel_scope: str,
+) -> dict:
+    base = compute_scores(
+        label=label,
+        brand_label=seed_value,
+        brand_keywords=brand_keywords,
+        trigram_sim=trigram_sim,
+    )
+    channel_multiplier = CHANNEL_MULTIPLIERS.get(channel_scope, 0.75)
+    adjusted_score = min(
+        1.0,
+        base["score_final"] * 0.70
+        + seed_weight * 0.20
+        + channel_multiplier * 0.10,
+    )
+    adjusted_risk = _classify_seeded_risk(
+        adjusted_score,
+        reasons=base["reasons"],
+        channel_scope=channel_scope,
+    )
+    return {
+        **base,
+        "score_final": round(adjusted_score, 4),
+        "risk_level": adjusted_risk,
+    }
+
+
 def _detect_reasons(
     trigram: float,
     lev: float,
@@ -257,6 +293,24 @@ def _detect_reasons(
     if not reasons:
         reasons.append("lexical_similarity")
     return reasons
+
+
+def _classify_seeded_risk(
+    score_final: float,
+    *,
+    reasons: list[str],
+    channel_scope: str,
+) -> str:
+    threshold_boost = 0.02 if channel_scope == "certificate_hostname" else 0.0
+    if "exact_label_match" in reasons and score_final >= 0.78:
+        return "high"
+    if "brand_containment" in reasons and "risky_keywords" in reasons and score_final >= 0.64 + threshold_boost:
+        return "critical"
+    if score_final >= 0.78 + threshold_boost:
+        return "high"
+    if score_final >= 0.55 + threshold_boost:
+        return "medium"
+    return "low"
 
 
 def _extract_tokens(text: str) -> set[str]:

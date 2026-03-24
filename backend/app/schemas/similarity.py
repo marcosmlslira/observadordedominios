@@ -76,6 +76,12 @@ class MatchResponse(BaseModel):
     reviewed_by: UUID | None = None
     reviewed_at: datetime | None = None
     notes: str | None = None
+    matched_channel: str | None = None
+    matched_seed_id: UUID | None = None
+    matched_seed_value: str | None = None
+    matched_seed_type: str | None = None
+    matched_rule: str | None = None
+    source_stream: str | None = None
 
     model_config = {"from_attributes": True}
 

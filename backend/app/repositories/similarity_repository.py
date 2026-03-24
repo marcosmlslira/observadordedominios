@@ -377,7 +377,10 @@ class SimilarityRepository:
                     f":score_brand_hit{suffix}, :score_keyword{suffix}, "
                     f":score_homograph{suffix}, :reasons{suffix}, "
                     f":risk_level{suffix}, :first_detected_at{suffix}, "
-                    f":domain_first_seen{suffix}, 'new')"
+                    f":domain_first_seen{suffix}, 'new', :matched_channel{suffix}, "
+                    f":matched_seed_id{suffix}, :matched_seed_value{suffix}, "
+                    f":matched_seed_type{suffix}, :matched_rule{suffix}, "
+                    f":source_stream{suffix})"
                 )
                 for key, value in m.items():
                     params[f"{key}{suffix}"] = value
@@ -388,7 +391,8 @@ class SimilarityRepository:
                     score_final, score_trigram, score_levenshtein,
                     score_brand_hit, score_keyword, score_homograph,
                     reasons, risk_level, first_detected_at, domain_first_seen,
-                    status
+                    status, matched_channel, matched_seed_id, matched_seed_value,
+                    matched_seed_type, matched_rule, source_stream
                 ) VALUES {", ".join(values_clauses)}
                 ON CONFLICT (brand_id, domain_name) DO UPDATE SET
                     score_final = EXCLUDED.score_final,
@@ -398,7 +402,13 @@ class SimilarityRepository:
                     score_keyword = EXCLUDED.score_keyword,
                     score_homograph = EXCLUDED.score_homograph,
                     reasons = EXCLUDED.reasons,
-                    risk_level = EXCLUDED.risk_level
+                    risk_level = EXCLUDED.risk_level,
+                    matched_channel = EXCLUDED.matched_channel,
+                    matched_seed_id = EXCLUDED.matched_seed_id,
+                    matched_seed_value = EXCLUDED.matched_seed_value,
+                    matched_seed_type = EXCLUDED.matched_seed_type,
+                    matched_rule = EXCLUDED.matched_rule,
+                    source_stream = EXCLUDED.source_stream
             """
             self.db.execute(text(sql), params)
 

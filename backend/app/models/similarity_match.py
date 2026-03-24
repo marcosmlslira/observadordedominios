@@ -42,6 +42,14 @@ class SimilarityMatch(Base):
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
 
+    # Detection provenance
+    matched_channel = Column(String(32), nullable=True)
+    matched_seed_id = Column(UUID(as_uuid=True), nullable=True)
+    matched_seed_value = Column(String(253), nullable=True)
+    matched_seed_type = Column(String(32), nullable=True)
+    matched_rule = Column(String(32), nullable=True)
+    source_stream = Column(String(32), nullable=True)
+
     __table_args__ = (
         Index("uq_match_brand_domain", "brand_id", "domain_name", unique=True),
         Index("ix_match_brand_risk", "brand_id", "risk_level", score_final.desc()),

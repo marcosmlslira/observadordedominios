@@ -17,14 +17,20 @@ from app.models.monitored_brand import MonitoredBrand
 from app.repositories.domain_repository import list_partition_tlds
 from app.repositories.similarity_repository import SimilarityRepository
 from app.services.use_cases.compute_similarity import (
-    compute_scores,
+    compute_seeded_scores,
     generate_typo_candidates,
 )
+from app.services.monitoring_profile import iter_scan_seeds, pick_matched_rule
 
 logger = logging.getLogger(__name__)
 
 # Minimum composite score to persist a match
 SCORE_THRESHOLD = 0.40
+NOISE_MODE_THRESHOLDS = {
+    "conservative": 0.60,
+    "standard": 0.50,
+    "broad": 0.42,
+}
 
 
 def run_similarity_scan(
@@ -59,60 +65,108 @@ def run_similarity_scan(
     db.commit()
 
     try:
-        # ── 1. Generate typo candidates ────────────────────────
-        typo_candidates = list(generate_typo_candidates(brand.brand_label))
+        scan_seeds = iter_scan_seeds(list(brand.seeds or []))
+        if not scan_seeds:
+            logger.warning("No scan seeds available for brand=%s", brand.brand_name)
+            repo.finish_scan(
+                cursor,
+                status="complete",
+                domains_scanned=0,
+                domains_matched=0,
+            )
+            db.commit()
+            return {"candidates": 0, "matched": 0, "scanned": 0, "removed": 0}
+
+        per_seed_limit = max(250, min(1500, int(5000 / max(1, len(scan_seeds)))))
         logger.info(
-            "Generated %d typo candidates for '%s'",
-            len(typo_candidates), brand.brand_label,
+            "Scanning brand=%s with %d seeds for tld=%s (per_seed_limit=%d)",
+            brand.brand_name,
+            len(scan_seeds),
+            tld,
+            per_seed_limit,
         )
 
-        # ── 2. Fetch candidates from domain table ──────────────
-        candidates = repo.fetch_candidates(
-            brand_label=brand.brand_label,
-            tld=tld,
-            typo_candidates=typo_candidates,
-            watermark_at=watermark_at,
-            limit=5000,
-        )
-        logger.info("Found %d candidates for brand=%s tld=%s",
-                     len(candidates), brand.brand_label, tld)
-
-        # ── 3. Score each candidate ────────────────────────────
-        matches_to_upsert: list[dict] = []
+        threshold = NOISE_MODE_THRESHOLDS.get(brand.noise_mode, SCORE_THRESHOLD)
+        best_matches_by_domain: dict[str, dict] = {}
+        candidate_domain_names: set[str] = set()
         now = datetime.now(timezone.utc)
 
-        for cand in candidates:
-            scores = compute_scores(
-                label=cand["label"],
-                brand_label=brand.brand_label,
-                brand_keywords=brand.keywords or [],
-                trigram_sim=cand["sim_trigram"],
+        for seed in scan_seeds:
+            typo_candidates = list(generate_typo_candidates(seed.seed_value))
+            candidates = repo.fetch_candidates(
+                brand_label=seed.seed_value,
+                tld=tld,
+                typo_candidates=typo_candidates,
+                watermark_at=watermark_at,
+                limit=per_seed_limit,
+            )
+            logger.info(
+                "Found %d candidates for brand=%s seed=%s tld=%s",
+                len(candidates),
+                brand.brand_name,
+                seed.seed_value,
+                tld,
             )
 
-            if scores["score_final"] < SCORE_THRESHOLD:
-                continue
+            for cand in candidates:
+                candidate_domain_names.add(cand["name"])
+                scores = compute_seeded_scores(
+                    label=cand["label"],
+                    seed_value=seed.seed_value,
+                    brand_keywords=brand.keywords or [],
+                    trigram_sim=cand["sim_trigram"],
+                    seed_weight=seed.base_weight,
+                    channel_scope=seed.channel_scope,
+                )
 
-            matches_to_upsert.append({
-                "brand_id": brand.id,
-                "domain_name": cand["name"],
-                "tld": cand["tld"],
-                "label": cand["label"],
-                "score_final": scores["score_final"],
-                "score_trigram": scores["score_trigram"],
-                "score_levenshtein": scores["score_levenshtein"],
-                "score_brand_hit": scores["score_brand_hit"],
-                "score_keyword": scores["score_keyword"],
-                "score_homograph": scores["score_homograph"],
-                "reasons": scores["reasons"],
-                "risk_level": scores["risk_level"],
-                "first_detected_at": now,
-                "domain_first_seen": cand["first_seen_at"],
-            })
+                if scores["score_final"] < threshold:
+                    continue
+
+                matched_channel = (
+                    "registrable_domain"
+                    if seed.seed_type == "domain_label"
+                    else "associated_brand"
+                )
+                candidate_match = {
+                    "brand_id": brand.id,
+                    "domain_name": cand["name"],
+                    "tld": cand["tld"],
+                    "label": cand["label"],
+                    "score_final": scores["score_final"],
+                    "score_trigram": scores["score_trigram"],
+                    "score_levenshtein": scores["score_levenshtein"],
+                    "score_brand_hit": scores["score_brand_hit"],
+                    "score_keyword": scores["score_keyword"],
+                    "score_homograph": scores["score_homograph"],
+                    "reasons": scores["reasons"],
+                    "risk_level": scores["risk_level"],
+                    "first_detected_at": now,
+                    "domain_first_seen": cand["first_seen_at"],
+                    "matched_channel": matched_channel,
+                    "matched_seed_id": seed.id,
+                    "matched_seed_value": seed.seed_value,
+                    "matched_seed_type": seed.seed_type,
+                    "matched_rule": pick_matched_rule(scores["reasons"], matched_channel),
+                    "source_stream": "czds",
+                }
+                previous = best_matches_by_domain.get(cand["name"])
+                if not previous or (
+                    candidate_match["score_final"],
+                    seed.base_weight,
+                ) > (
+                    previous["score_final"],
+                    next(
+                        (row.base_weight for row in scan_seeds if row.id == previous["matched_seed_id"]),
+                        0.0,
+                    ),
+                ):
+                    best_matches_by_domain[cand["name"]] = candidate_match
 
         # ── 4. Persist matches ─────────────────────────────────
+        matches_to_upsert = list(best_matches_by_domain.values())
         matched_count = repo.upsert_matches(matches_to_upsert)
-        kept_domain_names = sorted({match["domain_name"] for match in matches_to_upsert})
-        candidate_domain_names = sorted({cand["name"] for cand in candidates})
+        kept_domain_names = sorted(best_matches_by_domain.keys())
+        candidate_domain_names_sorted = sorted(candidate_domain_names)
 
         removed_subdomain_matches = repo.delete_subdomain_matches(brand.id, tld)
         removed_stale_matches = 0
@@ -126,7 +180,7 @@ def run_similarity_scan(
             removed_stale_matches = repo.delete_matches_for_brand_tld(
                 brand.id,
                 tld,
-                sorted(set(candidate_domain_names) - set(kept_domain_names)),
+                sorted(set(candidate_domain_names_sorted) - set(kept_domain_names)),
             )
 
         logger.info("Upserted %d matches for brand=%s tld=%s",
@@ -151,15 +205,15 @@ def run_similarity_scan(
             cursor,
             status="complete",
             watermark_at=new_watermark,
-            domains_scanned=len(candidates),
+            domains_scanned=len(candidate_domain_names_sorted),
             domains_matched=matched_count,
         )
         db.commit()
 
         metrics = {
-            "candidates": len(candidates),
+            "candidates": len(candidate_domain_names_sorted),
             "matched": matched_count,
-            "scanned": len(candidates),
+            "scanned": len(candidate_domain_names_sorted),
             "removed": removed_stale_matches + removed_subdomain_matches,
         }
 
