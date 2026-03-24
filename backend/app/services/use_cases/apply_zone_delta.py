@@ -8,9 +8,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.domain_repository import DomainRepository
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ def apply_zone_delta(
     """Parse zone file in streaming mode and upsert directly into domain."""
     ts = datetime.now(timezone.utc)
     repo = DomainRepository(db)
+    run_repo = IngestionRunRepository(db)
 
     batch: list[str] = []
     total_parsed = 0
@@ -67,10 +68,7 @@ def apply_zone_delta(
             repo.bulk_upsert(batch, tld, ts)
             total_parsed += len(batch)
             logger.info("Upserted %d domains so far...", total_parsed)
-            db.execute(
-                text("UPDATE ingestion_run SET domains_seen = :total WHERE id = :id"),
-                {"total": total_parsed, "id": run_id},
-            )
+            run_repo.update_progress(run_id, domains_seen=total_parsed)
             db.commit()
             batch.clear()
 
@@ -78,10 +76,7 @@ def apply_zone_delta(
         repo.bulk_upsert(batch, tld, ts)
         total_parsed += len(batch)
 
-    db.execute(
-        text("UPDATE ingestion_run SET domains_seen = :total WHERE id = :id"),
-        {"total": total_parsed, "id": run_id},
-    )
+    run_repo.update_progress(run_id, domains_seen=total_parsed)
     db.commit()
 
     logger.info("Total domains upserted: %d", total_parsed)

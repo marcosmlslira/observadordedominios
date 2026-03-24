@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     )
     CZDS_SYNC_CRON: str = "0 7 * * *"
     CZDS_FORCE_COOLDOWN_HOURS: int = 24
-    CZDS_RUNNING_STALE_MINUTES: int = 180
+    CZDS_RUNNING_STALE_MINUTES: int = 60
     CZDS_BASE_URL: str = "https://czds-api.icann.org"
 
     # ── CT Logs (CertStream + crt.sh) ──────────────────────────

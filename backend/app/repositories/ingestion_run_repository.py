@@ -131,6 +131,15 @@ class IngestionRunRepository:
             query = query.filter(IngestionCheckpoint.source == source)
         return query.order_by(IngestionCheckpoint.source, IngestionCheckpoint.tld).all()
 
+    def list_checkpoint_tlds(self, source: str) -> set[str]:
+        """Return the set of TLDs that already have a successful checkpoint."""
+        rows = (
+            self.db.query(IngestionCheckpoint.tld)
+            .filter(IngestionCheckpoint.source == source)
+            .all()
+        )
+        return {row[0] for row in rows}
+
     def has_running_run(self, source: str, tld: str, exclude_run_id: uuid.UUID | None = None) -> bool:
         """Check if there is already a running run for this source/TLD."""
         query = (
@@ -162,7 +171,7 @@ class IngestionRunRepository:
                 IngestionRun.source == source,
                 IngestionRun.tld == tld,
                 IngestionRun.status == "running",
-                IngestionRun.started_at < cutoff,
+                IngestionRun.updated_at < cutoff,
             )
             .order_by(IngestionRun.started_at.asc())
         )
@@ -186,6 +195,30 @@ class IngestionRunRepository:
 
         self.db.flush()
         return stale_runs
+
+    def touch_run(self, run: IngestionRun) -> IngestionRun:
+        """Refresh run heartbeat without changing business status."""
+        run.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+        return run
+
+    def update_progress(self, run_id: uuid.UUID, *, domains_seen: int) -> None:
+        """Persist progress counters and refresh heartbeat for long-running syncs."""
+        self.db.execute(
+            text(
+                """
+                UPDATE ingestion_run
+                SET domains_seen = :domains_seen,
+                    updated_at = :updated_at
+                WHERE id = :id
+                """
+            ),
+            {
+                "id": run_id,
+                "domains_seen": domains_seen,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
 
     # ── Checkpoint ──────────────────────────────────────────
     def upsert_checkpoint(self, source: str, tld: str, run: IngestionRun) -> None:

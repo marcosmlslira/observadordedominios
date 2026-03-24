@@ -120,7 +120,9 @@ def sync_czds_tld(
                 if datetime.now(timezone.utc) - mtime < timedelta(hours=24):
                     logger.info("Local zone file %s is recent, skipping download.", local_path)
                     download_needed = False
-            
+
+            run_repo.touch_run(run)
+            db.commit()
             if download_needed:
                 local_path, sha256, size_bytes = czds.download_zone(tld, dest_dir=str(data_dir))
             else:
@@ -134,6 +136,9 @@ def sync_czds_tld(
                         size_bytes += len(chunk)
                 sha256 = hasher.hexdigest()
 
+            run_repo.touch_run(run)
+            db.commit()
+
             # ── 6. Upload to S3 ─────────────────────────────
             s3.ensure_bucket()
             object_key = S3Storage.build_object_key(tld, run.id)
@@ -141,6 +146,8 @@ def sync_czds_tld(
                 local_path, object_key,
                 tld=tld, run_id=run.id, sha256=sha256,
             )
+            run_repo.touch_run(run)
+            db.commit()
 
             # ── 7. Persist artifact metadata ────────────────
             artifact = artifact_repo.create_artifact(
