@@ -26,17 +26,17 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { isAuthenticated, logout } = useAuth()
+  const { isAuthenticated, isReady, logout } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (isReady && !isAuthenticated) {
       router.push("/login")
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isReady, router])
 
-  if (!isAuthenticated) return null
+  if (!isReady || !isAuthenticated) return null
 
   function handleLogout() {
     logout()

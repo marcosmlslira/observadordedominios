@@ -14,6 +14,7 @@ import type { TokenResponse } from "./types"
 interface AuthContextValue {
   token: string | null
   isAuthenticated: boolean
+  isReady: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => void
 }
@@ -22,10 +23,12 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
+  const [isReady, setIsReady] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem("admin_token")
     if (stored) setToken(stored)
+    setIsReady(true)
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
@@ -51,8 +54,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ token, isAuthenticated: !!token, login, logout }),
-    [token, login, logout],
+    () => ({ token, isAuthenticated: !!token, isReady, login, logout }),
+    [token, isReady, login, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
