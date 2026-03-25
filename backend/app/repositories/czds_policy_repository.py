@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.czds_tld_policy import CzdsTldPolicy
@@ -14,9 +15,16 @@ class CzdsPolicyRepository:
         self.db = db
 
     def list_enabled(self) -> list[CzdsTldPolicy]:
+        now = datetime.now(timezone.utc)
         return (
             self.db.query(CzdsTldPolicy)
             .filter(CzdsTldPolicy.is_enabled == True)  # noqa: E712
+            .filter(
+                or_(
+                    CzdsTldPolicy.suspended_until.is_(None),
+                    CzdsTldPolicy.suspended_until <= now,
+                )
+            )
             .order_by(CzdsTldPolicy.priority.asc(), CzdsTldPolicy.tld.asc())
             .all()
         )
@@ -48,6 +56,10 @@ class CzdsPolicyRepository:
             policy.is_enabled = True
             policy.priority = priority
             policy.cooldown_hours = 24
+            policy.failure_count = 0
+            policy.last_error_code = None
+            policy.last_error_at = None
+            policy.suspended_until = None
             policy.notes = "Managed via admin ingestion settings"
             policy.updated_at = now
 
@@ -59,3 +71,50 @@ class CzdsPolicyRepository:
 
         self.db.flush()
         return self.list_enabled()
+
+    def get(self, tld: str) -> CzdsTldPolicy | None:
+        return self.db.get(CzdsTldPolicy, tld)
+
+    def ensure(self, tld: str) -> CzdsTldPolicy:
+        policy = self.get(tld)
+        if policy is None:
+            policy = CzdsTldPolicy(
+                tld=tld,
+                is_enabled=True,
+                priority=999,
+                cooldown_hours=24,
+            )
+            self.db.add(policy)
+            self.db.flush()
+        return policy
+
+    def record_success(self, tld: str) -> CzdsTldPolicy:
+        now = datetime.now(timezone.utc)
+        policy = self.ensure(tld)
+        policy.failure_count = 0
+        policy.last_error_code = None
+        policy.last_error_at = None
+        policy.suspended_until = None
+        policy.updated_at = now
+        self.db.flush()
+        return policy
+
+    def record_failure(
+        self,
+        tld: str,
+        *,
+        status_code: int | None,
+        message: str,
+        suspend_hours: int | None = None,
+    ) -> CzdsTldPolicy:
+        now = datetime.now(timezone.utc)
+        policy = self.ensure(tld)
+        policy.failure_count = (policy.failure_count or 0) + 1
+        policy.last_error_code = status_code
+        policy.last_error_at = now
+        policy.updated_at = now
+        policy.notes = message
+        if suspend_hours and suspend_hours > 0:
+            policy.suspended_until = now + timedelta(hours=suspend_hours)
+        self.db.flush()
+        return policy

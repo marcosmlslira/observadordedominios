@@ -53,6 +53,10 @@ class CzdsPolicyItemResponse(BaseModel):
     is_enabled: bool
     priority: int
     cooldown_hours: int
+    failure_count: int = 0
+    last_error_code: int | None = None
+    last_error_at: datetime | None = None
+    suspended_until: datetime | None = None
     notes: str | None = None
 
     model_config = {"from_attributes": True}

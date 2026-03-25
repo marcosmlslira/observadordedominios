@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     CZDS_FORCE_COOLDOWN_HOURS: int = 24
     CZDS_RUNNING_STALE_MINUTES: int = 60
     CZDS_BASE_URL: str = "https://czds-api.icann.org"
+    CZDS_AUTH_RATE_LIMIT_BACKOFF_SECONDS: int = 300
+    CZDS_TLD_FORBIDDEN_SUSPEND_HOURS: int = 168
+    CZDS_TLD_NOT_FOUND_SUSPEND_HOURS: int = 168
 
     # ── CT Logs (CertStream + crt.sh) ──────────────────────────
     CT_CERTSTREAM_URL: str = "ws://certstream_server:8080/"

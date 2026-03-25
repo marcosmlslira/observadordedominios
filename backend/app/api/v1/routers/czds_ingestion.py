@@ -119,13 +119,14 @@ def get_policy(
     db: Session = Depends(get_db),
 ):
     repo = CzdsPolicyRepository(db)
-    items = repo.list_enabled()
+    active_items = repo.list_enabled()
+    all_items = repo.list_all()
 
-    if items:
+    if all_items:
         return CzdsPolicyResponse(
             source="database",
-            tlds=[item.tld for item in items],
-            items=items,
+            tlds=[item.tld for item in active_items],
+            items=all_items,
         )
 
     fallback_tlds = _env_fallback_tlds()

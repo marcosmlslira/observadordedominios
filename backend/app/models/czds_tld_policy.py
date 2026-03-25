@@ -14,6 +14,10 @@ class CzdsTldPolicy(Base):
     is_enabled = Column(Boolean, nullable=False, default=True)
     priority = Column(Integer, nullable=False, default=100)
     cooldown_hours = Column(Integer, nullable=False, default=24)
+    failure_count = Column(Integer, nullable=False, default=0)
+    last_error_code = Column(Integer, nullable=True)
+    last_error_at = Column(DateTime(timezone=True), nullable=True)
+    suspended_until = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
     updated_at = Column(
         DateTime(timezone=True),

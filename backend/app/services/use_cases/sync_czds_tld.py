@@ -9,12 +9,18 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.infra.external.czds_client import CZDSClient
+from app.infra.external.czds_client import (
+    CZDSAuthRateLimitedError,
+    CZDSClient,
+    CZDSTldAccessError,
+)
 from app.infra.external.s3_storage import S3Storage
+from app.repositories.czds_policy_repository import CzdsPolicyRepository
 from app.repositories.domain_repository import ensure_partition
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.zone_artifact_repository import ZoneArtifactRepository
@@ -30,6 +36,11 @@ class SyncAlreadyRunningError(Exception):
 
 class CooldownActiveError(Exception):
     """Raised when the TLD is still within the cooldown window."""
+    pass
+
+
+class TldSuspendedError(Exception):
+    """Raised when a TLD is temporarily quarantined from CZDS attempts."""
     pass
 
 
@@ -49,9 +60,20 @@ def sync_czds_tld(
     """
     source = "czds"
     run_repo = IngestionRunRepository(db)
+    policy_repo = CzdsPolicyRepository(db)
     artifact_repo = ZoneArtifactRepository(db)
     czds = czds_client or CZDSClient()
     s3 = s3_storage or S3Storage()
+    policy = policy_repo.ensure(tld)
+
+    if (
+        not force
+        and policy.suspended_until is not None
+        and policy.suspended_until > datetime.now(timezone.utc)
+    ):
+        raise TldSuspendedError(
+            f"TLD={tld} is suspended until {policy.suspended_until.isoformat()}"
+        )
 
     stale_runs = run_repo.recover_stale_runs(
         source,
@@ -124,6 +146,13 @@ def sync_czds_tld(
             run_repo.touch_run(run)
             db.commit()
             if download_needed:
+                authorized_tlds = czds.list_authorized_tlds()
+                if tld.lower() not in authorized_tlds:
+                    raise CZDSTldAccessError(
+                        tld,
+                        404,
+                        f"TLD={tld} is not present in the current CZDS download links.",
+                    )
                 local_path, sha256, size_bytes = czds.download_zone(tld, dest_dir=str(data_dir))
             else:
                 import hashlib
@@ -174,6 +203,7 @@ def sync_czds_tld(
                 artifact_id=artifact.id,
             )
             run_repo.upsert_checkpoint(source, tld, run)
+            policy_repo.record_success(tld)
             db.commit()
 
             # Clean up local cache after successful sync (R4)
@@ -189,6 +219,58 @@ def sync_czds_tld(
                 run.id, tld, metrics,
             )
             return run.id
+
+        except CZDSAuthRateLimitedError as exc:
+            logger.warning("CZDS auth throttled while syncing TLD=%s", tld)
+            db.rollback()
+            run_repo.finish_run(run, status="failed", error_message=str(exc))
+            db.commit()
+            raise
+
+        except CZDSTldAccessError as exc:
+            logger.warning(
+                "Suspending TLD=%s after CZDS access error status=%s",
+                tld,
+                exc.status_code,
+            )
+            db.rollback()
+            suspend_hours = None
+            if exc.status_code == 403:
+                suspend_hours = settings.CZDS_TLD_FORBIDDEN_SUSPEND_HOURS
+            elif exc.status_code == 404:
+                suspend_hours = settings.CZDS_TLD_NOT_FOUND_SUSPEND_HOURS
+
+            policy_repo.record_failure(
+                tld,
+                status_code=exc.status_code,
+                message=str(exc),
+                suspend_hours=suspend_hours,
+            )
+            run_repo.finish_run(run, status="failed", error_message=str(exc))
+            db.commit()
+            raise
+
+        except httpx.HTTPStatusError as exc:
+            logger.exception("Sync FAILED for TLD=%s run_id=%s", tld, run.id)
+            db.rollback()
+
+            status_code = exc.response.status_code if exc.response is not None else None
+            if status_code in {403, 404}:
+                suspend_hours = (
+                    settings.CZDS_TLD_FORBIDDEN_SUSPEND_HOURS
+                    if status_code == 403
+                    else settings.CZDS_TLD_NOT_FOUND_SUSPEND_HOURS
+                )
+                policy_repo.record_failure(
+                    tld,
+                    status_code=status_code,
+                    message=str(exc),
+                    suspend_hours=suspend_hours,
+                )
+
+            run_repo.finish_run(run, status="failed", error_message=str(exc))
+            db.commit()
+            raise
 
         except Exception as exc:
             logger.exception("Sync FAILED for TLD=%s run_id=%s", tld, run.id)

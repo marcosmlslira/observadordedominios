@@ -10,12 +10,14 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
+from app.infra.external.czds_client import CZDSAuthRateLimitedError, CZDSClient
 from app.infra.db.session import SessionLocal
 from app.models.czds_tld_policy import CzdsTldPolicy
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.use_cases.sync_czds_tld import (
     CooldownActiveError,
     SyncAlreadyRunningError,
+    TldSuspendedError,
     sync_czds_tld,
 )
 
@@ -78,6 +80,7 @@ def run_sync_cycle(tlds: list[str] | None = None) -> None:
     """Execute a sync cycle for the provided TLDs in priority order."""
     tlds = tlds or _get_enabled_tlds()
     logger.info("Starting sync cycle for TLDs: %s", tlds)
+    shared_czds_client = CZDSClient()
 
     for tld in tlds:
         if STOP_EVENT.is_set():
@@ -86,12 +89,21 @@ def run_sync_cycle(tlds: list[str] | None = None) -> None:
         db = SessionLocal()
         try:
             logger.info("▶ Syncing TLD=%s", tld)
-            run_id = sync_czds_tld(db, tld)
+            run_id = sync_czds_tld(db, tld, czds_client=shared_czds_client)
             logger.info("✅ TLD=%s completed: run_id=%s", tld, run_id)
         except CooldownActiveError:
             logger.info("⏭ TLD=%s skipped (cooldown active)", tld)
+        except TldSuspendedError as exc:
+            logger.info("⏭ TLD=%s skipped (%s)", tld, exc)
         except SyncAlreadyRunningError:
             logger.warning("⏭ TLD=%s skipped (already running)", tld)
+        except CZDSAuthRateLimitedError:
+            logger.warning(
+                "CZDS authentication throttled. Waiting %d seconds before continuing.",
+                settings.CZDS_AUTH_RATE_LIMIT_BACKOFF_SECONDS,
+            )
+            _wait_or_stop(settings.CZDS_AUTH_RATE_LIMIT_BACKOFF_SECONDS)
+            break
         except Exception:
             logger.exception("❌ TLD=%s failed", tld)
         finally:
