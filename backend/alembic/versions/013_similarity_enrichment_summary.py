@@ -1,6 +1,6 @@
 """Add enrichment summary fields to similarity matches.
 
-Revision ID: 013_similarity_enrichment_summary
+Revision ID: 013_similarity_enrich
 Revises: 012_similarity_actionability
 Create Date: 2026-03-25
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "013_similarity_enrichment_summary"
+revision = "013_similarity_enrich"
 down_revision = "012_similarity_actionability"
 branch_labels = None
 depends_on = None
