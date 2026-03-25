@@ -1,10 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Zap, Layers } from "lucide-react"
 
 interface DomainVariant {
   domain: string
@@ -33,6 +34,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 export function DomainSimilarityResult({ data }: { data: DomainSimilarityResult }) {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [showAll, setShowAll] = useState(false)
 
@@ -44,6 +46,16 @@ export function DomainSimilarityResult({ data }: { data: DomainSimilarityResult 
   )
   const displayed = showAll ? filtered : filtered.slice(0, 50)
 
+  function openQuickAnalysis(domain: string) {
+    router.push(`/admin/tools?q=${encodeURIComponent(domain)}`)
+  }
+
+  function openCloneDetector(variant: string) {
+    // target = variant, reference = original domain
+    const target = `${variant}|${data.domain}`
+    router.push(`/admin/tools/website-clone?target=${encodeURIComponent(target)}`)
+  }
+
   return (
     <div className="space-y-4">
       {/* Summary */}
@@ -54,24 +66,53 @@ export function DomainSimilarityResult({ data }: { data: DomainSimilarityResult 
             {registered.length} registered variants found
           </p>
           <p className="text-xs text-muted-foreground">
-            {data.total_generated} total variations generated
+            {data.total_generated} total variations generated for{" "}
+            <span className="font-mono">{data.domain}</span>
           </p>
         </div>
       </div>
 
-      {/* Registered — always shown */}
+      {/* Registered — with action buttons */}
       {registered.length > 0 && (
         <div>
           <p className="text-xs font-medium text-destructive mb-2">
             Registered domains ({registered.length})
           </p>
-          <div className="flex flex-wrap gap-1">
+          <div className="space-y-2">
             {registered.map((v) => (
-              <div key={v.domain} className="flex items-center gap-1">
-                <Badge variant="destructive" className="text-xs font-mono font-normal">
+              <div
+                key={v.domain}
+                className="flex items-center gap-2 p-2 rounded-md border border-destructive/20 bg-destructive/5 group"
+              >
+                <Badge variant="destructive" className="text-xs font-mono font-normal shrink-0">
                   {v.domain}
                 </Badge>
-                <Badge variant="outline" className="text-xs">{TYPE_LABELS[v.type] ?? v.type}</Badge>
+                <Badge variant="outline" className="text-xs shrink-0">
+                  {TYPE_LABELS[v.type] ?? v.type}
+                </Badge>
+                <div className="flex-1" />
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    onClick={() => openQuickAnalysis(v.domain)}
+                    title="Run Quick Analysis on this domain"
+                  >
+                    <Zap className="h-3 w-3 mr-1" />
+                    Quick Analysis
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    onClick={() => openCloneDetector(v.domain)}
+                    title="Compare this site with your original"
+                  >
+                    <Layers className="h-3 w-3 mr-1" />
+                    Clone Check
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -97,7 +138,9 @@ export function DomainSimilarityResult({ data }: { data: DomainSimilarityResult 
                 <Badge
                   key={v.domain}
                   variant={isRegistered ? "destructive" : "outline"}
-                  className="text-xs font-mono font-normal"
+                  className="text-xs font-mono font-normal cursor-pointer"
+                  onClick={() => isRegistered && openQuickAnalysis(v.domain)}
+                  title={isRegistered ? "Click to run Quick Analysis" : undefined}
                 >
                   {v.domain}
                 </Badge>

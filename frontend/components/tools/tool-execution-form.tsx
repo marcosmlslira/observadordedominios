@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,19 +10,33 @@ interface ToolExecutionFormProps {
   onSubmit: (target: string, force: boolean) => void
   loading: boolean
   placeholder?: string
+  initialValue?: string
 }
 
 export function ToolExecutionForm({
   onSubmit,
   loading,
   placeholder = "example.com",
+  initialValue,
 }: ToolExecutionFormProps) {
-  const [target, setTarget] = useState("")
+  const [target, setTarget] = useState(initialValue ?? "")
+
+  useEffect(() => {
+    if (initialValue) setTarget(initialValue)
+  }, [initialValue])
+
+  function normalize(value: string): string {
+    return value.trim().toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .split("/")[0]
+      .split("?")[0]
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!target.trim()) return
-    onSubmit(target.trim().toLowerCase(), false)
+    onSubmit(normalize(target), false)
   }
 
   return (

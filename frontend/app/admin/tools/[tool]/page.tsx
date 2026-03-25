@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useParams } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { toolsApi } from "@/lib/api"
 import { getToolBySlug } from "@/lib/tools"
@@ -13,13 +13,31 @@ import { ToolResultRenderer } from "@/components/tools/result-renderers"
 import { ArrowLeft, RefreshCw } from "lucide-react"
 
 export default function ToolPage() {
+  return (
+    <Suspense>
+      <ToolPageContent />
+    </Suspense>
+  )
+}
+
+function ToolPageContent() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const slug = params.tool as string
   const tool = getToolBySlug(slug)
 
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ToolResponse | null>(null)
   const [error, setError] = useState("")
+
+  // Auto-run if ?target= is present in URL
+  useEffect(() => {
+    const preTarget = searchParams.get("target")
+    if (preTarget && tool) {
+      handleSubmit(preTarget, false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (!tool) {
     return (
@@ -43,7 +61,14 @@ export default function ToolPage() {
       const resp = await toolsApi.run(slug, target, force)
       setResult(resp)
     } catch (err: any) {
-      setError(err.message || "Tool execution failed")
+      const msg: string = err.message || "Tool execution failed"
+      if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
+        setError("Rate limit exceeded — try again in a few minutes.")
+      } else if (msg.toLowerCase().includes("timeout")) {
+        setError("Tool timed out. The target may be unreachable or slow to respond.")
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
@@ -59,6 +84,8 @@ export default function ToolPage() {
       .catch((err: any) => setError(err.message || "Re-run failed"))
       .finally(() => setLoading(false))
   }
+
+  const preTarget = searchParams.get("target") ?? undefined
 
   return (
     <div className="space-y-4">
@@ -79,6 +106,7 @@ export default function ToolPage() {
         onSubmit={handleSubmit}
         loading={loading}
         placeholder={tool.type === "website_clone" ? "target.com|reference.com" : "example.com"}
+        initialValue={preTarget}
       />
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -100,10 +128,7 @@ export default function ToolPage() {
           )}
           <ToolResultEnvelope result={result} title={tool.name}>
             {result.result && (
-              <ToolResultRenderer
-                toolType={tool.type}
-                data={result.result}
-              />
+              <ToolResultRenderer toolType={tool.type} data={result.result} />
             )}
           </ToolResultEnvelope>
         </div>

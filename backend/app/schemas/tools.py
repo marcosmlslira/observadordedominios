@@ -31,13 +31,22 @@ TriggeredBy = Literal["manual", "quick_analysis"]
 
 # ── Shared request / response ─────────────────────────────
 
+def _normalize_domain(value: str) -> str:
+    import re
+    v = value.strip().lower().rstrip(".")
+    v = re.sub(r"^https?://", "", v)
+    v = re.sub(r"^www\.", "", v)
+    v = v.split("/")[0].split("?")[0].split("#")[0]
+    return v
+
+
 class ToolRequest(BaseModel):
     target: str = Field(..., min_length=1, max_length=253)
 
     @field_validator("target")
     @classmethod
     def normalize_target(cls, value: str) -> str:
-        return value.strip().lower().rstrip(".")
+        return _normalize_domain(value)
 
 
 class ToolResponse(BaseModel):
@@ -68,7 +77,7 @@ class QuickAnalysisRequest(BaseModel):
     @field_validator("target")
     @classmethod
     def normalize_target(cls, value: str) -> str:
-        return value.strip().lower().rstrip(".")
+        return _normalize_domain(value)
 
 
 class QuickAnalysisToolResult(BaseModel):
