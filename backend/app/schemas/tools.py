@@ -40,6 +40,14 @@ def _normalize_domain(value: str) -> str:
     return v
 
 
+def _normalize_domain_pair(value: str) -> str:
+    if "|" not in value:
+        return _normalize_domain(value)
+
+    target, reference = value.split("|", 1)
+    return f"{_normalize_domain(target)}|{_normalize_domain(reference)}"
+
+
 class ToolRequest(BaseModel):
     target: str = Field(..., min_length=1, max_length=253)
 
@@ -47,6 +55,30 @@ class ToolRequest(BaseModel):
     @classmethod
     def normalize_target(cls, value: str) -> str:
         return _normalize_domain(value)
+
+
+class WebsiteCloneRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=253)
+    reference_target: str | None = Field(default=None, min_length=1, max_length=253)
+
+    @field_validator("target")
+    @classmethod
+    def normalize_target(cls, value: str) -> str:
+        return _normalize_domain_pair(value)
+
+    @field_validator("reference_target")
+    @classmethod
+    def normalize_reference_target(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_domain(value)
+
+    def build_execution_target(self) -> str:
+        if self.reference_target:
+            return f"{_normalize_domain(self.target)}|{self.reference_target}"
+        if "|" in self.target:
+            return self.target
+        raise ValueError("Website Clone requires target and reference_target")
 
 
 class ToolResponse(BaseModel):
@@ -218,6 +250,9 @@ class SuspiciousPageResult(BaseModel):
     risk_level: Literal["safe", "low", "medium", "high", "critical"] = "safe"
     signals: list[SuspiciousSignal] = []
     page_title: str | None = None
+    final_url: str | None = None
+    http_status: int | None = None
+    page_disposition: Literal["live", "parked", "challenge", "unreachable"] | None = None
     has_login_form: bool = False
     has_credential_inputs: bool = False
     external_resource_count: int = 0

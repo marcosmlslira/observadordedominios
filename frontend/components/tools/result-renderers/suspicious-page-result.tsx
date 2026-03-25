@@ -14,6 +14,9 @@ interface SuspiciousPageData {
   risk_level: "safe" | "low" | "medium" | "high" | "critical"
   signals: Signal[]
   page_title: string | null
+  final_url: string | null
+  http_status: number | null
+  page_disposition: "live" | "parked" | "challenge" | "unreachable" | null
   has_login_form: boolean
   has_credential_inputs: boolean
   external_resource_count: number
@@ -68,6 +71,14 @@ export function SuspiciousPageResult({ data }: { data: SuspiciousPageData }) {
 
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div>
+          <p className="text-xs text-muted-foreground">Disposition</p>
+          <p>{data.page_disposition ?? "unknown"}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">HTTP Status</p>
+          <p>{data.http_status ?? "N/A"}</p>
+        </div>
+        <div>
           <p className="text-xs text-muted-foreground">Login Form</p>
           <p>{data.has_login_form ? "Yes" : "No"}</p>
         </div>
@@ -75,6 +86,16 @@ export function SuspiciousPageResult({ data }: { data: SuspiciousPageData }) {
           <p className="text-xs text-muted-foreground">Credential Inputs</p>
           <p>{data.has_credential_inputs ? "Yes" : "No"}</p>
         </div>
+      </div>
+
+      {data.final_url && (
+        <div>
+          <p className="text-xs text-muted-foreground">Final URL</p>
+          <p className="text-xs font-mono break-all">{data.final_url}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 text-sm">
         <div>
           <p className="text-xs text-muted-foreground">External Resources</p>
           <p>{data.external_resource_count}</p>

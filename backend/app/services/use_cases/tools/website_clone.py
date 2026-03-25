@@ -17,5 +17,5 @@ class WebsiteCloneService(BaseToolService):
         if "|" in target:
             t, ref = target.split("|", 1)
         else:
-            raise ValueError("Website Clone requires 'target|reference' format")
+            raise ValueError("Website Clone requires a target and reference domain")
         return compare_websites(t.strip(), ref.strip())

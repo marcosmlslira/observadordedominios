@@ -177,6 +177,18 @@ export interface SimilarityMatch {
   score_homograph: number | null
   reasons: string[]
   risk_level: string
+  actionability_score: number | null
+  attention_bucket: string | null
+  attention_reasons: string[] | null
+  recommended_action: string | null
+  enrichment_status: string | null
+  enrichment_summary: {
+    signals?: { code: string; severity: string; description: string }[]
+    tools?: Record<string, { status?: string; error?: string | null; summary?: Record<string, unknown> }>
+    target?: string
+    error?: string
+  } | null
+  last_enriched_at: string | null
   first_detected_at: string
   domain_first_seen: string
   status: string
@@ -233,6 +245,7 @@ export interface ToolResponse {
 
 export interface ToolRequest {
   target: string
+  reference_target?: string
 }
 
 export interface QuickAnalysisRequest {

@@ -39,6 +39,28 @@ URGENCY_TERMS = {
     "limited time", "tempo limitado", "click here", "clique aqui",
 }
 
+PARKED_PATTERNS = (
+    "this domain is for sale",
+    "buy this domain",
+    "domain for sale",
+    "parked free",
+    "parked domain",
+    "afternic",
+    "sedo",
+    "dan.com",
+    "undeveloped",
+)
+
+CHALLENGE_PATTERNS = (
+    "access denied",
+    "attention required",
+    "checking your browser",
+    "ddos-guard",
+    "cloudflare",
+    "temporarily unavailable",
+    "service unavailable",
+)
+
 
 class SuspiciousPageService(BaseToolService):
     tool_type = "suspicious_page"
@@ -46,23 +68,65 @@ class SuspiciousPageService(BaseToolService):
     timeout_seconds = settings.TOOLS_DEFAULT_TIMEOUT_SECONDS
 
     def _execute(self, target: str) -> dict:
-        html = self._fetch_html(target)
-        if not html:
+        page = self._fetch_page(target)
+        if not page:
             return {
                 "risk_score": 0.0,
                 "risk_level": "safe",
                 "signals": [],
                 "page_title": None,
+                "final_url": None,
+                "http_status": None,
+                "page_disposition": "unreachable",
                 "has_login_form": False,
                 "has_credential_inputs": False,
                 "external_resource_count": 0,
             }
 
+        html = page["html"]
         soup = BeautifulSoup(html, "html.parser")
         text_content = soup.get_text(separator=" ", strip=True).lower()
         page_title = soup.title.string.strip() if soup.title and soup.title.string else None
+        final_url = page["final_url"]
+        http_status = page["status_code"]
+        server_header = page["server"]
 
         signals: list[dict] = []
+        page_disposition = "live"
+
+        parked_hit = self._find_first_match(
+            [page_title or "", final_url, text_content],
+            PARKED_PATTERNS,
+        )
+        if parked_hit:
+            page_disposition = "parked"
+            signals.append({
+                "category": "parked_domain",
+                "description": f"Parked or for-sale page detected via '{parked_hit}'",
+                "severity": "low",
+            })
+
+        challenge_hit = self._find_first_match(
+            [page_title or "", final_url, text_content, server_header or ""],
+            CHALLENGE_PATTERNS,
+        )
+        if challenge_hit or http_status in {401, 403, 429, 503}:
+            if page_disposition != "parked":
+                page_disposition = "challenge"
+            signals.append({
+                "category": "protected_page",
+                "description": (
+                    f"Protected or blocked page detected"
+                    + (f" via '{challenge_hit}'" if challenge_hit else f" (HTTP {http_status})")
+                ),
+                "severity": "medium",
+            })
+        if server_header and "ddos-guard" in server_header.lower():
+            signals.append({
+                "category": "infrastructure_masking",
+                "description": "Hosted behind DDoS-Guard shielding",
+                "severity": "medium",
+            })
 
         # Check login forms
         has_login_form = False
@@ -153,21 +217,39 @@ class SuspiciousPageService(BaseToolService):
             "risk_level": risk_level,
             "signals": signals,
             "page_title": page_title,
+            "final_url": final_url,
+            "http_status": http_status,
+            "page_disposition": page_disposition,
             "has_login_form": has_login_form,
             "has_credential_inputs": has_credential_inputs,
             "external_resource_count": external_count,
         }
 
-    def _fetch_html(self, domain: str) -> str | None:
+    def _fetch_page(self, domain: str) -> dict | None:
         for scheme in ("https", "http"):
             try:
                 with httpx.Client(
                     follow_redirects=True,
                     timeout=httpx.Timeout(10, read=15),
                     verify=False,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; ObsBot/1.0)"},
                 ) as client:
                     resp = client.get(f"{scheme}://{domain}")
-                    return resp.text
+                    return {
+                        "html": resp.text,
+                        "final_url": str(resp.url),
+                        "status_code": resp.status_code,
+                        "server": resp.headers.get("server"),
+                    }
             except Exception:
                 continue
+        return None
+
+    @staticmethod
+    def _find_first_match(values: list[str], patterns: tuple[str, ...]) -> str | None:
+        for value in values:
+            haystack = value.lower()
+            for pattern in patterns:
+                if pattern in haystack:
+                    return pattern
         return None

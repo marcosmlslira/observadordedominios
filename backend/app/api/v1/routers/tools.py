@@ -9,10 +9,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.dependencies import get_current_admin
+from app.infra.external.s3_storage import S3Storage
 from app.infra.db.session import get_db
 from app.repositories.tool_execution_repository import ToolExecutionRepository
 from app.schemas.tools import (
@@ -24,6 +26,7 @@ from app.schemas.tools import (
     ToolRequest,
     ToolResponse,
     ToolType,
+    WebsiteCloneRequest,
 )
 from app.services.use_cases.tools.base import BaseToolService, RateLimitExceeded
 
@@ -33,6 +36,11 @@ router = APIRouter(
     prefix="/v1/tools",
     tags=["Tools"],
     dependencies=[Depends(get_current_admin)],
+)
+
+public_router = APIRouter(
+    prefix="/v1/tools",
+    tags=["Tools"],
 )
 
 # ── Placeholder org ID (until multi-tenancy) ─────────────
@@ -154,10 +162,29 @@ def domain_similarity(body: ToolRequest, force: bool = Query(False), db: Session
 
 
 @router.post("/website-clone", response_model=ToolResponse, summary="Website Clone Detector")
-def website_clone(body: ToolRequest, force: bool = Query(False), db: Session = Depends(get_db)):
-    result = _run_tool("website_clone", body, db, force)
+def website_clone(body: WebsiteCloneRequest, force: bool = Query(False), db: Session = Depends(get_db)):
+    target = body.build_execution_target()
+    result = _run_tool("website_clone", ToolRequest(target=target), db, force)
     db.commit()
     return result
+
+
+@public_router.get("/screenshots/{object_path:path}", include_in_schema=False)
+def get_screenshot(object_path: str):
+    object_key = f"tools/screenshots/{object_path.lstrip('/')}"
+    storage = S3Storage()
+    storage.bucket = settings.TOOLS_S3_BUCKET
+
+    try:
+        body, content_type = storage.download_object(object_key)
+    except Exception as exc:  # pragma: no cover - exercised in production path
+        raise HTTPException(status_code=404, detail="Screenshot not found") from exc
+
+    return Response(
+        content=body,
+        media_type=content_type or "image/png",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 # ── Quick Analysis ────────────────────────────────────────

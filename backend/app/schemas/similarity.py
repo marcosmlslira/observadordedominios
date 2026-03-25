@@ -70,6 +70,13 @@ class MatchResponse(BaseModel):
     score_homograph: float | None
     reasons: list[str]
     risk_level: str
+    actionability_score: float | None = None
+    attention_bucket: str | None = None
+    attention_reasons: list[str] | None = None
+    recommended_action: str | None = None
+    enrichment_status: str | None = None
+    enrichment_summary: dict | None = None
+    last_enriched_at: datetime | None = None
     first_detected_at: datetime
     domain_first_seen: datetime
     status: str

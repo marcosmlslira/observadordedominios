@@ -33,14 +33,15 @@ class ScreenshotCaptureService(BaseToolService):
                 s3.bucket = settings.TOOLS_S3_BUCKET
                 s3.ensure_bucket()
 
-                s3_key = f"tools/screenshots/{target}/{Path(screenshot_path).name}"
+                object_path = f"{target}/{Path(screenshot_path).name}"
+                s3_key = f"tools/screenshots/{object_path}"
                 s3.client.upload_file(
                     screenshot_path,
                     s3.bucket,
                     s3_key,
                     ExtraArgs={"ContentType": "image/png"},
                 )
-                screenshot_url = f"/tools/screenshots/{s3_key}"
+                screenshot_url = f"/v1/tools/screenshots/{object_path}"
                 logger.info("Screenshot uploaded: %s", s3_key)
             except Exception as exc:
                 logger.warning("Failed to upload screenshot to S3: %s", exc)

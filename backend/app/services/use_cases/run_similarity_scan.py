@@ -16,6 +16,12 @@ from sqlalchemy.orm import Session
 from app.models.monitored_brand import MonitoredBrand
 from app.repositories.domain_repository import list_partition_tlds
 from app.repositories.similarity_repository import SimilarityRepository
+from app.services.use_cases.compute_actionability import compute_actionability
+from app.services.use_cases.enrich_similarity_match import (
+    AUTO_ENRICH_LIMIT_PER_SCAN,
+    enrich_similarity_match,
+    should_auto_enrich_match,
+)
 from app.services.use_cases.compute_similarity import (
     compute_seeded_scores,
     generate_typo_candidates,
@@ -127,6 +133,20 @@ def run_similarity_scan(
                     if seed.seed_type == "domain_label"
                     else "associated_brand"
                 )
+                matched_rule = pick_matched_rule(scores["reasons"], matched_channel)
+                actionability = compute_actionability(
+                    brand,
+                    domain_name=cand["name"],
+                    tld=cand["tld"],
+                    score_final=scores["score_final"],
+                    risk_level=scores["risk_level"],
+                    reasons=scores["reasons"],
+                    matched_rule=matched_rule,
+                    matched_seed_type=seed.seed_type,
+                    matched_seed_value=seed.seed_value,
+                    matched_channel=matched_channel,
+                    domain_first_seen=cand["first_seen_at"],
+                )
                 candidate_match = {
                     "brand_id": brand.id,
                     "domain_name": cand["name"],
@@ -146,8 +166,12 @@ def run_similarity_scan(
                     "matched_seed_id": seed.id,
                     "matched_seed_value": seed.seed_value,
                     "matched_seed_type": seed.seed_type,
-                    "matched_rule": pick_matched_rule(scores["reasons"], matched_channel),
+                    "matched_rule": matched_rule,
                     "source_stream": "czds",
+                    "actionability_score": actionability["actionability_score"],
+                    "attention_bucket": actionability["attention_bucket"],
+                    "attention_reasons": actionability["attention_reasons"],
+                    "recommended_action": actionability["recommended_action"],
                 }
                 previous = best_matches_by_domain.get(cand["name"])
                 if not previous or (
@@ -164,6 +188,38 @@ def run_similarity_scan(
 
         # ── 4. Persist matches ─────────────────────────────────
         matches_to_upsert = list(best_matches_by_domain.values())
+        enrichment_budget = AUTO_ENRICH_LIMIT_PER_SCAN
+        for match in sorted(
+            matches_to_upsert,
+            key=lambda item: (
+                float(item.get("actionability_score") or 0.0),
+                float(item.get("score_final") or 0.0),
+            ),
+            reverse=True,
+        ):
+            if enrichment_budget <= 0 or not should_auto_enrich_match(match):
+                match.setdefault("enrichment_status", "skipped")
+                match.setdefault("enrichment_summary", None)
+                match.setdefault("last_enriched_at", None)
+                continue
+
+            try:
+                match.update(enrich_similarity_match(db, brand, match))
+                enrichment_budget -= 1
+            except Exception:
+                logger.exception(
+                    "Similarity enrichment failed for brand=%s domain=%s",
+                    brand.brand_label,
+                    match["domain_name"],
+                )
+                match["enrichment_status"] = "failed"
+                match["enrichment_summary"] = {
+                    "signals": [],
+                    "tools": {},
+                    "error": "auto_enrichment_failed",
+                }
+                match["last_enriched_at"] = None
+
         matched_count = repo.upsert_matches(matches_to_upsert)
         kept_domain_names = sorted(best_matches_by_domain.keys())
         candidate_domain_names_sorted = sorted(candidate_domain_names)

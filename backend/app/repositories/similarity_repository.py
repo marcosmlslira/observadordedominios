@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import text
+from sqlalchemy import case, text
 from sqlalchemy.orm import Session
 
 from app.models.similarity_match import SimilarityMatch
@@ -376,8 +376,12 @@ class SimilarityRepository:
                     f":score_trigram{suffix}, :score_levenshtein{suffix}, "
                     f":score_brand_hit{suffix}, :score_keyword{suffix}, "
                     f":score_homograph{suffix}, :reasons{suffix}, "
-                    f":risk_level{suffix}, :first_detected_at{suffix}, "
-                    f":domain_first_seen{suffix}, 'new', :matched_channel{suffix}, "
+                    f":risk_level{suffix}, :actionability_score{suffix}, "
+                    f":attention_bucket{suffix}, :attention_reasons{suffix}, "
+                    f":recommended_action{suffix}, :enrichment_status{suffix}, "
+                    f":enrichment_summary{suffix}, :last_enriched_at{suffix}, "
+                    f":first_detected_at{suffix}, :domain_first_seen{suffix}, "
+                    f"'new', :matched_channel{suffix}, "
                     f":matched_seed_id{suffix}, :matched_seed_value{suffix}, "
                     f":matched_seed_type{suffix}, :matched_rule{suffix}, "
                     f":source_stream{suffix})"
@@ -390,9 +394,11 @@ class SimilarityRepository:
                     id, brand_id, domain_name, tld, label,
                     score_final, score_trigram, score_levenshtein,
                     score_brand_hit, score_keyword, score_homograph,
-                    reasons, risk_level, first_detected_at, domain_first_seen,
-                    status, matched_channel, matched_seed_id, matched_seed_value,
-                    matched_seed_type, matched_rule, source_stream
+                    reasons, risk_level, actionability_score, attention_bucket,
+                    attention_reasons, recommended_action, enrichment_status,
+                    enrichment_summary, last_enriched_at, first_detected_at,
+                    domain_first_seen, status, matched_channel, matched_seed_id,
+                    matched_seed_value, matched_seed_type, matched_rule, source_stream
                 ) VALUES {", ".join(values_clauses)}
                 ON CONFLICT (brand_id, domain_name) DO UPDATE SET
                     score_final = EXCLUDED.score_final,
@@ -403,6 +409,13 @@ class SimilarityRepository:
                     score_homograph = EXCLUDED.score_homograph,
                     reasons = EXCLUDED.reasons,
                     risk_level = EXCLUDED.risk_level,
+                    actionability_score = EXCLUDED.actionability_score,
+                    attention_bucket = EXCLUDED.attention_bucket,
+                    attention_reasons = EXCLUDED.attention_reasons,
+                    recommended_action = EXCLUDED.recommended_action,
+                    enrichment_status = EXCLUDED.enrichment_status,
+                    enrichment_summary = EXCLUDED.enrichment_summary,
+                    last_enriched_at = EXCLUDED.last_enriched_at,
                     matched_channel = EXCLUDED.matched_channel,
                     matched_seed_id = EXCLUDED.matched_seed_id,
                     matched_seed_value = EXCLUDED.matched_seed_value,
@@ -420,6 +433,7 @@ class SimilarityRepository:
         *,
         status: str | None = None,
         risk_level: str | None = None,
+        attention_bucket: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[SimilarityMatch]:
@@ -430,8 +444,19 @@ class SimilarityRepository:
             q = q.filter(SimilarityMatch.status == status)
         if risk_level:
             q = q.filter(SimilarityMatch.risk_level == risk_level)
+        if attention_bucket:
+            q = q.filter(SimilarityMatch.attention_bucket == attention_bucket)
+        bucket_priority = case(
+            (SimilarityMatch.attention_bucket == "immediate_attention", 0),
+            (SimilarityMatch.attention_bucket == "defensive_gap", 1),
+            else_=2,
+        )
         return (
-            q.order_by(SimilarityMatch.score_final.desc())
+            q.order_by(
+                bucket_priority.asc(),
+                SimilarityMatch.actionability_score.desc(),
+                SimilarityMatch.score_final.desc(),
+            )
             .offset(offset)
             .limit(limit)
             .all()
@@ -462,6 +487,7 @@ class SimilarityRepository:
         brand_id: uuid.UUID,
         status: str | None = None,
         risk_level: str | None = None,
+        attention_bucket: str | None = None,
     ) -> int:
         q = self.db.query(SimilarityMatch).filter(
             SimilarityMatch.brand_id == brand_id,
@@ -470,4 +496,6 @@ class SimilarityRepository:
             q = q.filter(SimilarityMatch.status == status)
         if risk_level:
             q = q.filter(SimilarityMatch.risk_level == risk_level)
+        if attention_bucket:
+            q = q.filter(SimilarityMatch.attention_bucket == attention_bucket)
         return q.count()

@@ -69,10 +69,14 @@ export const api = {
 // ── Free Tools API ──────────────────────────────────────
 
 export const toolsApi = {
-  run: (slug: string, target: string, force = false) =>
+  run: (
+    slug: string,
+    payload: string | import("./types").ToolRequest,
+    force = false,
+  ) =>
     api.post<import("./types").ToolResponse>(
       `/v1/tools/${slug}?force=${force}`,
-      { target },
+      typeof payload === "string" ? { target: payload } : payload,
     ),
 
   quickAnalysis: (target: string, tools?: string[]) =>

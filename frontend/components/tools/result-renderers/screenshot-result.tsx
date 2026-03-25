@@ -1,5 +1,7 @@
 "use client"
 
+import { API_BASE_URL } from "@/lib/config"
+
 interface ScreenshotData {
   screenshot_url: string | null
   s3_key: string | null
@@ -10,6 +12,12 @@ interface ScreenshotData {
 }
 
 export function ScreenshotResult({ data }: { data: ScreenshotData }) {
+  const resolvedUrl = data.screenshot_url
+    ? data.screenshot_url.startsWith("http")
+      ? data.screenshot_url
+      : `${API_BASE_URL}${data.screenshot_url}`
+    : null
+
   return (
     <div className="space-y-3">
       {data.page_title && (
@@ -24,10 +32,10 @@ export function ScreenshotResult({ data }: { data: ScreenshotData }) {
           <p className="text-xs font-mono break-all">{data.final_url}</p>
         </div>
       )}
-      {data.screenshot_url ? (
+      {resolvedUrl ? (
         <div className="border rounded-lg overflow-hidden">
           <img
-            src={data.screenshot_url}
+            src={resolvedUrl}
             alt="Website screenshot"
             className="w-full"
           />

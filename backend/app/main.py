@@ -43,6 +43,7 @@ app.include_router(ingestion.router)
 app.include_router(monitored_brands.router)
 app.include_router(similarity.router)
 app.include_router(tools.router)
+app.include_router(tools.public_router)
 
 # Register free tool services
 register_all_tools()

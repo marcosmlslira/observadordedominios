@@ -3,7 +3,7 @@
 import uuid
 
 from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from app.models.base import Base
 
@@ -28,10 +28,17 @@ class SimilarityMatch(Base):
     score_brand_hit = Column(Float, nullable=True)
     score_keyword = Column(Float, nullable=True)
     score_homograph = Column(Float, nullable=True)
+    actionability_score = Column(Float, nullable=True)
 
     # Metadata
     reasons = Column(ARRAY(Text), nullable=False)
     risk_level = Column(String(16), nullable=False)  # low | medium | high | critical
+    attention_bucket = Column(String(32), nullable=True)
+    attention_reasons = Column(ARRAY(Text), nullable=True)
+    recommended_action = Column(Text, nullable=True)
+    enrichment_status = Column(String(16), nullable=True)
+    enrichment_summary = Column(JSONB, nullable=True)
+    last_enriched_at = Column(DateTime(timezone=True), nullable=True)
     first_detected_at = Column(DateTime(timezone=True), nullable=False)
     domain_first_seen = Column(DateTime(timezone=True), nullable=False)
 
@@ -54,4 +61,5 @@ class SimilarityMatch(Base):
         Index("uq_match_brand_domain", "brand_id", "domain_name", unique=True),
         Index("ix_match_brand_risk", "brand_id", "risk_level", score_final.desc()),
         Index("ix_match_brand_status", "brand_id", "status"),
+        Index("ix_match_brand_attention", "brand_id", "attention_bucket", actionability_score.desc()),
     )

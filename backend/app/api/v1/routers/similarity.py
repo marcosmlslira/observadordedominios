@@ -68,6 +68,10 @@ def list_matches(
     brand_id: UUID,
     status: str | None = Query(None, description="Filter by status: new, reviewing, dismissed, confirmed_threat"),
     risk_level: str | None = Query(None, description="Filter by risk: low, medium, high, critical"),
+    attention_bucket: str | None = Query(
+        None,
+        description="Filter by actionability bucket: immediate_attention, defensive_gap, watchlist",
+    ),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -77,10 +81,16 @@ def list_matches(
         brand_id,
         status=status,
         risk_level=risk_level,
+        attention_bucket=attention_bucket,
         limit=limit,
         offset=offset,
     )
-    total = repo.count_matches(brand_id, status=status, risk_level=risk_level)
+    total = repo.count_matches(
+        brand_id,
+        status=status,
+        risk_level=risk_level,
+        attention_bucket=attention_bucket,
+    )
     return MatchListResponse(items=matches, total=total)
 
 

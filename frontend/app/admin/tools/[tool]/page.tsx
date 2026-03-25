@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { toolsApi } from "@/lib/api"
 import { getToolBySlug } from "@/lib/tools"
-import type { ToolResponse } from "@/lib/types"
+import type { ToolRequest, ToolResponse } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { ToolExecutionForm } from "@/components/tools/tool-execution-form"
 import { ToolResultEnvelope } from "@/components/tools/tool-result-envelope"
@@ -34,7 +34,7 @@ function ToolPageContent() {
   useEffect(() => {
     const preTarget = searchParams.get("target")
     if (preTarget && tool) {
-      handleSubmit(preTarget, false)
+      handleSubmit({ target: preTarget }, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -53,12 +53,12 @@ function ToolPageContent() {
     )
   }
 
-  async function handleSubmit(target: string, force: boolean) {
+  async function handleSubmit(payload: ToolRequest, force: boolean) {
     setLoading(true)
     setError("")
     setResult(null)
     try {
-      const resp = await toolsApi.run(slug, target, force)
+      const resp = await toolsApi.run(slug, payload, force)
       setResult(resp)
     } catch (err: any) {
       const msg: string = err.message || "Tool execution failed"
@@ -75,11 +75,29 @@ function ToolPageContent() {
   }
 
   function handleForceRerun() {
-    if (!result) return
+    if (!result || !tool) return
     setLoading(true)
     setError("")
+    const rerunPayload =
+      tool.type === "website_clone"
+        ? (() => {
+            const cloneResult = (result.result ?? {}) as Record<string, unknown>
+            const reference = typeof cloneResult.reference === "string"
+              ? cloneResult.reference
+              : result.target.includes("|")
+                ? result.target.split("|", 2)[1]
+                : ""
+            const target = typeof cloneResult.target === "string"
+              ? cloneResult.target
+              : result.target.includes("|")
+                ? result.target.split("|", 2)[0]
+                : result.target
+            return { target, reference_target: reference }
+          })()
+        : { target: result.target }
+
     toolsApi
-      .run(slug, result.target, true)
+      .run(slug, rerunPayload, true)
       .then(setResult)
       .catch((err: any) => setError(err.message || "Re-run failed"))
       .finally(() => setLoading(false))
@@ -105,7 +123,8 @@ function ToolPageContent() {
       <ToolExecutionForm
         onSubmit={handleSubmit}
         loading={loading}
-        placeholder={tool.type === "website_clone" ? "target.com|reference.com" : "example.com"}
+        toolType={tool.type}
+        placeholder="example.com"
         initialValue={preTarget}
       />
 

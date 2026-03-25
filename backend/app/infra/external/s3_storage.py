@@ -97,3 +97,9 @@ class S3Storage:
         """Delete a single object from S3."""
         logger.info("Deleting s3://%s/%s", self.bucket, object_key)
         self.client.delete_object(Bucket=self.bucket, Key=object_key)
+
+    def download_object(self, object_key: str) -> tuple[bytes, str | None]:
+        """Download object content and return bytes plus content type."""
+        resp = self.client.get_object(Bucket=self.bucket, Key=object_key)
+        body = resp["Body"].read()
+        return body, resp.get("ContentType")
