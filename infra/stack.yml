@@ -93,6 +93,22 @@ services:
       restart_policy:
         condition: on-failure
 
+  similarity_worker:
+    image: observadordedominios-backend:latest
+    command: ["python", "-m", "app.worker.similarity_worker"]
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - SIMILARITY_SCAN_CRON=0 9 * * *
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
 networks:
   app-network:
     driver: overlay

@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger("similarity_worker")
 
 # Default: run at 09:00 daily (2 hours after CZDS sync at 07:00)
-SIMILARITY_CRON = getattr(settings, "SIMILARITY_SCAN_CRON", "0 9 * * *")
+SIMILARITY_CRON = settings.SIMILARITY_SCAN_CRON
 
 
 def run_scan_cycle() -> None:

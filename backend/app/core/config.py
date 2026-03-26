@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     CT_BULK_SPLIT_MAX_DEPTH: int = 2
     CT_BULK_RESPONSE_SIZE_LIMIT_MB: int = 8
 
+    # ── Similarity Worker ──────────────────────────────────────
+    SIMILARITY_SCAN_CRON: str = "0 9 * * *"
+    SIMILARITY_SCAN_ENABLED: bool = True
+
     # ── Free Tools ─────────────────────────────────────────────
     TOOLS_DEFAULT_TIMEOUT_SECONDS: int = 30
     TOOLS_SCREENSHOT_TIMEOUT_SECONDS: int = 45
