@@ -20,7 +20,8 @@ AUTO_ENRICH_LIMIT_PER_SCAN = 8
 
 def should_auto_enrich_match(match: dict) -> bool:
     """Apply a strict gate so enrichment stays selective and affordable."""
-    if (match.get("attention_bucket") or "watchlist") == "watchlist":
+    attention_bucket = (match.get("attention_bucket") or "watchlist")
+    if attention_bucket == "watchlist":
         return False
 
     matched_rule = (match.get("matched_rule") or "").lower()
@@ -32,6 +33,11 @@ def should_auto_enrich_match(match: dict) -> bool:
         return True
 
     if matched_rule == "exact_label_match" and matched_seed_type == "domain_label":
+        return True
+
+    # defensive_gap domains are registered but unowned — enrich at a lower threshold
+    # because mail-only infrastructure risk is only detectable via DNS/email enrichment
+    if attention_bucket == "defensive_gap" and actionability_score >= 0.55:
         return True
 
     return actionability_score >= 0.72 and risk_level in {"high", "critical"}
