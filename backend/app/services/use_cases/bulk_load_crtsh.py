@@ -66,6 +66,8 @@ def create_bulk_job(
         )
         repo.create_initial_chunks(job)
         db.commit()
+        db.refresh(job)
+        db.expunge(job)
         return job
     finally:
         db.close()
@@ -96,6 +98,8 @@ def resume_bulk_job(job_id: uuid.UUID) -> CtBulkJob:
 
         repo.refresh_job_metrics(job)
         db.commit()
+        db.refresh(job)
+        db.expunge(job)
         return job
     finally:
         db.close()
@@ -110,6 +114,8 @@ def cancel_bulk_job(job_id: uuid.UUID) -> CtBulkJob:
             raise RuntimeError(f"Bulk job {job_id} not found.")
         repo.request_cancel(job)
         db.commit()
+        db.refresh(job)
+        db.expunge(job)
         return job
     finally:
         db.close()
@@ -198,6 +204,8 @@ def run_bulk_load(
         stored = CtBulkRepository(db).get_job(job.id)
         if not stored:
             raise RuntimeError(f"Bulk job {job.id} disappeared during execution.")
+        db.refresh(stored)
+        db.expunge(stored)
         return stored
     finally:
         db.close()
