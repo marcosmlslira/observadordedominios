@@ -403,16 +403,16 @@ def _derive_disposition(
     if ownership_classification == "self_owned_related":
         return "self_owned_related"
     if ownership_classification == "third_party_legitimate":
-        return "legitimate_third_party"
+        return "third_party_legitimate"
     if {"credential_collection_surface", "brand_impersonation_content"} & signal_set:
         return "likely_phishing"
     if delivery_risk == "high":
-        return "mail_only_high_risk"
+        return "mail_spoofing_risk"
     if page_disposition == "parked":
         return "defensive_gap"
     if score >= 0.72:
         return "live_but_unknown"
-    return str(match.get("attention_bucket") or "watchlist")
+    return "inconclusive"
 
 
 def _derive_confidence(tool_results: dict[str, dict], score: float, signal_codes: list[str]) -> float:

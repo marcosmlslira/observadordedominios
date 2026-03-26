@@ -32,6 +32,17 @@ logger = logging.getLogger(__name__)
 
 # Minimum composite score to persist a match
 SCORE_THRESHOLD = 0.40
+
+# North Star disposition taxonomy — pre-enrichment mapping from attention bucket + rule
+_BUCKET_DISPOSITION_MAP = {
+    "immediate_attention": "live_but_unknown",
+    "defensive_gap": "defensive_gap",
+    "watchlist": "inconclusive",
+}
+
+
+def _bucket_to_disposition(bucket: str, matched_rule: str | None) -> str:
+    return _BUCKET_DISPOSITION_MAP.get(bucket, "inconclusive")
 NOISE_MODE_THRESHOLDS = {
     "conservative": 0.60,
     "standard": 0.50,
@@ -181,7 +192,7 @@ def run_similarity_scan(
                     "recommended_action": actionability["recommended_action"],
                     "ownership_classification": "third_party_unknown",
                     "self_owned": False,
-                    "disposition": actionability["attention_bucket"],
+                    "disposition": _bucket_to_disposition(actionability["attention_bucket"], matched_rule),
                     "confidence": round(scores["score_final"], 4),
                     "delivery_risk": "none",
                 }
