@@ -487,7 +487,12 @@ todo o monitoramento. E de longe a acao com maior ratio valor/esforco neste plan
 | T2.3 ✅ | `28f5289` | Taxonomia North Star alinhada: third_party_legitimate, mail_spoofing_risk, inconclusive |
 | T2.4 ✅ | `e4a0bb8` | recommended_action contextual com nome do dominio e da marca |
 | T3.2 ✅ | `2e2f26b` | Estados inconclusivos honestos: unreachable/all-tools-failed → "inconclusive" |
-| T3.4 ✅ | `2e2f26b` | Self-owned detection via nameserver overlap (WHOIS name_servers) |
+| T3.4 ✅ | `c061547` | Self-owned detection via SSL SAN overlap (substitui NS check que era bugado) |
+| T2.2 ✅ | `a86cc80` + `c82f682` | DNS lookup + screenshot capture adicionados ao pipeline de enriquecimento |
+| T3.3 ✅ | `a86cc80` | Mail-only risk: MX sem A/AAAA + spoofing elevado → delivery_risk "high" |
+| T3.1 ✅ | `9b9fded` | Feedback loop: upsert preserva bucket/action/disposition para dismissed/confirmed |
+| T3.5 ✅ | `9b9fded` | Clone detection seletivo para immediate_attention (clone_score threshold 0.75/0.50) |
+| T4.1 ✅ | `0c94c31` | GET /v1/similarity/metrics — metricas operacionais agregadas por bucket/disposition/marca |
 
 ### Pendente (proximas sessoes)
 
@@ -496,9 +501,8 @@ todo o monitoramento. E de longe a acao com maior ratio valor/esforco neste plan
 | Todo 004 | P0 | Agente do docker-stack-infra (.specs/todos/004/plan.md) |
 | T1.4 | P0 | Depende de Todo 004 (worker em producao) |
 | T1.5 | P1 | Limpeza manual de perfis duplicados |
-| T2.2 | P2 | DNS + SSL + Screenshot no auto-enrich |
-| T3.1 | P2 | Feedback loop do analista |
-| T3.3 | P3 | Mail-only risk detection (logica ja parcialmente pronta) |
+| T4.2 | P2 | Notificacoes automaticas (requer modelo notification + canal email/webhook) |
+| T4.3 | P3 | Historico e trends de ameacas por marca |
 
 ---
 
