@@ -718,3 +718,59 @@ class SimilarityRepository:
         if attention_bucket:
             q = q.filter(SimilarityMatch.attention_bucket == attention_bucket)
         return q.count()
+
+    def get_operational_metrics(self) -> dict:
+        """Aggregate operational health metrics across all brands in one query."""
+        row = self.db.execute(text("""
+            SELECT
+                COUNT(*)                                                          AS total_matches,
+                COUNT(*) FILTER (WHERE attention_bucket = 'immediate_attention')  AS immediate_attention,
+                COUNT(*) FILTER (WHERE attention_bucket = 'defensive_gap')        AS defensive_gap,
+                COUNT(*) FILTER (WHERE attention_bucket = 'watchlist')            AS watchlist,
+                COUNT(*) FILTER (WHERE status = 'new')                            AS status_new,
+                COUNT(*) FILTER (WHERE status = 'reviewing')                      AS status_reviewing,
+                COUNT(*) FILTER (WHERE status = 'dismissed')                      AS status_dismissed,
+                COUNT(*) FILTER (WHERE status = 'confirmed_threat')               AS status_confirmed,
+                COUNT(*) FILTER (WHERE risk_level = 'critical')                   AS risk_critical,
+                COUNT(*) FILTER (WHERE risk_level = 'high')                       AS risk_high,
+                COUNT(*) FILTER (WHERE disposition = 'likely_phishing')           AS disposition_phishing,
+                COUNT(*) FILTER (WHERE disposition = 'mail_spoofing_risk')        AS disposition_mail_risk,
+                COUNT(*) FILTER (WHERE disposition = 'defensive_gap')             AS disposition_defensive,
+                COUNT(*) FILTER (WHERE disposition = 'live_but_unknown')          AS disposition_live_unknown,
+                COUNT(*) FILTER (WHERE disposition = 'inconclusive')              AS disposition_inconclusive,
+                COUNT(*) FILTER (WHERE enrichment_status = 'completed')           AS enriched_count,
+                COUNT(*) FILTER (WHERE first_detected_at >= NOW() - INTERVAL '24 hours') AS new_last_24h,
+                COUNT(*) FILTER (WHERE first_detected_at >= NOW() - INTERVAL '7 days')   AS new_last_7d,
+                MAX(first_detected_at)                                            AS latest_detection_at
+            FROM similarity_match
+        """)).fetchone()
+
+        buckets = self.db.execute(text("""
+            SELECT
+                mb.brand_name,
+                mb.brand_label,
+                COUNT(sm.id)                                                           AS total,
+                COUNT(sm.id) FILTER (WHERE sm.attention_bucket = 'immediate_attention') AS immediate,
+                MAX(sm.first_detected_at)                                              AS last_match_at,
+                MAX(sm.actionability_score)                                            AS top_score
+            FROM monitored_brand mb
+            LEFT JOIN similarity_match sm ON sm.brand_id = mb.id
+            WHERE mb.is_active = true
+            GROUP BY mb.id, mb.brand_name, mb.brand_label
+            ORDER BY immediate DESC, total DESC
+        """)).fetchall()
+
+        last_job = self.db.execute(text("""
+            SELECT status, created_at, finished_at,
+                   (SELECT COUNT(*) FROM similarity_scan_job_tld WHERE job_id = ssj.id AND status = 'completed') AS tlds_ok,
+                   (SELECT COUNT(*) FROM similarity_scan_job_tld WHERE job_id = ssj.id AND status = 'failed')    AS tlds_failed
+            FROM similarity_scan_job ssj
+            ORDER BY created_at DESC
+            LIMIT 1
+        """)).fetchone()
+
+        return {
+            "totals": dict(row._mapping) if row else {},
+            "by_brand": [dict(b._mapping) for b in buckets],
+            "last_scan_job": dict(last_job._mapping) if last_job else None,
+        }

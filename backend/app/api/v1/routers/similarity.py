@@ -148,3 +148,14 @@ def update_match_status(
     )
     db.commit()
     return match
+
+
+@router.get(
+    "/similarity/metrics",
+    summary="Operational metrics: match counts by bucket, disposition, brand, and last scan job",
+)
+def get_similarity_metrics(
+    db: Session = Depends(get_db),
+):
+    repo = SimilarityRepository(db)
+    return repo.get_operational_metrics()
