@@ -37,6 +37,15 @@ class ChunkFetchResult:
     error_excerpt: str | None = None
 
 
+@dataclass(slots=True)
+class ExecutableChunk:
+    id: uuid.UUID
+    target_tld: str
+    chunk_key: str
+    query_pattern: str
+    depth: int
+
+
 def create_bulk_job(
     *,
     requested_tlds: list[str] | None = None,
@@ -85,16 +94,21 @@ def resume_bulk_job(job_id: uuid.UUID) -> CtBulkJob:
         if not job:
             raise RuntimeError(f"Bulk job {job_id} not found.")
 
-        for chunk in repo.list_chunks(job_id, limit=100000, status="error"):
-            chunk.status = "retry"
-            chunk.next_retry_at = None
-            chunk.updated_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        for status in ("error", "running"):
+            for chunk in repo.list_chunks(job_id, limit=100000, status=status):
+                chunk.status = "retry"
+                chunk.next_retry_at = now
+                chunk.finished_at = None
+                chunk.last_error_type = "manual_resume"
+                chunk.last_error_excerpt = "Operator resumed bulk job and re-queued chunk."
+                chunk.updated_at = now
 
-        if job.status in {"success", "failed", "cancelled"}:
+        if job.status in {"success", "failed", "cancelled", "running", "cancel_requested"}:
             job.status = "pending"
             job.finished_at = None
             job.last_error = None
-            job.updated_at = datetime.now(timezone.utc)
+            job.updated_at = now
 
         repo.refresh_job_metrics(job)
         db.commit()
@@ -122,56 +136,69 @@ def cancel_bulk_job(job_id: uuid.UUID) -> CtBulkJob:
 
 
 def run_bulk_job(job_id: uuid.UUID) -> None:
-    while True:
-        db = SessionLocal()
-        try:
-            repo = CtBulkRepository(db)
-            job = repo.get_job(job_id)
-            if not job:
-                logger.error("ct_bulk_job_missing job_id=%s", job_id)
-                return
-
-            repo.refresh_job_metrics(job)
-            if job.status == "cancel_requested":
-                repo.finish_job(job, status="cancelled", last_error="cancelled_by_operator")
-                db.commit()
-                logger.info("ct_bulk_job_cancelled job_id=%s", job.id)
-                return
-
-            repo.mark_job_running(job)
-            runnable = repo.list_runnable_chunks(job, limit=max(1, settings.CT_BULK_MAX_PARALLEL_CHUNKS * 4))
-            if not runnable:
-                if job.pending_chunks == 0 and job.running_chunks == 0:
-                    final_status = "failed" if job.error_chunks > 0 else "success"
-                    repo.finish_job(job, status=final_status, last_error=job.last_error)
-                    db.commit()
-                    logger.info("ct_bulk_job_finished job_id=%s status=%s", job.id, final_status)
+    try:
+        while True:
+            db = SessionLocal()
+            try:
+                repo = CtBulkRepository(db)
+                job = repo.get_job(job_id)
+                if not job:
+                    logger.error("ct_bulk_job_missing job_id=%s", job_id)
                     return
 
-                wait_until = repo.next_retry_at(job.id)
+                repo.refresh_job_metrics(job)
+                if job.status == "cancel_requested":
+                    repo.finish_job(job, status="cancelled", last_error="cancelled_by_operator")
+                    db.commit()
+                    logger.info("ct_bulk_job_cancelled job_id=%s", job.id)
+                    return
+
+                repo.mark_job_running(job)
+                runnable = repo.list_runnable_chunks(job, limit=max(1, settings.CT_BULK_MAX_PARALLEL_CHUNKS * 4))
+                if not runnable:
+                    if job.pending_chunks == 0 and job.running_chunks == 0:
+                        final_status = "failed" if job.error_chunks > 0 else "success"
+                        repo.finish_job(job, status=final_status, last_error=job.last_error)
+                        db.commit()
+                        logger.info("ct_bulk_job_finished job_id=%s status=%s", job.id, final_status)
+                        return
+
+                    wait_until = repo.next_retry_at(job.id)
+                    db.commit()
+                    if wait_until:
+                        sleep_seconds = max(5, min(60, int((wait_until - datetime.now(timezone.utc)).total_seconds())))
+                        time.sleep(max(1, sleep_seconds))
+                    else:
+                        time.sleep(5)
+                    continue
+
+                selected = _select_chunks_for_execution(job, runnable)
+                selected_tasks: list[ExecutableChunk] = []
+                for chunk in selected:
+                    repo.mark_chunk_running(chunk)
+                    selected_tasks.append(
+                        ExecutableChunk(
+                            id=chunk.id,
+                            target_tld=chunk.target_tld,
+                            chunk_key=chunk.chunk_key,
+                            query_pattern=chunk.query_pattern,
+                            depth=chunk.depth,
+                        )
+                    )
+                    logger.info(
+                        "ct_bulk_chunk_started job_id=%s chunk=%s tld=%s depth=%s query=%s",
+                        job.id, chunk.chunk_key, chunk.target_tld, chunk.depth, chunk.query_pattern,
+                    )
                 db.commit()
-                if wait_until:
-                    sleep_seconds = max(5, min(60, int((wait_until - datetime.now(timezone.utc)).total_seconds())))
-                    time.sleep(max(1, sleep_seconds))
-                else:
-                    time.sleep(5)
-                continue
+            finally:
+                db.close()
 
-            selected = _select_chunks_for_execution(job, runnable)
-            selected_ids = [chunk.id for chunk in selected]
-            for chunk in selected:
-                repo.mark_chunk_running(chunk)
-                logger.info(
-                    "ct_bulk_chunk_started job_id=%s chunk=%s tld=%s depth=%s query=%s",
-                    job.id, chunk.chunk_key, chunk.target_tld, chunk.depth, chunk.query_pattern,
-                )
-            db.commit()
-        finally:
-            db.close()
-
-        results = _execute_chunks(selected)
-        for chunk_id, result in results.items():
-            _apply_chunk_result(job_id, chunk_id, result)
+            results = _execute_chunks(selected_tasks)
+            for chunk_id, result in results.items():
+                _apply_chunk_result(job_id, chunk_id, result)
+    except Exception as exc:  # pragma: no cover - defensive production recovery
+        logger.exception("ct_bulk_job_crashed job_id=%s", job_id)
+        _recover_job_after_crash(job_id, str(exc))
 
 
 def list_bulk_jobs(limit: int = 20) -> list[CtBulkJob]:
@@ -224,7 +251,7 @@ def _select_chunks_for_execution(job: CtBulkJob, runnable: list[CtBulkChunk]) ->
     return selected or runnable[:1]
 
 
-def _execute_chunks(chunks: list[CtBulkChunk]) -> dict[uuid.UUID, ChunkFetchResult]:
+def _execute_chunks(chunks: list[ExecutableChunk]) -> dict[uuid.UUID, ChunkFetchResult]:
     results: dict[uuid.UUID, ChunkFetchResult] = {}
     max_workers = max(1, min(len(chunks), settings.CT_BULK_MAX_PARALLEL_CHUNKS))
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -305,6 +332,35 @@ def _apply_chunk_result(job_id: uuid.UUID, chunk_id: uuid.UUID, result: ChunkFet
     except Exception:
         logger.exception("Failed to persist ct bulk chunk result job_id=%s chunk_id=%s", job_id, chunk_id)
         db.rollback()
+    finally:
+        db.close()
+
+
+def _recover_job_after_crash(job_id: uuid.UUID, error_message: str) -> None:
+    db = SessionLocal()
+    try:
+        repo = CtBulkRepository(db)
+        job = repo.get_job(job_id)
+        if not job:
+            return
+
+        next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=RETRY_BACKOFF[0])
+        for chunk in repo.list_chunks(job_id, limit=100000, status="running"):
+            repo.mark_chunk_retry(
+                chunk,
+                error_type="worker_crash",
+                error_excerpt=error_message or "Bulk worker crashed unexpectedly.",
+                next_retry_at=next_retry_at,
+            )
+
+        job.status = "pending"
+        job.finished_at = None
+        job.last_error = (error_message or "Bulk worker crashed unexpectedly.")[:2000]
+        repo.refresh_job_metrics(job)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("ct_bulk_job_recovery_failed job_id=%s", job_id)
     finally:
         db.close()
 

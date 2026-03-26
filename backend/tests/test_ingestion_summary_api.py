@@ -85,3 +85,25 @@ def test_ingestion_summary_includes_crtsh_and_bulk_hints(monkeypatch) -> None:
 
     assert payload["crtsh-bulk"]["mode"] == "Manual backfill"
     assert payload["crtsh-bulk"]["status_hint"] == "Manual historical backfill. No automatic scheduler."
+
+
+def test_start_bulk_job_returns_409_when_active_job_exists(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(ingestion_router.router)
+
+    monkeypatch.setattr(
+        ingestion_router,
+        "create_bulk_job",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("Bulk job already active: deadbeef")),
+    )
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_current_admin] = _override_admin
+
+    try:
+        client = TestClient(app)
+        response = client.post("/v1/ingestion/ct-bulk/jobs", json={"tlds": ["io"], "dry_run": True})
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Bulk job already active: deadbeef"

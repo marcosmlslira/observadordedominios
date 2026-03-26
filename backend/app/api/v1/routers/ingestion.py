@@ -311,6 +311,15 @@ def _start_bulk_runner(job_id: UUID) -> None:
     thread.start()
 
 
+def _raise_bulk_http_error(exc: RuntimeError) -> None:
+    message = str(exc)
+    if "already active" in message:
+        raise HTTPException(status_code=409, detail=message) from exc
+    if "not found" in message:
+        raise HTTPException(status_code=404, detail=message) from exc
+    raise HTTPException(status_code=400, detail=message) from exc
+
+
 @router.get(
     "/ct-bulk/jobs",
     response_model=list[CtBulkJobResponse],
@@ -388,11 +397,14 @@ def start_ct_bulk_job(
     db: Session = Depends(get_db),
 ):
     del db
-    job = create_bulk_job(
-        requested_tlds=body.tlds or None,
-        dry_run=body.dry_run,
-        initiated_by=current_admin,
-    )
+    try:
+        job = create_bulk_job(
+            requested_tlds=body.tlds or None,
+            dry_run=body.dry_run,
+            initiated_by=current_admin,
+        )
+    except RuntimeError as exc:
+        _raise_bulk_http_error(exc)
     _start_bulk_runner(job.id)
     return _serialize_bulk_job(job)
 
@@ -407,7 +419,10 @@ def resume_ct_bulk_job(
     db: Session = Depends(get_db),
 ):
     del db
-    job = resume_bulk_job(job_id)
+    try:
+        job = resume_bulk_job(job_id)
+    except RuntimeError as exc:
+        _raise_bulk_http_error(exc)
     _start_bulk_runner(job.id)
     return _serialize_bulk_job(job)
 
@@ -422,7 +437,10 @@ def cancel_ct_bulk_job(
     db: Session = Depends(get_db),
 ):
     del db
-    job = cancel_bulk_job(job_id)
+    try:
+        job = cancel_bulk_job(job_id)
+    except RuntimeError as exc:
+        _raise_bulk_http_error(exc)
     return _serialize_bulk_job(job)
 
 
