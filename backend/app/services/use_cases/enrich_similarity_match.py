@@ -384,6 +384,22 @@ def _derive_ownership(
         except InvalidDomainError:
             pass
 
+    # Nameserver overlap: if the suspected domain shares a nameserver registrable domain
+    # with one of the brand's official domains, it's likely self-owned infrastructure
+    suspected_ns = {
+        _ns_registrable(ns)
+        for ns in (whois_result.get("name_servers") or [])
+        if ns
+    }
+    if suspected_ns:
+        for official in official_domains:
+            try:
+                official_ns_root = _ns_registrable(official)
+                if official_ns_root and official_ns_root in suspected_ns:
+                    return "self_owned_related", True
+            except Exception:
+                pass
+
     creation_date = _parse_datetime_like(str(whois_result.get("creation_date") or ""))
     if creation_date and (datetime.now(timezone.utc) - creation_date).days > 365:
         return "third_party_legitimate", False
@@ -414,6 +430,19 @@ def _derive_disposition(
         return "mail_spoofing_risk"
     if page_disposition == "parked":
         return "defensive_gap"
+
+    # Honest inconclusive states — never promote to live_but_unknown when data is absent
+    all_tools_failed = all(
+        payload.get("status") != "completed"
+        for payload in tool_results.values()
+    )
+    page_tool_status = (tool_results.get("suspicious_page") or {}).get("status")
+    if all_tools_failed or page_tool_status not in {"completed"}:
+        return "inconclusive"
+
+    if page_disposition == "unreachable":
+        return "inconclusive"
+
     if score >= 0.72:
         return "live_but_unknown"
     return "inconclusive"
@@ -474,6 +503,14 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "asn": result.get("asn"),
         }
     return result
+
+
+def _ns_registrable(hostname: str) -> str | None:
+    """Extract the registrable domain from a nameserver hostname, for overlap detection."""
+    try:
+        return parse_registrable_domain(hostname.strip().lower().rstrip(".")).registrable_domain
+    except (InvalidDomainError, Exception):
+        return None
 
 
 def _parse_datetime_like(value: str) -> datetime | None:
