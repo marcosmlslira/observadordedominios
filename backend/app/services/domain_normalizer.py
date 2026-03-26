@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import logging
 import re
+import tempfile
+from pathlib import Path
 
-import tldextract
+try:
+    import tldextract  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - exercised in tests via fallback
+    tldextract = None
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +25,13 @@ _DOMAIN_RE = re.compile(
 )
 
 # Configure tldextract to use local cache (avoids network calls on startup)
-_extractor = tldextract.TLDExtract(cache_dir="/tmp/tldextract_cache")
+if tldextract is not None:
+    _extractor = tldextract.TLDExtract(
+        cache_dir=str(Path(tempfile.gettempdir()) / "tldextract_cache"),
+    )
+else:  # pragma: no cover - exercised only when dependency is unavailable
+    _extractor = None
+_SECOND_LEVEL_CCTLD_PREFIXES = {"ac", "co", "com", "edu", "gov", "net", "org"}
 
 
 def normalize_ct_domains(
@@ -85,12 +96,29 @@ def _normalize_single(
         return None
 
     # Parse with tldextract
-    ext = _extractor(cleaned)
-
-    # ext.domain = "banco", ext.suffix = "com.br", ext.registered_domain = "banco.com.br"
-    tld = ext.suffix
-    label = ext.domain
-    registered_domain = ext.registered_domain
+    if _extractor is not None:
+        ext = _extractor(cleaned)
+        # ext.domain = "banco", ext.suffix = "com.br", ext.registered_domain = "banco.com.br"
+        tld = ext.suffix
+        label = ext.domain
+        registered_domain = ext.registered_domain
+    else:  # pragma: no cover - exercised in tests without tldextract
+        labels = [label for label in cleaned.split(".") if label]
+        if len(labels) < 2:
+            return None
+        if (
+            len(labels) >= 3
+            and len(labels[-1]) == 2
+            and labels[-2] in _SECOND_LEVEL_CCTLD_PREFIXES
+        ):
+            suffix_labels = labels[-2:]
+            domain_index = -3
+        else:
+            suffix_labels = labels[-1:]
+            domain_index = -2
+        tld = ".".join(suffix_labels)
+        label = labels[domain_index]
+        registered_domain = ".".join([label, *suffix_labels])
 
     # Reject if no label (bare TLD like "com.br")
     if not label:

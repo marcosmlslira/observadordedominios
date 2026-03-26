@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 from statistics import fmean
 from time import perf_counter
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,8 @@ from app.schemas.similarity import (
     SimilaritySearchResultResponse,
     SimilaritySearchScoreResponse,
 )
+from app.services.registrable_domain import InvalidDomainError, parse_registrable_domain
+from app.services.use_cases.compute_actionability import STRATEGIC_DEFENSIVE_TLDS
 from app.services.use_cases.compute_similarity import (
     compute_scores,
     generate_typo_candidates,
@@ -36,8 +39,9 @@ def search_similarity_domains(
 ) -> SimilaritySearchResponse:
     """Run a synchronous lexical similarity search."""
     started = perf_counter()
-    normalized_domain = _normalize_domain(payload.query_domain)
-    label, _ = normalized_domain.rsplit(".", 1)
+    parsed = _normalize_domain(payload.query_domain)
+    normalized_domain = parsed.registrable_domain
+    label = parsed.registrable_label
 
     if payload.algorithms == ["vector"]:
         raise InvalidSimilarityQuery(
@@ -77,6 +81,10 @@ def search_similarity_domains(
 
     results: list[SimilaritySearchResultResponse] = []
     for candidate in candidates:
+        is_official = candidate["name"] == parsed.registrable_domain
+        if payload.exclude_official_domains and is_official:
+            continue
+
         scores = compute_scores(
             label=candidate["label"],
             brand_label=label,
@@ -93,6 +101,12 @@ def search_similarity_domains(
             continue
 
         observed_at = candidate["last_seen_at"] or candidate["first_seen_at"]
+        disposition = _default_disposition(
+            candidate["tld"],
+            scores["reasons"],
+            final_score,
+            is_official=is_official,
+        )
         results.append(
             SimilaritySearchResultResponse(
                 domain=candidate["name"],
@@ -107,6 +121,10 @@ def search_similarity_domains(
                 ),
                 reasons=scores["reasons"],
                 observed_at=observed_at,
+                ownership_classification="official" if is_official else "third_party_unknown",
+                self_owned=is_official,
+                disposition=disposition,
+                confidence=round(final_score, 4),
             ),
         )
 
@@ -144,23 +162,11 @@ def get_similarity_search_health() -> SimilarityHealthResponse:
     )
 
 
-def _normalize_domain(raw_value: str) -> str:
-    cleaned = raw_value.strip().lower().rstrip(".")
-    if not cleaned or "." not in cleaned or " " in cleaned:
-        raise InvalidSimilarityQuery("query_domain must be a valid FQDN")
-
+def _normalize_domain(raw_value: str):
     try:
-        normalized = cleaned.encode("idna").decode("ascii").lower()
-    except UnicodeError as exc:
-        raise InvalidSimilarityQuery("query_domain could not be normalized") from exc
-
-    labels = normalized.split(".")
-    if len(labels) < 2:
-        raise InvalidSimilarityQuery("query_domain must contain a registrable label and TLD")
-    if any(not label or len(label) > 63 for label in labels):
-        raise InvalidSimilarityQuery("query_domain contains an invalid label")
-
-    return normalized
+        return parse_registrable_domain(raw_value)
+    except InvalidDomainError as exc:
+        raise InvalidSimilarityQuery(str(exc)) from exc
 
 
 def _should_use_fuzzy(algorithms: list[str]) -> bool:
@@ -190,3 +196,23 @@ def _select_final_score(
 
 def _record_latency_ms(started_at: float) -> None:
     _LATENCY_WINDOW_MS.append((perf_counter() - started_at) * 1000)
+
+
+def build_similarity_error_detail(message: str) -> dict[str, str]:
+    return {"message": message, "trace_id": str(uuid4())}
+
+
+def _default_disposition(
+    tld: str,
+    reasons: list[str],
+    final_score: float,
+    *,
+    is_official: bool,
+) -> str:
+    if is_official:
+        return "official"
+    if "exact_label_match" in reasons and tld in STRATEGIC_DEFENSIVE_TLDS:
+        return "defensive_gap"
+    if final_score >= 0.72:
+        return "live_but_unknown"
+    return "watchlist"

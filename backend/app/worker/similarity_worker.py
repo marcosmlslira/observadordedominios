@@ -11,12 +11,14 @@ import signal
 import sys
 
 from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
-from app.services.use_cases.run_similarity_scan import run_similarity_scan_all
+from app.repositories.similarity_repository import SimilarityRepository
+from app.services.use_cases.run_similarity_scan import run_similarity_scan_all, run_similarity_scan_job
 from app.services.use_cases.sync_monitoring_profile import ensure_monitoring_profile_integrity
 
 logging.basicConfig(
@@ -62,6 +64,27 @@ def run_scan_cycle() -> None:
         db.close()
 
 
+def run_queued_jobs_cycle() -> None:
+    """Drain queued manual scan jobs created by the API."""
+    db = SessionLocal()
+    try:
+        repo = SimilarityRepository(db)
+        processed = 0
+        while processed < 5:
+            job = repo.claim_next_queued_scan_job()
+            if not job:
+                break
+            db.commit()
+            logger.info("Processing queued similarity job=%s brand=%s", job.id, job.brand_id)
+            try:
+                run_similarity_scan_job(db, job.id)
+            except Exception:
+                logger.exception("Queued similarity job failed: %s", job.id)
+            processed += 1
+    finally:
+        db.close()
+
+
 def main() -> None:
     logger.info("Similarity Worker starting...")
     logger.info("Cron schedule: %s", SIMILARITY_CRON)
@@ -81,6 +104,12 @@ def main() -> None:
         day_of_week=cron_parts[4] if len(cron_parts) > 4 else "*",
     )
     scheduler.add_job(run_scan_cycle, trigger, id="similarity_scan", replace_existing=True)
+    scheduler.add_job(
+        run_queued_jobs_cycle,
+        IntervalTrigger(seconds=15),
+        id="similarity_scan_manual_jobs",
+        replace_existing=True,
+    )
 
     # Graceful shutdown
     def _shutdown(signum, frame):

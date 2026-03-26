@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 # ── Tool type enum ────────────────────────────────────────
 
@@ -59,7 +59,12 @@ class ToolRequest(BaseModel):
 
 class WebsiteCloneRequest(BaseModel):
     target: str = Field(..., min_length=1, max_length=253)
-    reference_target: str | None = Field(default=None, min_length=1, max_length=253)
+    reference_target: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=253,
+        validation_alias=AliasChoices("reference_target", "reference_url"),
+    )
 
     @field_validator("target")
     @classmethod
@@ -176,6 +181,10 @@ class WhoisResult(BaseModel):
     registrant_country: str | None = None
     dnssec: str | None = None
     raw_text: str | None = None
+    lookup_status: Literal["ok", "not_found", "rate_limited", "redacted", "technical_error"] = "ok"
+    availability_reason: str | None = None
+    confidence: float = 0.0
+    data_quality: Literal["complete", "degraded", "inconclusive"] = "complete"
 
 
 # ── SSL Check ─────────────────────────────────────────────
@@ -247,7 +256,7 @@ class SuspiciousSignal(BaseModel):
 
 class SuspiciousPageResult(BaseModel):
     risk_score: float = 0.0
-    risk_level: Literal["safe", "low", "medium", "high", "critical"] = "safe"
+    risk_level: Literal["safe", "inconclusive", "protected", "low", "medium", "high", "critical"] = "safe"
     signals: list[SuspiciousSignal] = []
     page_title: str | None = None
     final_url: str | None = None
@@ -256,6 +265,8 @@ class SuspiciousPageResult(BaseModel):
     has_login_form: bool = False
     has_credential_inputs: bool = False
     external_resource_count: int = 0
+    confidence: float = 0.0
+    data_quality: Literal["complete", "degraded", "inconclusive"] = "complete"
 
 
 # ── Blacklist Check ───────────────────────────────────────
@@ -282,8 +293,13 @@ class EmailProtocol(BaseModel):
     details: str | None = None
 
 
+class SpoofingRiskResult(BaseModel):
+    score: int = 0
+    level: Literal["low", "medium", "high", "critical"] = "high"
+
+
 class EmailSecurityResult(BaseModel):
-    spoofing_risk: Literal["low", "medium", "high", "critical"] = "high"
+    spoofing_risk: SpoofingRiskResult = Field(default_factory=SpoofingRiskResult)
     protocols: list[EmailProtocol] = []
     has_spf: bool = False
     has_dmarc: bool = False
@@ -343,3 +359,7 @@ class WebsiteCloneResult(BaseModel):
     scores: CloneComparisonScore
     is_clone: bool = False
     confidence: Literal["low", "medium", "high"] = "low"
+    comparison_state: Literal["complete", "partial_comparison", "failed"] = "complete"
+    target_access_state: Literal["ok", "challenge", "not_found", "error"] = "ok"
+    reference_access_state: Literal["ok", "challenge", "not_found", "error"] = "ok"
+    errors: list[str] = []

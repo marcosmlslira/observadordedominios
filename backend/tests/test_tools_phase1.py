@@ -24,6 +24,17 @@ def test_website_clone_request_supports_separate_reference() -> None:
     assert body.build_execution_target() == "fake-login.example.com|example.com"
 
 
+def test_website_clone_request_supports_reference_url_alias() -> None:
+    body = WebsiteCloneRequest.model_validate(
+        {
+            "target": "https://fake-login.example.com/path",
+            "reference_url": "https://www.example.com/login",
+        }
+    )
+
+    assert body.build_execution_target() == "fake-login.example.com|example.com"
+
+
 def test_website_clone_request_supports_legacy_pipe_payload() -> None:
     body = WebsiteCloneRequest(
         target="https://fake-login.example.com|https://www.example.com/login",
@@ -106,7 +117,18 @@ def test_suspicious_page_detects_challenge_page(monkeypatch) -> None:
     result = service._execute("example.com")
 
     assert result["page_disposition"] == "challenge"
-    assert result["risk_level"] in {"low", "medium"}
+    assert result["risk_level"] in {"protected", "low", "medium"}
     categories = {signal["category"] for signal in result["signals"]}
     assert "protected_page" in categories
     assert "infrastructure_masking" in categories
+
+
+def test_suspicious_page_marks_unreachable_as_inconclusive(monkeypatch) -> None:
+    service = SuspiciousPageService()
+    monkeypatch.setattr(service, "_fetch_page", lambda target: None)
+
+    result = service._execute("example.com")
+
+    assert result["page_disposition"] == "unreachable"
+    assert result["risk_level"] == "inconclusive"
+    assert result["data_quality"] == "inconclusive"

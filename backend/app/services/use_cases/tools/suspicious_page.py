@@ -6,9 +6,13 @@ import logging
 import re
 
 import httpx
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:  # pragma: no cover - exercised in lean test envs
+    BeautifulSoup = None
 
 from app.core.config import settings
+from app.services.registrable_domain import parse_registrable_domain
 from app.services.use_cases.tools.base import BaseToolService
 
 logger = logging.getLogger(__name__)
@@ -24,10 +28,10 @@ CREDENTIAL_TERMS = {
 
 # Brand impersonation patterns
 BRAND_PATTERNS = [
-    r"paypal", r"apple", r"microsoft", r"google", r"amazon",
-    r"netflix", r"facebook", r"instagram", r"whatsapp",
     r"banco\s*(do\s*brasil|itau|bradesco|santander|caixa|nubank)",
-    r"correios", r"receita\s*federal", r"gov\.br",
+    r"correios",
+    r"receita\s*federal",
+    r"gov\.br",
 ]
 
 # Urgency / social engineering phrases
@@ -68,11 +72,13 @@ class SuspiciousPageService(BaseToolService):
     timeout_seconds = settings.TOOLS_DEFAULT_TIMEOUT_SECONDS
 
     def _execute(self, target: str) -> dict:
+        if BeautifulSoup is None:
+            raise RuntimeError("BeautifulSoup is not installed")
         page = self._fetch_page(target)
         if not page:
             return {
                 "risk_score": 0.0,
-                "risk_level": "safe",
+                "risk_level": "inconclusive",
                 "signals": [],
                 "page_title": None,
                 "final_url": None,
@@ -81,6 +87,8 @@ class SuspiciousPageService(BaseToolService):
                 "has_login_form": False,
                 "has_credential_inputs": False,
                 "external_resource_count": 0,
+                "confidence": 0.0,
+                "data_quality": "inconclusive",
             }
 
         html = page["html"]
@@ -163,19 +171,7 @@ class SuspiciousPageService(BaseToolService):
                 "severity": "medium",
             })
 
-        # Check brand impersonation
-        for pattern in BRAND_PATTERNS:
-            if re.search(pattern, text_content, re.IGNORECASE):
-                brand = re.search(pattern, text_content, re.IGNORECASE).group()
-                if brand.lower() not in target.lower():
-                    signals.append({
-                        "category": "brand_impersonation",
-                        "description": f"References brand '{brand}' not in domain name",
-                        "severity": "high",
-                    })
-                    break
-
-        # Check urgency language
+        # Check urgency language before brand checks so we can require both cues together.
         found_urgency = [t for t in URGENCY_TERMS if t in text_content]
         if found_urgency:
             signals.append({
@@ -183,6 +179,21 @@ class SuspiciousPageService(BaseToolService):
                 "description": f"Urgency language detected: {', '.join(found_urgency[:3])}",
                 "severity": "medium",
             })
+
+        target_label = parse_registrable_domain(target).registrable_label
+
+        # Check brand impersonation conservatively to avoid false positives from assets or boilerplate.
+        for pattern in BRAND_PATTERNS:
+            match = re.search(pattern, f"{page_title or ''} {text_content}", re.IGNORECASE)
+            if match:
+                brand = match.group().lower()
+                if brand not in target_label and (has_login_form or has_credential_inputs or found_urgency):
+                    signals.append({
+                        "category": "brand_impersonation",
+                        "description": f"References brand '{brand}' not in domain name",
+                        "severity": "high",
+                    })
+                    break
 
         # Check external resources
         external_count = 0
@@ -201,6 +212,9 @@ class SuspiciousPageService(BaseToolService):
         severity_weights = {"critical": 0.4, "high": 0.25, "medium": 0.15, "low": 0.05}
         risk_score = min(1.0, sum(severity_weights.get(s["severity"], 0) for s in signals))
 
+        data_quality = "complete"
+        if page_disposition == "challenge":
+            data_quality = "degraded"
         if risk_score >= 0.7:
             risk_level = "critical"
         elif risk_score >= 0.5:
@@ -209,6 +223,8 @@ class SuspiciousPageService(BaseToolService):
             risk_level = "medium"
         elif risk_score > 0:
             risk_level = "low"
+        elif page_disposition == "challenge":
+            risk_level = "protected"
         else:
             risk_level = "safe"
 
@@ -223,6 +239,8 @@ class SuspiciousPageService(BaseToolService):
             "has_login_form": has_login_form,
             "has_credential_inputs": has_credential_inputs,
             "external_resource_count": external_count,
+            "confidence": 0.45 if page_disposition == "challenge" else 0.85,
+            "data_quality": data_quality,
         }
 
     def _fetch_page(self, domain: str) -> dict | None:

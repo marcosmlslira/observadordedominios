@@ -19,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import dns.resolver
 
+from app.services.registrable_domain import InvalidDomainError, parse_registrable_domain
+
 logger = logging.getLogger(__name__)
 
 # QWERTY adjacent key map
@@ -48,7 +50,7 @@ HOMOGLYPHS: dict[str, list[str]] = {
 
 # Popular TLDs for variation generation
 POPULAR_TLDS = [
-    "com", "net", "org", "io", "co", "app", "dev", "info",
+    "com", "net", "org", "com.br", "net.br", "org.br", "io", "co", "app", "dev", "info",
     "biz", "shop", "store", "online", "site", "tech", "us",
 ]
 
@@ -61,11 +63,9 @@ COMMON_AFFIXES = [
 
 
 def _split_domain(domain: str) -> tuple[str, str]:
-    """Split 'example.com' into ('example', 'com')."""
-    parts = domain.rsplit(".", 1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return domain, ""
+    """Split a registrable domain into (label, public_suffix)."""
+    parsed = parse_registrable_domain(domain)
+    return parsed.registrable_label, parsed.public_suffix
 
 
 def _omission(name: str) -> set[str]:
@@ -176,7 +176,12 @@ def _check_registered(domain: str) -> bool:
 
 def generate_variants(domain: str, check_registration: bool = True) -> dict:
     """Generate typosquatting variants and optionally check registration."""
-    name, tld = _split_domain(domain)
+    try:
+        parsed = parse_registrable_domain(domain)
+    except InvalidDomainError:
+        return {"domain": domain, "variants": [], "registered": [], "registered_count": 0, "total_generated": 0}
+
+    name, tld = parsed.registrable_label, parsed.public_suffix
     if not name:
         return {"domain": domain, "variants": [], "registered": [], "total_generated": 0}
 
@@ -217,7 +222,7 @@ def generate_variants(domain: str, check_registration: bool = True) -> dict:
     typed_variants.extend(_affix_variants(name, tld)[:40])
 
     # Deduplicate and remove the original
-    seen: set[str] = {domain}
+    seen: set[str] = {parsed.registrable_domain}
     unique_variants: list[dict] = []
     for v in typed_variants:
         d = v["domain"]

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.similarity_match import SimilarityMatch
 from app.models.similarity_scan_cursor import SimilarityScanCursor
+from app.models.similarity_scan_job import SimilarityScanJob
 
 
 class SimilarityRepository:
@@ -354,6 +355,166 @@ class SimilarityRepository:
                 cursor.scan_phase = "delta"
         self.db.flush()
 
+    # ── Manual Scan Job Queue ─────────────────────────────────
+
+    def create_scan_job(
+        self,
+        *,
+        brand_id: uuid.UUID,
+        requested_tld: str | None,
+        effective_tlds: list[str],
+        force_full: bool,
+        initiated_by: str | None,
+    ) -> SimilarityScanJob:
+        now = datetime.now(timezone.utc)
+        job = SimilarityScanJob(
+            id=uuid.uuid4(),
+            brand_id=brand_id,
+            requested_tld=requested_tld,
+            effective_tlds=effective_tlds,
+            tld_results={
+                tld: {
+                    "status": "queued",
+                    "candidates": 0,
+                    "matched": 0,
+                    "removed": 0,
+                    "error_message": None,
+                    "started_at": None,
+                    "finished_at": None,
+                }
+                for tld in effective_tlds
+            },
+            force_full=force_full,
+            status="queued",
+            initiated_by=initiated_by,
+            queued_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(job)
+        self.db.flush()
+        return job
+
+    def get_scan_job(self, job_id: uuid.UUID) -> SimilarityScanJob | None:
+        return self.db.get(SimilarityScanJob, job_id)
+
+    def get_active_scan_job_for_brand(self, brand_id: uuid.UUID) -> SimilarityScanJob | None:
+        return (
+            self.db.query(SimilarityScanJob)
+            .filter(
+                SimilarityScanJob.brand_id == brand_id,
+                SimilarityScanJob.status.in_(("queued", "running")),
+            )
+            .order_by(SimilarityScanJob.queued_at.asc())
+            .first()
+        )
+
+    def get_latest_scan_job_for_brand(self, brand_id: uuid.UUID) -> SimilarityScanJob | None:
+        return (
+            self.db.query(SimilarityScanJob)
+            .filter(SimilarityScanJob.brand_id == brand_id)
+            .order_by(SimilarityScanJob.created_at.desc())
+            .first()
+        )
+
+    def claim_next_queued_scan_job(self) -> SimilarityScanJob | None:
+        row = self.db.execute(
+            text(
+                """
+                SELECT id
+                FROM similarity_scan_job
+                WHERE status = 'queued'
+                ORDER BY queued_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+                """
+            )
+        ).first()
+        if not row:
+            return None
+        job = self.db.get(SimilarityScanJob, row.id)
+        if not job:
+            return None
+        self.start_scan_job(job)
+        return job
+
+    def start_scan_job(self, job: SimilarityScanJob) -> None:
+        now = datetime.now(timezone.utc)
+        job.status = "running"
+        job.started_at = now
+        job.last_heartbeat_at = now
+        job.last_error = None
+        job.updated_at = now
+        self.db.flush()
+
+    def heartbeat_scan_job(self, job: SimilarityScanJob) -> None:
+        now = datetime.now(timezone.utc)
+        job.last_heartbeat_at = now
+        job.updated_at = now
+        self.db.flush()
+
+    def update_scan_job_tld(
+        self,
+        job: SimilarityScanJob,
+        *,
+        tld: str,
+        status: str,
+        candidates: int = 0,
+        matched: int = 0,
+        removed: int = 0,
+        error_message: str | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+    ) -> None:
+        results = dict(job.tld_results or {})
+        current = dict(results.get(tld) or {})
+        current.update(
+            {
+                "status": status,
+                "candidates": candidates,
+                "matched": matched,
+                "removed": removed,
+                "error_message": error_message,
+                "started_at": started_at.isoformat() if started_at else current.get("started_at"),
+                "finished_at": finished_at.isoformat() if finished_at else current.get("finished_at"),
+            }
+        )
+        results[tld] = current
+        job.tld_results = results
+        job.status = self._derive_scan_job_status(results)
+        job.last_error = error_message if status == "failed" else job.last_error
+        job.updated_at = datetime.now(timezone.utc)
+        if job.status in {"completed", "partial", "failed"}:
+            job.finished_at = datetime.now(timezone.utc)
+        self.db.flush()
+
+    def finalize_scan_job(self, job: SimilarityScanJob) -> None:
+        job.status = self._derive_scan_job_status(job.tld_results or {})
+        job.finished_at = datetime.now(timezone.utc)
+        job.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+
+    @staticmethod
+    def _derive_scan_job_status(results: dict) -> str:
+        states = {str((payload or {}).get("status") or "queued") for payload in results.values()}
+        if not states:
+            return "failed"
+        if states <= {"completed"}:
+            return "completed"
+        if states <= {"failed"}:
+            return "failed"
+        if "running" in states:
+            return "running"
+        if "queued" in states and states == {"queued"}:
+            return "queued"
+        if "failed" in states and "completed" in states:
+            return "partial"
+        if "failed" in states and "queued" in states:
+            return "running"
+        if "completed" in states and "queued" in states:
+            return "running"
+        return "partial"
+
     # ── Match Operations ───────────────────────────────────────
 
     def upsert_matches(self, matches: list[dict]) -> int:
@@ -362,6 +523,40 @@ class SimilarityRepository:
             return 0
 
         BATCH_SIZE = 500
+        insert_fields = [
+            "brand_id",
+            "domain_name",
+            "tld",
+            "label",
+            "score_final",
+            "score_trigram",
+            "score_levenshtein",
+            "score_brand_hit",
+            "score_keyword",
+            "score_homograph",
+            "reasons",
+            "risk_level",
+            "actionability_score",
+            "attention_bucket",
+            "attention_reasons",
+            "recommended_action",
+            "enrichment_status",
+            "enrichment_summary",
+            "last_enriched_at",
+            "ownership_classification",
+            "self_owned",
+            "disposition",
+            "confidence",
+            "delivery_risk",
+            "first_detected_at",
+            "domain_first_seen",
+            "matched_channel",
+            "matched_seed_id",
+            "matched_seed_value",
+            "matched_seed_type",
+            "matched_rule",
+            "source_stream",
+        ]
         for i in range(0, len(matches), BATCH_SIZE):
             batch = matches[i : i + BATCH_SIZE]
 
@@ -380,14 +575,16 @@ class SimilarityRepository:
                     f":attention_bucket{suffix}, :attention_reasons{suffix}, "
                     f":recommended_action{suffix}, :enrichment_status{suffix}, "
                     f":enrichment_summary{suffix}, :last_enriched_at{suffix}, "
+                    f":ownership_classification{suffix}, :self_owned{suffix}, "
+                    f":disposition{suffix}, :confidence{suffix}, :delivery_risk{suffix}, "
                     f":first_detected_at{suffix}, :domain_first_seen{suffix}, "
                     f"'new', :matched_channel{suffix}, "
                     f":matched_seed_id{suffix}, :matched_seed_value{suffix}, "
                     f":matched_seed_type{suffix}, :matched_rule{suffix}, "
                     f":source_stream{suffix})"
                 )
-                for key, value in m.items():
-                    params[f"{key}{suffix}"] = value
+                for key in insert_fields:
+                    params[f"{key}{suffix}"] = m.get(key)
 
             sql = f"""
                 INSERT INTO similarity_match (
@@ -396,7 +593,8 @@ class SimilarityRepository:
                     score_brand_hit, score_keyword, score_homograph,
                     reasons, risk_level, actionability_score, attention_bucket,
                     attention_reasons, recommended_action, enrichment_status,
-                    enrichment_summary, last_enriched_at, first_detected_at,
+                    enrichment_summary, last_enriched_at, ownership_classification,
+                    self_owned, disposition, confidence, delivery_risk, first_detected_at,
                     domain_first_seen, status, matched_channel, matched_seed_id,
                     matched_seed_value, matched_seed_type, matched_rule, source_stream
                 ) VALUES {", ".join(values_clauses)}
@@ -416,6 +614,11 @@ class SimilarityRepository:
                     enrichment_status = EXCLUDED.enrichment_status,
                     enrichment_summary = EXCLUDED.enrichment_summary,
                     last_enriched_at = EXCLUDED.last_enriched_at,
+                    ownership_classification = EXCLUDED.ownership_classification,
+                    self_owned = EXCLUDED.self_owned,
+                    disposition = EXCLUDED.disposition,
+                    confidence = EXCLUDED.confidence,
+                    delivery_risk = EXCLUDED.delivery_risk,
                     matched_channel = EXCLUDED.matched_channel,
                     matched_seed_id = EXCLUDED.matched_seed_id,
                     matched_seed_value = EXCLUDED.matched_seed_value,

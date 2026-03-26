@@ -163,7 +163,10 @@ def domain_similarity(body: ToolRequest, force: bool = Query(False), db: Session
 
 @router.post("/website-clone", response_model=ToolResponse, summary="Website Clone Detector")
 def website_clone(body: WebsiteCloneRequest, force: bool = Query(False), db: Session = Depends(get_db)):
-    target = body.build_execution_target()
+    try:
+        target = body.build_execution_target()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     result = _run_tool("website_clone", ToolRequest(target=target), db, force)
     db.commit()
     return result

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_admin
 
-from app.infra.db.session import SessionLocal, get_db
+from app.infra.db.session import get_db
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
 from app.repositories.similarity_repository import SimilarityRepository
 from app.schemas.monitored_brand import (
@@ -25,6 +24,7 @@ from app.schemas.monitored_brand import (
     UpdateBrandRequest,
 )
 from app.schemas.similarity import ScanResultResponse, ScanSummaryResponse
+from app.services.similarity_scan_jobs import resolve_effective_scan_tlds, serialize_scan_job
 from app.services.use_cases.sync_monitoring_profile import (
     create_monitoring_profile,
     ensure_monitoring_profile_integrity,
@@ -206,34 +206,6 @@ def list_brand_seeds(
     )
 
 
-def _run_scan_in_background(brand_id: UUID, tld: str | None, force_full: bool) -> None:
-    """Execute similarity scan in a background thread."""
-    db = SessionLocal()
-    try:
-        from app.models.monitored_brand import MonitoredBrand
-        from app.services.use_cases.run_similarity_scan import (
-            run_similarity_scan,
-            run_similarity_scan_all,
-        )
-
-        brand = db.get(MonitoredBrand, brand_id)
-        if not brand:
-            logger.error("Brand %s not found for background scan", brand_id)
-            return
-
-        ensure_monitoring_profile_integrity(MonitoredBrandRepository(db), brand)
-        db.commit()
-
-        if tld:
-            run_similarity_scan(db, brand, tld, force_full=force_full)
-        else:
-            run_similarity_scan_all(db, brand, force_full=force_full)
-    except Exception:
-        logger.exception("Background scan failed for brand=%s", brand_id)
-    finally:
-        db.close()
-
-
 @router.post(
     "/{brand_id}/scan",
     response_model=ScanSummaryResponse,
@@ -247,6 +219,7 @@ def trigger_scan(
         False,
         description="Reprocess current domains for the target TLDs and reconcile old matches",
     ),
+    current_admin: str = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     repo = MonitoredBrandRepository(db)
@@ -254,25 +227,40 @@ def trigger_scan(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
 
-    # Dispatch to background thread
-    thread = threading.Thread(
-        target=_run_scan_in_background,
-        args=(brand_id, tld, force_full),
-        daemon=True,
-    )
-    thread.start()
-
-    # Return immediate response
-    tlds = [tld] if tld else (brand.tld_scope or ["net", "org", "info"])
-    results = [
-        ScanResultResponse(
-            brand_id=brand_id,
-            tld=t,
-            candidates=0,
-            matched=0,
-            removed=0,
-            status="queued",
+    similarity_repo = SimilarityRepository(db)
+    active_job = similarity_repo.get_active_scan_job_for_brand(brand_id)
+    if active_job:
+        serialized = serialize_scan_job(active_job)
+        return ScanSummaryResponse(
+            job_id=serialized.job_id,
+            brand_id=serialized.brand_id,
+            requested_tld=serialized.requested_tld,
+            status=serialized.status,
+            queued_at=serialized.queued_at,
+            tlds_effective=serialized.tlds_effective,
+            results=serialized.results,
         )
-        for t in tlds
-    ]
-    return ScanSummaryResponse(results=results)
+
+    effective_tlds = resolve_effective_scan_tlds(db, brand, tld)
+    if not effective_tlds:
+        raise HTTPException(status_code=400, detail="No effective TLDs resolved for scan")
+
+    job = similarity_repo.create_scan_job(
+        brand_id=brand_id,
+        requested_tld=tld,
+        effective_tlds=effective_tlds,
+        force_full=force_full,
+        initiated_by=current_admin,
+    )
+    db.commit()
+
+    serialized = serialize_scan_job(job)
+    return ScanSummaryResponse(
+        job_id=serialized.job_id,
+        brand_id=serialized.brand_id,
+        requested_tld=serialized.requested_tld,
+        status=serialized.status,
+        queued_at=serialized.queued_at,
+        tlds_effective=serialized.tlds_effective,
+        results=serialized.results,
+    )

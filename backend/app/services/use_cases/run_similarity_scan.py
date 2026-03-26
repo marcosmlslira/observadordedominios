@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.models.monitored_brand import MonitoredBrand
 from app.repositories.domain_repository import list_partition_tlds
 from app.repositories.similarity_repository import SimilarityRepository
+from app.services.monitoring_profile import iter_scan_seeds, pick_matched_rule
 from app.services.use_cases.compute_actionability import compute_actionability
 from app.services.use_cases.enrich_similarity_match import (
     AUTO_ENRICH_LIMIT_PER_SCAN,
@@ -26,7 +27,6 @@ from app.services.use_cases.compute_similarity import (
     compute_seeded_scores,
     generate_typo_candidates,
 )
-from app.services.monitoring_profile import iter_scan_seeds, pick_matched_rule
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,11 @@ def run_similarity_scan(
 
     try:
         scan_seeds = iter_scan_seeds(list(brand.seeds or []))
+        official_domains = {
+            (domain.registrable_domain or domain.domain_name).strip().lower()
+            for domain in (brand.domains or [])
+            if getattr(domain, "is_active", True)
+        }
         if not scan_seeds:
             logger.warning("No scan seeds available for brand=%s", brand.brand_name)
             repo.finish_scan(
@@ -115,6 +120,8 @@ def run_similarity_scan(
             )
 
             for cand in candidates:
+                if cand["name"].strip().lower() in official_domains:
+                    continue
                 candidate_domain_names.add(cand["name"])
                 scores = compute_seeded_scores(
                     label=cand["label"],
@@ -172,6 +179,11 @@ def run_similarity_scan(
                     "attention_bucket": actionability["attention_bucket"],
                     "attention_reasons": actionability["attention_reasons"],
                     "recommended_action": actionability["recommended_action"],
+                    "ownership_classification": "third_party_unknown",
+                    "self_owned": False,
+                    "disposition": actionability["attention_bucket"],
+                    "confidence": round(scores["score_final"], 4),
+                    "delivery_risk": "none",
                 }
                 previous = best_matches_by_domain.get(cand["name"])
                 if not previous or (
@@ -338,4 +350,65 @@ def run_similarity_scan_all(
             logger.exception("Failed scan for brand=%s tld=%s", brand.brand_label, tld)
             results[tld] = {"candidates": 0, "matched": 0, "scanned": 0, "error": True}
 
+    return results
+
+
+def run_similarity_scan_job(
+    db: Session,
+    job_id: uuid.UUID,
+) -> dict[str, dict[str, int]]:
+    repo = SimilarityRepository(db)
+    job = repo.get_scan_job(job_id)
+    if not job:
+        raise ValueError(f"similarity scan job {job_id} not found")
+
+    brand = db.get(MonitoredBrand, job.brand_id)
+    if not brand:
+        raise ValueError(f"brand {job.brand_id} not found")
+
+    if job.status != "running":
+        repo.start_scan_job(job)
+        db.commit()
+
+    results: dict[str, dict[str, int]] = {}
+    for tld in list(job.effective_tlds or []):
+        started_at = datetime.now(timezone.utc)
+        repo.update_scan_job_tld(job, tld=tld, status="running", started_at=started_at)
+        db.commit()
+        try:
+            metrics = run_similarity_scan(
+                db,
+                brand,
+                tld,
+                force_full=bool(job.force_full),
+            )
+            repo.update_scan_job_tld(
+                job,
+                tld=tld,
+                status="completed",
+                candidates=int(metrics.get("candidates", 0)),
+                matched=int(metrics.get("matched", 0)),
+                removed=int(metrics.get("removed", 0)),
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+            )
+            repo.heartbeat_scan_job(job)
+            db.commit()
+            results[tld] = metrics
+        except Exception as exc:
+            logger.exception("Queued similarity scan failed for brand=%s tld=%s", brand.brand_label, tld)
+            repo.update_scan_job_tld(
+                job,
+                tld=tld,
+                status="failed",
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                error_message=str(exc),
+            )
+            repo.heartbeat_scan_job(job)
+            db.commit()
+            results[tld] = {"candidates": 0, "matched": 0, "scanned": 0, "removed": 0, "error": True}
+
+    repo.finalize_scan_job(job)
+    db.commit()
     return results

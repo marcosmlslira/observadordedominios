@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         "blog,press,link,click,one,pro,name,life,plus,now,global,expert,"
         "academy,education,school,host,hosting,domains,security,safe,"
         "protect,chat,social,community,team,studio,design,marketing,"
-        "consulting,partners,ventures,holdings,international,br"
+        "consulting,partners,ventures,holdings,international,com.br,net.br,org.br,br"
     )
     CZDS_ENABLED_TLDS: str = (
         "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,"

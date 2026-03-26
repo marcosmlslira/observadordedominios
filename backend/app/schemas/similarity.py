@@ -32,6 +32,8 @@ class SimilaritySearchRequest(BaseModel):
     tld_allowlist: list[str] | None = None
     sources: list[SimilaritySource] = Field(default_factory=lambda: ["czds"])
     offset: int = Field(0, ge=0)
+    exclude_official_domains: bool = True
+    include_self_owned: bool = False
 
     @field_validator("query_domain")
     @classmethod
@@ -77,6 +79,11 @@ class MatchResponse(BaseModel):
     enrichment_status: str | None = None
     enrichment_summary: dict | None = None
     last_enriched_at: datetime | None = None
+    ownership_classification: str | None = None
+    self_owned: bool | None = None
+    disposition: str | None = None
+    confidence: float | None = None
+    delivery_risk: str | None = None
     first_detected_at: datetime
     domain_first_seen: datetime
     status: str
@@ -96,6 +103,8 @@ class MatchResponse(BaseModel):
 class MatchListResponse(BaseModel):
     items: list[MatchResponse]
     total: int
+    active_scan: "ScanJobResponse | None" = None
+    last_scan: "ScanJobResponse | None" = None
 
 
 class ScanResultResponse(BaseModel):
@@ -105,9 +114,32 @@ class ScanResultResponse(BaseModel):
     matched: int
     removed: int = 0
     status: str
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class ScanSummaryResponse(BaseModel):
+    job_id: UUID
+    brand_id: UUID
+    requested_tld: str | None
+    status: str
+    queued_at: datetime
+    tlds_effective: list[str]
+    results: list[ScanResultResponse]
+
+
+class ScanJobResponse(BaseModel):
+    job_id: UUID
+    brand_id: UUID
+    requested_tld: str | None
+    status: str
+    queued_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    force_full: bool = False
+    tlds_effective: list[str]
+    last_error: str | None = None
     results: list[ScanResultResponse]
 
 
@@ -126,6 +158,10 @@ class SimilaritySearchResultResponse(BaseModel):
     scores: SimilaritySearchScoreResponse
     reasons: list[str]
     observed_at: datetime
+    ownership_classification: str | None = None
+    self_owned: bool | None = None
+    disposition: str | None = None
+    confidence: float | None = None
 
 
 class SimilaritySearchQueryResponse(BaseModel):

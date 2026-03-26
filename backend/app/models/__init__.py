@@ -13,6 +13,7 @@ from app.models.monitored_brand_domain import MonitoredBrandDomain
 from app.models.monitored_brand_seed import MonitoredBrandSeed
 from app.models.similarity_match import SimilarityMatch
 from app.models.similarity_scan_cursor import SimilarityScanCursor
+from app.models.similarity_scan_job import SimilarityScanJob
 from app.models.tool_execution import ToolExecution
 from app.models.zone_file_artifact import ZoneFileArtifact
 
@@ -31,6 +32,7 @@ __all__ = [
     "MonitoredBrandSeed",
     "SimilarityMatch",
     "SimilarityScanCursor",
+    "SimilarityScanJob",
     "ToolExecution",
     "ZoneFileArtifact",
 ]

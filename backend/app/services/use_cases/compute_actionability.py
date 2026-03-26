@@ -14,7 +14,7 @@ AttentionBucket = str
 
 STRATEGIC_DEFENSIVE_TLDS = {
     "com", "net", "org", "app", "io", "ai", "co", "xyz", "site", "store",
-    "online", "shop", "info", "biz", "cloud", "dev", "pro",
+    "online", "shop", "info", "biz", "cloud", "dev", "pro", "com.br", "net.br", "org.br",
 }
 
 

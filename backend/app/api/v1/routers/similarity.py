@@ -20,8 +20,10 @@ from app.schemas.similarity import (
     SimilaritySearchResponse,
     UpdateMatchStatusRequest,
 )
+from app.services.similarity_scan_jobs import serialize_scan_job
 from app.services.use_cases.search_similarity import (
     InvalidSimilarityQuery,
+    build_similarity_error_detail,
     get_similarity_search_health,
     search_similarity_domains,
 )
@@ -48,6 +50,12 @@ def search_similarity(
         return search_similarity_domains(db, body)
     except InvalidSimilarityQuery as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Similarity search failed")
+        raise HTTPException(
+            status_code=503,
+            detail=build_similarity_error_detail(str(exc) or "similarity_search_failed"),
+        ) from exc
 
 
 @router.get(
@@ -91,7 +99,14 @@ def list_matches(
         risk_level=risk_level,
         attention_bucket=attention_bucket,
     )
-    return MatchListResponse(items=matches, total=total)
+    active_job = repo.get_active_scan_job_for_brand(brand_id)
+    latest_job = repo.get_latest_scan_job_for_brand(brand_id)
+    return MatchListResponse(
+        items=matches,
+        total=total,
+        active_scan=serialize_scan_job(active_job) if active_job else None,
+        last_scan=serialize_scan_job(latest_job) if latest_job else None,
+    )
 
 
 @router.get(

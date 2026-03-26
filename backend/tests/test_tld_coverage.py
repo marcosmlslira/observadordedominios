@@ -68,3 +68,9 @@ def test_ct_fallback_helpers_expand_br_scope(monkeypatch) -> None:
 
     assert fallback_tlds == ["com.br", "net.br", "io"]
     assert set(certstream_suffixes) == {".br", ".io"}
+
+
+def test_target_tlds_expose_explicit_brazilian_second_level_domains(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "TARGET_TLDS", "com,com.br,net.br,org.br,br")
+
+    assert tld_coverage.get_target_tlds() == ["com", "com.br", "net.br", "org.br", "br"]

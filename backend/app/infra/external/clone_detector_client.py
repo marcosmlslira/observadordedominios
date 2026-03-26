@@ -14,7 +14,10 @@ import re
 from collections import Counter
 
 import httpx
-from bs4 import BeautifulSoup
+try:
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:  # pragma: no cover - exercised in lean test envs
+    BeautifulSoup = None
 
 logger = logging.getLogger(__name__)
 
@@ -24,26 +27,53 @@ TEXT_WEIGHT = 0.35
 STRUCTURAL_WEIGHT = 0.25
 
 
-def _fetch_page(url: str) -> tuple[str, bytes]:
-    """Fetch a page and return (html_text, raw_bytes)."""
+_CHALLENGE_PATTERNS = (
+    "access denied",
+    "attention required",
+    "checking your browser",
+    "cloudflare",
+    "ddos-guard",
+)
+
+
+def _fetch_page(url: str) -> dict:
+    """Fetch a page and return content plus access state."""
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
-    try:
-        r = httpx.get(url, timeout=15, follow_redirects=True,
-                      headers={"User-Agent": "Mozilla/5.0 (compatible; ObsBot/1.0)"})
-        r.raise_for_status()
-        return r.text, r.content
-    except Exception:
-        # Fallback to HTTP
-        url_http = url.replace("https://", "http://", 1)
-        r = httpx.get(url_http, timeout=15, follow_redirects=True,
-                      headers={"User-Agent": "Mozilla/5.0 (compatible; ObsBot/1.0)"})
-        r.raise_for_status()
-        return r.text, r.content
+    last_error: Exception | None = None
+    for candidate in (url, url.replace("https://", "http://", 1)):
+        try:
+            r = httpx.get(
+                candidate,
+                timeout=15,
+                follow_redirects=True,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; ObsBot/1.0)"},
+            )
+            access_state = "ok"
+            body_lower = r.text.lower()
+            if r.status_code in {401, 403, 429, 503} or any(p in body_lower for p in _CHALLENGE_PATTERNS):
+                access_state = "challenge"
+            elif r.status_code == 404:
+                access_state = "not_found"
+            elif r.status_code >= 400:
+                access_state = "error"
+            return {
+                "html": r.text,
+                "bytes": r.content,
+                "url": str(r.url),
+                "status_code": r.status_code,
+                "access_state": access_state,
+            }
+        except Exception as exc:
+            last_error = exc
+            continue
+    raise RuntimeError(str(last_error or "failed_to_fetch_page"))
 
 
 def _extract_text(html: str) -> str:
     """Extract visible text from HTML."""
+    if BeautifulSoup is None:
+        return ""
     soup = BeautifulSoup(html, "html.parser")
     # Remove script and style elements
     for tag in soup(["script", "style", "meta", "link", "noscript"]):
@@ -55,6 +85,8 @@ def _extract_text(html: str) -> str:
 
 def _dom_fingerprint(html: str) -> dict[str, int]:
     """Create a DOM structure fingerprint: tag → count."""
+    if BeautifulSoup is None:
+        return {}
     soup = BeautifulSoup(html, "html.parser")
     tags = [tag.name for tag in soup.find_all() if tag.name]
     return dict(Counter(tags))
@@ -160,39 +192,54 @@ def compare_websites(target: str, reference: str) -> dict:
     errors: list[str] = []
 
     # Fetch both pages
-    target_html, target_bytes = None, None
-    reference_html, reference_bytes = None, None
+    target_page = None
+    reference_page = None
 
     try:
-        target_html, target_bytes = _fetch_page(target)
+        target_page = _fetch_page(target)
     except Exception as exc:
         errors.append(f"Failed to fetch target: {exc}")
 
     try:
-        reference_html, reference_bytes = _fetch_page(reference)
+        reference_page = _fetch_page(reference)
     except Exception as exc:
         errors.append(f"Failed to fetch reference: {exc}")
 
-    if not target_html or not reference_html:
+    target_access_state = target_page["access_state"] if target_page else "error"
+    reference_access_state = reference_page["access_state"] if reference_page else "error"
+    comparison_state = "complete"
+    if target_access_state != "ok" or reference_access_state != "ok":
+        comparison_state = "partial_comparison"
+
+    if not target_page or not reference_page:
         return {
             "target": target,
             "reference": reference,
-            "overall_score": 0.0,
-            "visual_score": None,
-            "text_score": None,
-            "structural_score": None,
+            "target_domain": target,
+            "reference_domain": reference,
+            "scores": {
+                "overall": 0.0,
+                "visual": None,
+                "textual": None,
+                "structural": None,
+            },
+            "is_clone": False,
+            "confidence": "low",
             "verdict": "error",
             "errors": errors,
+            "comparison_state": "failed",
+            "target_access_state": target_access_state,
+            "reference_access_state": reference_access_state,
         }
 
     # Text similarity
-    target_text = _extract_text(target_html)
-    reference_text = _extract_text(reference_html)
+    target_text = _extract_text(target_page["html"])
+    reference_text = _extract_text(reference_page["html"])
     text_score = _text_similarity(target_text, reference_text)
 
     # Structural similarity
-    target_fp = _dom_fingerprint(target_html)
-    reference_fp = _dom_fingerprint(reference_html)
+    target_fp = _dom_fingerprint(target_page["html"])
+    reference_fp = _dom_fingerprint(reference_page["html"])
     structural_score = _structural_similarity(target_fp, reference_fp)
 
     # Visual similarity (screenshots)
@@ -230,10 +277,19 @@ def compare_websites(target: str, reference: str) -> dict:
     return {
         "target": target,
         "reference": reference,
-        "overall_score": overall,
-        "visual_score": visual_score,
-        "text_score": text_score,
-        "structural_score": structural_score,
+        "target_domain": target,
+        "reference_domain": reference,
+        "scores": {
+            "overall": overall,
+            "visual": visual_score,
+            "textual": text_score,
+            "structural": structural_score,
+        },
+        "is_clone": verdict == "likely_clone",
+        "confidence": "high" if overall >= 0.75 else "medium" if overall >= 0.5 else "low",
         "verdict": verdict,
-        "errors": errors if errors else None,
+        "errors": errors,
+        "comparison_state": comparison_state,
+        "target_access_state": target_access_state,
+        "reference_access_state": reference_access_state,
     }

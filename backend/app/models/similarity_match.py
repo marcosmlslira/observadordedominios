@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from app.models.base import Base
@@ -39,6 +39,11 @@ class SimilarityMatch(Base):
     enrichment_status = Column(String(16), nullable=True)
     enrichment_summary = Column(JSONB, nullable=True)
     last_enriched_at = Column(DateTime(timezone=True), nullable=True)
+    ownership_classification = Column(String(32), nullable=True)
+    self_owned = Column(Boolean, nullable=True)
+    disposition = Column(String(32), nullable=True)
+    confidence = Column(Float, nullable=True)
+    delivery_risk = Column(String(16), nullable=True)
     first_detected_at = Column(DateTime(timezone=True), nullable=False)
     domain_first_seen = Column(DateTime(timezone=True), nullable=False)
 
