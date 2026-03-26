@@ -133,6 +133,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
     from app.services.use_cases.tools.email_security import EmailSecurityService
     from app.services.use_cases.tools.http_headers import HttpHeadersService
     from app.services.use_cases.tools.ip_geolocation import IpGeolocationService
+    from app.services.use_cases.tools.screenshot_capture import ScreenshotCaptureService
     from app.services.use_cases.tools.ssl_check import SslCheckService
     from app.services.use_cases.tools.suspicious_page import SuspiciousPageService
     from app.services.use_cases.tools.whois_lookup import WhoisLookupService
@@ -145,6 +146,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
         "email_security": EmailSecurityService(),
         "ip_geolocation": IpGeolocationService(),
         "ssl_check": SslCheckService(),
+        "screenshot": ScreenshotCaptureService(),
     }
 
     results: dict[str, dict] = {}
@@ -486,10 +488,13 @@ def _derive_disposition(
     if page_disposition == "parked":
         return "defensive_gap"
 
-    # Honest inconclusive states — never promote to live_but_unknown when data is absent
+    # Honest inconclusive states — never promote to live_but_unknown when data is absent.
+    # Exclude screenshot and ssl_check from this check since they can legitimately fail
+    # on domains without HTTPS/browser access without implying all intel is missing.
+    _intel_tools = {k: v for k, v in tool_results.items() if k not in {"screenshot", "ssl_check"}}
     all_tools_failed = all(
         payload.get("status") != "completed"
-        for payload in tool_results.values()
+        for payload in _intel_tools.values()
     )
     page_tool_status = (tool_results.get("suspicious_page") or {}).get("status")
     if all_tools_failed or page_tool_status not in {"completed"}:
@@ -627,6 +632,12 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "issuer": cert.get("issuer"),
             "days_remaining": cert.get("days_remaining"),
             "san_count": len(cert.get("san") or []),
+        }
+    if tool_type == "screenshot":
+        return {
+            "screenshot_url": result.get("screenshot_url"),
+            "page_title": result.get("page_title"),
+            "final_url": result.get("final_url"),
         }
     if tool_type == "ip_geolocation":
         return {
