@@ -280,6 +280,46 @@ def build_seed_rows(
     return seed_rows
 
 
+_BRAZIL_CORE_TLDS = ["br", "com.br", "net.br", "org.br"]
+_BRAZIL_GOV_TLD = "gov.br"
+
+
+def enrich_tld_scope_for_brazil(
+    tld_scope: list[str],
+    official_domains: list[str],
+) -> list[str]:
+    """Add core Brazilian TLDs to scope if any official domain has a .br suffix.
+
+    Brazilian TLDs are not optional for this product — com.br, net.br, org.br
+    are core coverage. gov.br is added when the brand already uses it officially.
+    """
+    if not official_domains:
+        return tld_scope
+
+    br_suffixes = {"br", "com.br", "net.br", "org.br", "gov.br", "edu.br", "mil.br"}
+    has_br_domain = any(
+        normalize_domain_name(d).split(".", 1)[-1] in br_suffixes or
+        normalize_domain_name(d).endswith(".br")
+        for d in official_domains
+    )
+
+    if not has_br_domain:
+        return tld_scope
+
+    scope_set = set(tld_scope)
+    additions = [t for t in _BRAZIL_CORE_TLDS if t not in scope_set]
+
+    # Also add gov.br if the brand uses it officially
+    uses_gov_br = any(
+        normalize_domain_name(d).endswith(".gov.br")
+        for d in official_domains
+    )
+    if uses_gov_br and _BRAZIL_GOV_TLD not in scope_set:
+        additions.append(_BRAZIL_GOV_TLD)
+
+    return tld_scope + additions
+
+
 def iter_scan_seeds(seeds: list[MonitoredBrandSeed]) -> list[MonitoredBrandSeed]:
     allowed_types = {"domain_label", "brand_primary", "brand_alias", "brand_phrase"}
     result = [

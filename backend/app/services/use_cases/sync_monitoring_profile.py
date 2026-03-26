@@ -12,6 +12,7 @@ from app.services.monitoring_profile import (
     build_domain_inputs,
     build_seed_rows,
     derive_brand_label,
+    enrich_tld_scope_for_brazil,
     looks_like_domain,
     normalize_noise_mode,
     resolve_display_name,
@@ -42,13 +43,15 @@ def create_monitoring_profile(
         noise_mode=noise_mode,
     )
 
+    enriched_tld_scope = enrich_tld_scope_for_brazil(tld_scope, official_domains)
+
     brand = repo.create(
         organization_id=organization_id,
         brand_name=prepared["display_name"],
         primary_brand_name=prepared["primary_brand_name"],
         brand_label=prepared["brand_label"],
         keywords=prepared["keywords"],
-        tld_scope=tld_scope,
+        tld_scope=enriched_tld_scope,
         noise_mode=prepared["noise_mode"],
         notes=notes,
     )
@@ -90,13 +93,19 @@ def update_monitoring_profile(
         noise_mode=effective_noise_mode,
     )
 
+    enriched_tld_scope = (
+        enrich_tld_scope_for_brazil(tld_scope, effective_domains)
+        if tld_scope is not None
+        else None
+    )
+
     repo.update(
         brand,
         brand_name=prepared["display_name"],
         primary_brand_name=prepared["primary_brand_name"],
         brand_label=prepared["brand_label"],
         keywords=prepared["keywords"],
-        tld_scope=tld_scope,
+        tld_scope=enriched_tld_scope,
         noise_mode=prepared["noise_mode"],
         notes=notes,
         is_active=is_active,
