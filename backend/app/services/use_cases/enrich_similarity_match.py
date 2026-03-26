@@ -54,6 +54,7 @@ def enrich_similarity_match(
     delivery_risk = "none"
 
     score, signals = _apply_whois_adjustments(tool_results.get("whois"), score, signals)
+    score, signals = _apply_dns_adjustments(tool_results.get("dns_lookup"), score, signals)
     score, signals = _apply_http_adjustments(tool_results.get("http_headers"), score, signals)
     score, signals = _apply_page_adjustments(tool_results.get("suspicious_page"), score, signals)
     score, signals, delivery_risk = _apply_email_adjustments(
@@ -62,6 +63,7 @@ def enrich_similarity_match(
         tool_results.get("suspicious_page"),
         score,
         signals,
+        dns_tool_data=tool_results.get("dns_lookup"),
     )
     score, signals = _apply_geo_adjustments(tool_results.get("ip_geolocation"), score, signals)
 
@@ -108,6 +110,7 @@ def enrich_similarity_match(
 
 
 def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
+    from app.services.use_cases.tools.dns_lookup import DnsLookupService
     from app.services.use_cases.tools.email_security import EmailSecurityService
     from app.services.use_cases.tools.http_headers import HttpHeadersService
     from app.services.use_cases.tools.ip_geolocation import IpGeolocationService
@@ -117,6 +120,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
 
     services = {
         "whois": WhoisLookupService(),
+        "dns_lookup": DnsLookupService(),
         "http_headers": HttpHeadersService(),
         "suspicious_page": SuspiciousPageService(),
         "email_security": EmailSecurityService(),
@@ -160,6 +164,31 @@ def _apply_whois_adjustments(tool_data: dict | None, score: float, signals: list
     elif age_days <= 90:
         score += 0.10
         signals.append(_signal("fresh_registration", "medium", "Domain was registered in the last 90 days."))
+
+    return score, signals
+
+
+def _apply_dns_adjustments(tool_data: dict | None, score: float, signals: list[dict[str, object]]):
+    if not tool_data or tool_data.get("status") != "completed":
+        return score, signals
+
+    result = tool_data.get("result") or {}
+    records = result.get("records") or []
+    record_types = {str(r.get("type", "")).upper() for r in records}
+
+    has_a_or_aaaa = bool({"A", "AAAA"} & record_types)
+    has_mx = "MX" in record_types
+
+    if not has_a_or_aaaa and not has_mx:
+        # Domain doesn't resolve at all — reduce actionability
+        score -= 0.08
+        signals.append(_signal("dns_not_resolving", "low", "Domain has no A, AAAA, or MX records — may be abandoned or not yet active."))
+        return score, signals
+
+    if has_mx and not has_a_or_aaaa:
+        # Mail-only domain: configured for email but no web surface
+        score += 0.12
+        signals.append(_signal("mail_only_infrastructure", "high", "Domain has MX records but no web resolution — configured exclusively for email delivery."))
 
     return score, signals
 
@@ -243,6 +272,8 @@ def _apply_email_adjustments(
     page_tool_data: dict | None,
     score: float,
     signals: list[dict[str, object]],
+    *,
+    dns_tool_data: dict | None = None,
 ):
     if not tool_data or tool_data.get("status") != "completed":
         return score, signals, "none"
@@ -256,17 +287,20 @@ def _apply_email_adjustments(
     http_status = ((http_tool_data or {}).get("result") or {}).get("status_code")
     page_disposition = ((page_tool_data or {}).get("result") or {}).get("page_disposition")
     live_web_surface = http_status == 200 and page_disposition == "live"
+    dns_records = ((dns_tool_data or {}).get("result") or {}).get("records") or []
+    dns_record_types = {str(r.get("type", "")).upper() for r in dns_records}
+    is_mail_only = "MX" in dns_record_types and not ({"A", "AAAA"} & dns_record_types)
     delivery_risk = "none"
 
     if level == "critical":
         score += 0.16
         signals.append(_signal("high_spoofing_risk", "high", "Mail configuration allows high spoofing risk."))
-        delivery_risk = "high" if not live_web_surface else "possible"
+        delivery_risk = "high" if (not live_web_surface or is_mail_only) else "possible"
     elif level == "high":
         score += 0.09
         signals.append(_signal("elevated_spoofing_risk", "medium", "Mail configuration presents elevated spoofing risk."))
-        delivery_risk = "possible"
-    elif level == "medium" and not live_web_surface:
+        delivery_risk = "high" if is_mail_only else "possible"
+    elif level == "medium" and (not live_web_surface or is_mail_only):
         delivery_risk = "possible"
 
     return score, signals, delivery_risk
@@ -481,6 +515,15 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "registrant_country": result.get("registrant_country"),
             "lookup_status": result.get("lookup_status"),
             "availability_reason": result.get("availability_reason"),
+        }
+    if tool_type == "dns_lookup":
+        records = result.get("records") or []
+        types_found = sorted({str(r.get("type")) for r in records})
+        return {
+            "record_types": types_found,
+            "has_mx": "MX" in types_found,
+            "has_a": "A" in types_found or "AAAA" in types_found,
+            "nameservers": result.get("nameservers") or [],
         }
     if tool_type == "http_headers":
         return {
