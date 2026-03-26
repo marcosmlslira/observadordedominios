@@ -608,15 +608,31 @@ class SimilarityRepository:
                     reasons = EXCLUDED.reasons,
                     risk_level = EXCLUDED.risk_level,
                     actionability_score = EXCLUDED.actionability_score,
-                    attention_bucket = EXCLUDED.attention_bucket,
-                    attention_reasons = EXCLUDED.attention_reasons,
-                    recommended_action = EXCLUDED.recommended_action,
+                    attention_bucket = CASE
+                        WHEN similarity_match.status IN ('dismissed', 'confirmed_threat')
+                        THEN similarity_match.attention_bucket
+                        ELSE EXCLUDED.attention_bucket
+                    END,
+                    attention_reasons = CASE
+                        WHEN similarity_match.status IN ('dismissed', 'confirmed_threat')
+                        THEN similarity_match.attention_reasons
+                        ELSE EXCLUDED.attention_reasons
+                    END,
+                    recommended_action = CASE
+                        WHEN similarity_match.status IN ('dismissed', 'confirmed_threat')
+                        THEN similarity_match.recommended_action
+                        ELSE EXCLUDED.recommended_action
+                    END,
+                    disposition = CASE
+                        WHEN similarity_match.status IN ('dismissed', 'confirmed_threat')
+                        THEN similarity_match.disposition
+                        ELSE EXCLUDED.disposition
+                    END,
                     enrichment_status = EXCLUDED.enrichment_status,
                     enrichment_summary = EXCLUDED.enrichment_summary,
                     last_enriched_at = EXCLUDED.last_enriched_at,
                     ownership_classification = EXCLUDED.ownership_classification,
                     self_owned = EXCLUDED.self_owned,
-                    disposition = EXCLUDED.disposition,
                     confidence = EXCLUDED.confidence,
                     delivery_risk = EXCLUDED.delivery_risk,
                     matched_channel = EXCLUDED.matched_channel,

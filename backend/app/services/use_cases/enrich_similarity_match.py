@@ -67,10 +67,27 @@ def enrich_similarity_match(
     )
     score, signals = _apply_geo_adjustments(tool_results.get("ip_geolocation"), score, signals)
 
+    ownership_classification, self_owned = _derive_ownership(brand, match, tool_results)
+
+    # T3.5 — Clone detection: only for immediate_attention matches with an official domain.
+    # Runs after standard tools so we already know if the site is even reachable.
+    clone_result: dict | None = None
+    if (
+        match.get("attention_bucket") == "immediate_attention"
+        and ownership_classification not in {"official", "self_owned_related"}
+        and brand.domains
+    ):
+        reference_domain = next(
+            (d.domain_name for d in brand.domains if getattr(d, "is_primary", False)),
+            brand.domains[0].domain_name,
+        )
+        score, signals, clone_result = _apply_clone_detection(
+            db, domain, reference_domain, score, signals
+        )
+
     signal_codes.extend([str(signal["code"]) for signal in signals])
     score = max(0.0, min(1.0, score))
 
-    ownership_classification, self_owned = _derive_ownership(brand, match, tool_results)
     bucket, action = _bucket_after_enrichment(
         match,
         score,
@@ -87,6 +104,8 @@ def enrich_similarity_match(
         delivery_risk=delivery_risk,
     )
     compact_tools = _compact_tool_results(tool_results)
+    if clone_result is not None:
+        compact_tools["website_clone"] = clone_result
     confidence = _derive_confidence(tool_results, score, signal_codes)
 
     return {
@@ -346,10 +365,10 @@ def _bucket_after_enrichment(
             f"{domain} appears to be an official or self-owned asset of {label}. Suppressed from frontline triage.",
         )
 
-    if {"credential_collection_surface", "brand_impersonation_content"} & signal_set:
+    if {"credential_collection_surface", "brand_impersonation_content", "clone_detected"} & signal_set:
         return (
             "immediate_attention",
-            f"{domain} shows live impersonation or credential-capture signals targeting {label}. Investigate immediately.",
+            f"{domain} shows live impersonation, credential-capture, or clone signals targeting {label}. Investigate immediately.",
         )
 
     if score >= 0.80 and matched_rule in {"typo_candidate", "homograph", "brand_plus_keyword"}:
@@ -460,7 +479,7 @@ def _derive_disposition(
         return "self_owned_related"
     if ownership_classification == "third_party_legitimate":
         return "third_party_legitimate"
-    if {"credential_collection_surface", "brand_impersonation_content"} & signal_set:
+    if {"credential_collection_surface", "brand_impersonation_content", "clone_detected"} & signal_set:
         return "likely_phishing"
     if delivery_risk == "high":
         return "mail_spoofing_risk"
@@ -482,6 +501,66 @@ def _derive_disposition(
     if score >= 0.72:
         return "live_but_unknown"
     return "inconclusive"
+
+
+def _apply_clone_detection(
+    db: Session,
+    target: str,
+    reference: str,
+    score: float,
+    signals: list[dict[str, object]],
+) -> tuple[float, list[dict[str, object]], dict]:
+    """Run website clone comparison and add score adjustments.
+
+    Only called for immediate_attention matches against the brand's primary
+    official domain. Returns updated (score, signals, compact_clone_result).
+    """
+    from app.services.use_cases.tools.website_clone import WebsiteCloneService
+
+    clone_target = f"{target}|{reference}"
+    try:
+        service = WebsiteCloneService()
+        response = service.run(
+            db,
+            PLACEHOLDER_ORG_ID,
+            clone_target,
+            triggered_by="similarity_enrichment",
+            force=False,
+        )
+        result = response.result or {}
+    except Exception as exc:
+        logger.warning("Clone detection failed for %s: %s", target, exc)
+        return score, signals, {"status": "error", "error": str(exc)}
+
+    clone_score = float((result.get("scores") or {}).get("overall") or 0.0)
+    is_clone = bool(result.get("is_clone"))
+    verdict = str(result.get("verdict") or "unknown")
+    comparison_state = str(result.get("comparison_state") or "unknown")
+
+    if is_clone or clone_score >= 0.75:
+        score += 0.20
+        signals.append(_signal(
+            "clone_detected",
+            "critical",
+            f"Target site is a likely clone of the brand's official domain (similarity={clone_score:.2f}).",
+        ))
+    elif clone_score >= 0.50:
+        score += 0.10
+        signals.append(_signal(
+            "clone_suspected",
+            "high",
+            f"Target site shows partial structural/textual similarity to the brand's official domain (score={clone_score:.2f}).",
+        ))
+
+    compact = {
+        "status": response.status,
+        "clone_score": round(clone_score, 4),
+        "is_clone": is_clone,
+        "verdict": verdict,
+        "comparison_state": comparison_state,
+        "reference": reference,
+    }
+    return score, signals, compact
 
 
 def _derive_confidence(tool_results: dict[str, dict], score: float, signal_codes: list[str]) -> float:
