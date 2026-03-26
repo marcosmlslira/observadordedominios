@@ -493,6 +493,9 @@ todo o monitoramento. E de longe a acao com maior ratio valor/esforco neste plan
 | T3.1 ✅ | `9b9fded` | Feedback loop: upsert preserva bucket/action/disposition para dismissed/confirmed |
 | T3.5 ✅ | `9b9fded` | Clone detection seletivo para immediate_attention (clone_score threshold 0.75/0.50) |
 | T4.1 ✅ | `0c94c31` | GET /v1/similarity/metrics — metricas operacionais agregadas por bucket/disposition/marca |
+| T4.3 ✅ | `e36d1ab` | GET /v1/similarity/trends — daily counts por risco/bucket/disposition, top 20 rising |
+| gate fix ✅ | `8e30334` | should_auto_enrich_match: defensive_gap com score>=0.55 agora enriquecido (mail-only risk) |
+| T4.2 ✅ | `bb1c1f7` | Alert webhooks: alert_webhook_url por marca, migration 016, dispatch post-cycle |
 
 ### Pendente (proximas sessoes)
 
@@ -501,8 +504,6 @@ todo o monitoramento. E de longe a acao com maior ratio valor/esforco neste plan
 | Todo 004 | P0 | Agente do docker-stack-infra (.specs/todos/004/plan.md) |
 | T1.4 | P0 | Depende de Todo 004 (worker em producao) |
 | T1.5 | P1 | Limpeza manual de perfis duplicados |
-| T4.2 | P2 | Notificacoes automaticas (requer modelo notification + canal email/webhook) |
-| T4.3 | P3 | Historico e trends de ameacas por marca |
 
 ---
 
