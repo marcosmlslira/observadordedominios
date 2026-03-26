@@ -472,7 +472,37 @@ todo o monitoramento. E de longe a acao com maior ratio valor/esforco neste plan
 
 ---
 
-## 10. Como Usar Este Documento
+## 10. Log de Progresso de Implementacao
+
+> Atualizado em: 2026-03-25
+
+### Implementado nesta sessao (commits em main)
+
+| Task | Commit | Descricao |
+|------|--------|-----------|
+| T1.0 ✅ | `394c65c` | similarity_worker adicionado ao infra/stack.yml e config.py |
+| T1.2 ✅ | auto | Normalizacao de alias auto-reparada via ensure_monitoring_profile_integrity |
+| T2.5 ✅ | `fbc37ae` | enrich_tld_scope_for_brazil — TLDs .com.br, .net.br, .org.br automaticos |
+| T2.1 ✅ | `3555799` | HEARTBEAT + CYCLE_SUMMARY logs no similarity_worker |
+| T2.3 ✅ | `28f5289` | Taxonomia North Star alinhada: third_party_legitimate, mail_spoofing_risk, inconclusive |
+| T2.4 ✅ | `e4a0bb8` | recommended_action contextual com nome do dominio e da marca |
+| T3.2 ✅ | `2e2f26b` | Estados inconclusivos honestos: unreachable/all-tools-failed → "inconclusive" |
+| T3.4 ✅ | `2e2f26b` | Self-owned detection via nameserver overlap (WHOIS name_servers) |
+
+### Pendente (proximas sessoes)
+
+| Task | Prioridade | Bloqueador |
+|------|-----------|------------|
+| Todo 004 | P0 | Agente do docker-stack-infra (.specs/todos/004/plan.md) |
+| T1.4 | P0 | Depende de Todo 004 (worker em producao) |
+| T1.5 | P1 | Limpeza manual de perfis duplicados |
+| T2.2 | P2 | DNS + SSL + Screenshot no auto-enrich |
+| T3.1 | P2 | Feedback loop do analista |
+| T3.3 | P3 | Mail-only risk detection (logica ja parcialmente pronta) |
+
+---
+
+## 11. Como Usar Este Documento
 
 ### Para quem vai implementar
 1. Leia o TIER 1 inteiro antes de comecar
