@@ -719,6 +719,48 @@ class SimilarityRepository:
             q = q.filter(SimilarityMatch.attention_bucket == attention_bucket)
         return q.count()
 
+    def get_discovery_trends(self, *, days: int = 30) -> dict:
+        """Daily match discovery counts for the last N days, split by risk level and bucket."""
+        daily = self.db.execute(text("""
+            SELECT
+                DATE(first_detected_at AT TIME ZONE 'UTC')        AS day,
+                COUNT(*)                                           AS total,
+                COUNT(*) FILTER (WHERE risk_level = 'critical')   AS critical,
+                COUNT(*) FILTER (WHERE risk_level = 'high')       AS high,
+                COUNT(*) FILTER (WHERE risk_level IN ('medium','low')) AS lower,
+                COUNT(*) FILTER (WHERE attention_bucket = 'immediate_attention') AS immediate,
+                COUNT(*) FILTER (WHERE disposition = 'likely_phishing')          AS phishing,
+                COUNT(*) FILTER (WHERE disposition = 'mail_spoofing_risk')       AS mail_risk
+            FROM similarity_match
+            WHERE first_detected_at >= NOW() - (:days || ' days')::INTERVAL
+            GROUP BY 1
+            ORDER BY 1
+        """), {"days": days}).fetchall()
+
+        top_rising = self.db.execute(text("""
+            SELECT
+                sm.domain_name,
+                mb.brand_name,
+                sm.attention_bucket,
+                sm.disposition,
+                sm.actionability_score,
+                sm.risk_level,
+                sm.first_detected_at
+            FROM similarity_match sm
+            JOIN monitored_brand mb ON mb.id = sm.brand_id
+            WHERE sm.first_detected_at >= NOW() - (:days || ' days')::INTERVAL
+              AND sm.attention_bucket = 'immediate_attention'
+              AND sm.status = 'new'
+            ORDER BY sm.actionability_score DESC, sm.first_detected_at DESC
+            LIMIT 20
+        """), {"days": days}).fetchall()
+
+        return {
+            "window_days": days,
+            "daily": [dict(r._mapping) for r in daily],
+            "top_rising_immediate": [dict(r._mapping) for r in top_rising],
+        }
+
     def get_operational_metrics(self) -> dict:
         """Aggregate operational health metrics across all brands in one query."""
         row = self.db.execute(text("""

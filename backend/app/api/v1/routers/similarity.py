@@ -159,3 +159,15 @@ def get_similarity_metrics(
 ):
     repo = SimilarityRepository(db)
     return repo.get_operational_metrics()
+
+
+@router.get(
+    "/similarity/trends",
+    summary="Match discovery trends — daily counts for the last N days",
+)
+def get_similarity_trends(
+    days: int = Query(30, ge=7, le=90, description="Look-back window in days"),
+    db: Session = Depends(get_db),
+):
+    repo = SimilarityRepository(db)
+    return repo.get_discovery_trends(days=days)
