@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+import time
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -30,16 +32,47 @@ logger = logging.getLogger("similarity_worker")
 # Default: run at 09:00 daily (2 hours after CZDS sync at 07:00)
 SIMILARITY_CRON = settings.SIMILARITY_SCAN_CRON
 
+# Observability state
+_consecutive_cycle_failures = 0
+_last_cycle_completed_at: datetime | None = None
+_last_cycle_duration_s: float | None = None
+
+
+def emit_heartbeat() -> None:
+    """Log a periodic heartbeat so external monitors can detect silent crashes."""
+    now = datetime.now(timezone.utc).isoformat()
+    last_ok = _last_cycle_completed_at.isoformat() if _last_cycle_completed_at else "never"
+    logger.info(
+        "[HEARTBEAT] similarity_worker alive at=%s last_cycle=%s consecutive_failures=%d",
+        now,
+        last_ok,
+        _consecutive_cycle_failures,
+    )
+    if _consecutive_cycle_failures >= 3:
+        logger.error(
+            "[HEARTBEAT] similarity_worker has %d consecutive failures — manual inspection required",
+            _consecutive_cycle_failures,
+        )
+
 
 def run_scan_cycle() -> None:
     """Scan all active brands across all TLDs."""
+    global _consecutive_cycle_failures, _last_cycle_completed_at, _last_cycle_duration_s
+
+    cycle_start = time.monotonic()
     db = SessionLocal()
+    brands_ok = 0
+    brands_failed = 0
+    total_matches = 0
+    total_candidates = 0
+
     try:
         repo = MonitoredBrandRepository(db)
         brands = repo.list_active()
 
         if not brands:
             logger.info("No active brands to scan.")
+            _last_cycle_completed_at = datetime.now(timezone.utc)
             return
 
         logger.info("Starting similarity scan cycle for %d brands", len(brands))
@@ -50,16 +83,38 @@ def run_scan_cycle() -> None:
             logger.info("Scanning brand=%s (label=%s)", brand.brand_name, brand.brand_label)
             try:
                 results = run_similarity_scan_all(db, brand)
-                total_matched = sum(r.get("matched", 0) for r in results.values())
-                total_candidates = sum(r.get("candidates", 0) for r in results.values())
+                matched = sum(r.get("matched", 0) for r in results.values())
+                candidates = sum(r.get("candidates", 0) for r in results.values())
+                total_matches += matched
+                total_candidates += candidates
+                brands_ok += 1
                 logger.info(
                     "Brand=%s complete: %d TLDs, %d candidates, %d matches",
-                    brand.brand_name, len(results), total_candidates, total_matched,
+                    brand.brand_name, len(results), candidates, matched,
                 )
             except Exception:
+                brands_failed += 1
                 logger.exception("Failed scanning brand=%s", brand.brand_name)
 
-        logger.info("Similarity scan cycle finished.")
+        duration_s = time.monotonic() - cycle_start
+        _last_cycle_duration_s = duration_s
+        _last_cycle_completed_at = datetime.now(timezone.utc)
+        _consecutive_cycle_failures = 0
+
+        logger.info(
+            "[CYCLE_SUMMARY] brands_ok=%d brands_failed=%d total_candidates=%d "
+            "total_matches=%d duration_s=%.1f",
+            brands_ok, brands_failed, total_candidates, total_matches, duration_s,
+        )
+        if brands_failed > 0:
+            logger.warning("[CYCLE_SUMMARY] %d brand(s) failed during this cycle", brands_failed)
+
+    except Exception:
+        _consecutive_cycle_failures += 1
+        logger.exception(
+            "Similarity scan cycle failed (consecutive_failures=%d)",
+            _consecutive_cycle_failures,
+        )
     finally:
         db.close()
 
@@ -108,6 +163,12 @@ def main() -> None:
         run_queued_jobs_cycle,
         IntervalTrigger(seconds=15),
         id="similarity_scan_manual_jobs",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        emit_heartbeat,
+        IntervalTrigger(minutes=5),
+        id="similarity_heartbeat",
         replace_existing=True,
     )
 
