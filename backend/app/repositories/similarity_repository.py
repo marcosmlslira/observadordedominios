@@ -816,3 +816,29 @@ class SimilarityRepository:
             "by_brand": [dict(b._mapping) for b in buckets],
             "last_scan_job": dict(last_job._mapping) if last_job else None,
         }
+
+    def get_new_immediate_matches_since(
+        self,
+        brand_id: uuid.UUID,
+        since: datetime,
+    ) -> list[dict]:
+        """Return immediate_attention matches first detected after *since* for a brand.
+
+        Used by the webhook dispatcher to find matches discovered in the current scan cycle.
+        """
+        rows = self.db.execute(
+            text("""
+                SELECT
+                    domain_name, risk_level, disposition, attention_bucket,
+                    actionability_score, recommended_action, first_detected_at
+                FROM similarity_match
+                WHERE brand_id = :brand_id
+                  AND attention_bucket = 'immediate_attention'
+                  AND status = 'new'
+                  AND first_detected_at >= :since
+                ORDER BY actionability_score DESC, first_detected_at DESC
+                LIMIT 50
+            """),
+            {"brand_id": brand_id, "since": since},
+        ).fetchall()
+        return [dict(r._mapping) for r in rows]

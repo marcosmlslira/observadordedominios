@@ -22,6 +22,7 @@ class MonitoredBrand(Base, TimestampMixin):
     noise_mode = Column(String(16), nullable=False, default="standard")
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
+    alert_webhook_url = Column(Text, nullable=True)
 
     domains = relationship(
         "MonitoredBrandDomain",

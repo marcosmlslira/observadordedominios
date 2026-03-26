@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.infra.db.session import SessionLocal
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
 from app.repositories.similarity_repository import SimilarityRepository
+from app.services.alert_webhook import dispatch_alert_webhook
 from app.services.use_cases.run_similarity_scan import run_similarity_scan_all, run_similarity_scan_job
 from app.services.use_cases.sync_monitoring_profile import ensure_monitoring_profile_integrity
 
@@ -81,6 +82,7 @@ def run_scan_cycle() -> None:
             ensure_monitoring_profile_integrity(repo, brand)
             db.commit()
             logger.info("Scanning brand=%s (label=%s)", brand.brand_name, brand.brand_label)
+            brand_scan_started_at = datetime.now(timezone.utc)
             try:
                 results = run_similarity_scan_all(db, brand)
                 matched = sum(r.get("matched", 0) for r in results.values())
@@ -92,6 +94,21 @@ def run_scan_cycle() -> None:
                     "Brand=%s complete: %d TLDs, %d candidates, %d matches",
                     brand.brand_name, len(results), candidates, matched,
                 )
+                # Dispatch webhook alert if brand has a configured URL and new threats found
+                webhook_url = getattr(brand, "alert_webhook_url", None)
+                if webhook_url:
+                    sim_repo = SimilarityRepository(db)
+                    new_threats = sim_repo.get_new_immediate_matches_since(
+                        brand.id, brand_scan_started_at
+                    )
+                    if new_threats:
+                        dispatch_alert_webhook(
+                            webhook_url,
+                            brand_id=brand.id,
+                            brand_name=brand.brand_name,
+                            new_matches=new_threats,
+                            scan_completed_at=datetime.now(timezone.utc),
+                        )
             except Exception:
                 brands_failed += 1
                 logger.exception("Failed scanning brand=%s", brand.brand_name)
