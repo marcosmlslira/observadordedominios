@@ -189,3 +189,10 @@ def test_resume_bulk_job_recovers_running_chunks(monkeypatch) -> None:
     assert job.last_error is None
     assert running_chunk.status == "retry"
     assert running_chunk.last_error_type == "manual_resume"
+
+
+def test_should_split_after_retry_for_repeated_503() -> None:
+    chunk = SimpleNamespace(depth=0, attempt_count=2)
+    result = bulk_load_crtsh.ChunkFetchResult(kind="retry", raw_domains=[], error_type="http_503")
+
+    assert bulk_load_crtsh._should_split_after_retry(chunk, result) is True

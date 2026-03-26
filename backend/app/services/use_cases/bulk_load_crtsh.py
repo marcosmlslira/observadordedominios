@@ -303,17 +303,25 @@ def _apply_chunk_result(job_id: uuid.UUID, chunk_id: uuid.UUID, result: ChunkFet
                     job.id, chunk.chunk_key, len(created), result.error_type,
                 )
         elif result.kind == "retry":
-            wait_seconds = RETRY_BACKOFF[min(max(chunk.attempt_count - 1, 0), len(RETRY_BACKOFF) - 1)]
-            repo.mark_chunk_retry(
-                chunk,
-                error_type=result.error_type or "retry",
-                error_excerpt=result.error_excerpt or "retry requested",
-                next_retry_at=datetime.now(timezone.utc) + timedelta(seconds=wait_seconds),
-            )
-            logger.info(
-                "ct_bulk_chunk_retry job_id=%s chunk=%s wait=%ss reason=%s",
-                job.id, chunk.chunk_key, wait_seconds, result.error_type,
-            )
+            if _should_split_after_retry(chunk, result):
+                next_prefixes = [f"{chunk.prefix}{char}" for char in CHUNK_ALPHABET]
+                created = repo.create_split_children(chunk, prefixes=next_prefixes)
+                logger.info(
+                    "ct_bulk_chunk_split_after_retry job_id=%s chunk=%s created=%s reason=%s attempts=%s",
+                    job.id, chunk.chunk_key, len(created), result.error_type, chunk.attempt_count,
+                )
+            else:
+                wait_seconds = RETRY_BACKOFF[min(max(chunk.attempt_count - 1, 0), len(RETRY_BACKOFF) - 1)]
+                repo.mark_chunk_retry(
+                    chunk,
+                    error_type=result.error_type or "retry",
+                    error_excerpt=result.error_excerpt or "retry requested",
+                    next_retry_at=datetime.now(timezone.utc) + timedelta(seconds=wait_seconds),
+                )
+                logger.info(
+                    "ct_bulk_chunk_retry job_id=%s chunk=%s wait=%ss reason=%s",
+                    job.id, chunk.chunk_key, wait_seconds, result.error_type,
+                )
         else:
             repo.mark_chunk_failed(
                 chunk,
@@ -363,6 +371,14 @@ def _recover_job_after_crash(job_id: uuid.UUID, error_message: str) -> None:
         logger.exception("ct_bulk_job_recovery_failed job_id=%s", job_id)
     finally:
         db.close()
+
+
+def _should_split_after_retry(chunk: CtBulkChunk, result: ChunkFetchResult) -> bool:
+    if chunk.depth >= settings.CT_BULK_SPLIT_MAX_DEPTH:
+        return False
+    if (chunk.attempt_count or 0) < 2:
+        return False
+    return (result.error_type or "") in {"http_500", "http_502", "http_503", "http_504", "timeout"}
 
 
 def _fetch_chunk_payload(query_pattern: str) -> ChunkFetchResult:
