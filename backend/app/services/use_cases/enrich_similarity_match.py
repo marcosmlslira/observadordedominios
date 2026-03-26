@@ -111,6 +111,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
     from app.services.use_cases.tools.email_security import EmailSecurityService
     from app.services.use_cases.tools.http_headers import HttpHeadersService
     from app.services.use_cases.tools.ip_geolocation import IpGeolocationService
+    from app.services.use_cases.tools.ssl_check import SslCheckService
     from app.services.use_cases.tools.suspicious_page import SuspiciousPageService
     from app.services.use_cases.tools.whois_lookup import WhoisLookupService
 
@@ -120,6 +121,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
         "suspicious_page": SuspiciousPageService(),
         "email_security": EmailSecurityService(),
         "ip_geolocation": IpGeolocationService(),
+        "ssl_check": SslCheckService(),
     }
 
     results: dict[str, dict] = {}
@@ -384,21 +386,21 @@ def _derive_ownership(
         except InvalidDomainError:
             pass
 
-    # Nameserver overlap: if the suspected domain shares a nameserver registrable domain
-    # with one of the brand's official domains, it's likely self-owned infrastructure
-    suspected_ns = {
-        _ns_registrable(ns)
-        for ns in (whois_result.get("name_servers") or [])
-        if ns
+    # SSL SAN overlap: if the suspected domain's certificate covers any official domain
+    # as a Subject Alternative Name, it's almost certainly self-owned infrastructure.
+    # This is far more reliable than nameserver overlap (which would false-positive on
+    # shared DNS providers like Cloudflare or Route 53).
+    ssl_result = (tool_results.get("ssl_check") or {}).get("result") or {}
+    ssl_sans = {
+        r
+        for san in ((ssl_result.get("certificate") or {}).get("san") or [])
+        if san and not san.startswith("*.")
+        for r in (_san_registrable(san),)
+        if r
     }
-    if suspected_ns:
-        for official in official_domains:
-            try:
-                official_ns_root = _ns_registrable(official)
-                if official_ns_root and official_ns_root in suspected_ns:
-                    return "self_owned_related", True
-            except Exception:
-                pass
+    official_registrable = {r for d in official_domains if d for r in (_san_registrable(d),) if r}
+    if ssl_sans and ssl_sans & official_registrable:
+        return "self_owned_related", True
 
     creation_date = _parse_datetime_like(str(whois_result.get("creation_date") or ""))
     if creation_date and (datetime.now(timezone.utc) - creation_date).days > 365:
@@ -496,6 +498,14 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
         }
     if tool_type == "email_security":
         return {"spoofing_risk": result.get("spoofing_risk")}
+    if tool_type == "ssl_check":
+        cert = result.get("certificate") or {}
+        return {
+            "is_valid": result.get("is_valid"),
+            "issuer": cert.get("issuer"),
+            "days_remaining": cert.get("days_remaining"),
+            "san_count": len(cert.get("san") or []),
+        }
     if tool_type == "ip_geolocation":
         return {
             "country_code": result.get("country_code"),
@@ -505,8 +515,12 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
     return result
 
 
-def _ns_registrable(hostname: str) -> str | None:
-    """Extract the registrable domain from a nameserver hostname, for overlap detection."""
+def _san_registrable(hostname: str) -> str | None:
+    """Extract the registrable domain from a SAN or domain string.
+
+    Used to normalise wildcard-free SAN entries and official domain names
+    to a common form before comparing them for SSL co-ownership detection.
+    """
     try:
         return parse_registrable_domain(hostname.strip().lower().rstrip(".")).registrable_domain
     except (InvalidDomainError, Exception):
