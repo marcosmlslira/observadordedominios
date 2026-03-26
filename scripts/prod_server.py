@@ -111,26 +111,34 @@ def cmd_test_login(args: argparse.Namespace) -> int:
     return run_commands([command])
 
 
-def cmd_run_crtsh_bulk(args: argparse.Namespace) -> int:
-    env_parts: list[str] = []
-    if args.dry_run:
-        env_parts.append("-e BULK_DRY_RUN=true")
-    if args.subtlds:
-        env_parts.append(f"-e BULK_SUBTLDS={args.subtlds}")
-    if args.years:
-        env_parts.append(f"-e BULK_YEARS={args.years}")
-
-    env_prefix = " ".join(env_parts)
+def _docker_exec_ct_ingestor(command_suffix: str, env_parts: list[str] | None = None) -> int:
+    env_prefix = " ".join(env_parts or [])
     if env_prefix:
         env_prefix = f"{env_prefix} "
-
     command = (
         "cid=$(docker ps --filter label=com.docker.swarm.service.name=observador_ct_ingestor "
         "--format '{{.ID}}' | head -n 1); "
         'if [ -z "$cid" ]; then echo "observador_ct_ingestor not running" >&2; exit 1; fi; '
-        f"docker exec {env_prefix}$cid python -m app.debug_scripts.run_crtsh_bulk_load"
+        f"docker exec {env_prefix}$cid {command_suffix}"
     )
     return run_commands([command])
+
+
+def cmd_run_crtsh_bulk(args: argparse.Namespace) -> int:
+    env_parts: list[str] = []
+    if args.action:
+        env_parts.append(f"-e BULK_ACTION={args.action}")
+    if args.dry_run:
+        env_parts.append("-e BULK_DRY_RUN=true")
+    if args.subtlds:
+        env_parts.append(f"-e BULK_SUBTLDS={args.subtlds}")
+    if args.job_id:
+        env_parts.append(f"-e BULK_JOB_ID={args.job_id}")
+
+    return _docker_exec_ct_ingestor(
+        "python -m app.debug_scripts.run_crtsh_bulk_load",
+        env_parts=env_parts,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -161,9 +169,10 @@ def build_parser() -> argparse.ArgumentParser:
     login.set_defaults(func=cmd_test_login)
 
     bulk = sub.add_parser("run-crtsh-bulk", help="Run manual crt.sh bulk backfill in production.")
+    bulk.add_argument("--action", default="start")
     bulk.add_argument("--dry-run", action="store_true")
     bulk.add_argument("--subtlds", default="")
-    bulk.add_argument("--years", default="")
+    bulk.add_argument("--job-id", default="")
     bulk.set_defaults(func=cmd_run_crtsh_bulk)
 
     return parser

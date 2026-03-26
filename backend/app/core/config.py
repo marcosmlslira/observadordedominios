@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     # ── CZDS ─────────────────────────────────────────────────
     CZDS_USERNAME: str = ""
     CZDS_PASSWORD: str = ""
+    TARGET_TLDS: str = (
+        "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,"
+        "club,vip,icu,live,digital,world,today,email,solutions,services,"
+        "support,group,company,center,zone,agency,systems,network,works,"
+        "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,"
+        "finance,financial,money,credit,loan,bank,capital,fund,exchange,"
+        "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,"
+        "blog,press,link,click,one,pro,name,life,plus,now,global,expert,"
+        "academy,education,school,host,hosting,domains,security,safe,"
+        "protect,chat,social,community,team,studio,design,marketing,"
+        "consulting,partners,ventures,holdings,international,br"
+    )
     CZDS_ENABLED_TLDS: str = (
         "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,"
         "club,vip,icu,live,digital,world,today,email,solutions,services,"
@@ -66,10 +78,16 @@ class Settings(BaseSettings):
     CT_BUFFER_FLUSH_SIZE: int = 5000
     CT_BUFFER_FLUSH_SECONDS: int = 30
     CT_CRTSH_ENABLED: bool = True
+    CT_FALLBACK_INCLUDE_NON_CZDS: bool = True
+    CT_FALLBACK_PRIORITY_TLDS: str = "br,com.br,net.br,org.br,uk,de,fr,au,ca,us,io,ai,co,tv,me"
+    CT_STREAM_ENABLED_TLDS: str = ""
     CT_CRTSH_SYNC_CRON: str = "0 5 * * *"
     CT_CRTSH_COOLDOWN_HOURS: int = 20
     CT_CRTSH_QUERY_OVERLAP_HOURS: int = 25
     CT_BR_SUBTLDS: str = "br,com.br,net.br,org.br,gov.br,edu.br,mil.br,app.br,dev.br,log.br,ong.br"
+    CT_BULK_MAX_PARALLEL_CHUNKS: int = 2
+    CT_BULK_SPLIT_MAX_DEPTH: int = 2
+    CT_BULK_RESPONSE_SIZE_LIMIT_MB: int = 8
 
     # ── Free Tools ─────────────────────────────────────────────
     TOOLS_DEFAULT_TIMEOUT_SECONDS: int = 30

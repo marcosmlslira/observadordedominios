@@ -99,6 +99,82 @@ class SourceSummaryResponse(BaseModel):
     mode: str | None = None
     status_hint: str | None = None
     next_expected_run_hint: str | None = None
+    bulk_job_status: str | None = None
+    bulk_chunks_total: int = 0
+    bulk_chunks_done: int = 0
+    bulk_chunks_error: int = 0
+    bulk_chunks_pending: int = 0
+
+
+class TldCoverageResponse(BaseModel):
+    tld: str
+    effective_source: str
+    czds_available: bool
+    ct_enabled: bool
+    bulk_status: str
+    fallback_reason: str | None = None
+    priority_group: str
+    last_ct_stream_seen_at: datetime | None = None
+    last_crtsh_success_at: datetime | None = None
+
+
+class CtBulkJobResponse(BaseModel):
+    job_id: UUID
+    status: str
+    requested_tlds: list[str]
+    resolved_tlds: list[str]
+    priority_tlds: list[str]
+    dry_run: bool
+    initiated_by: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    last_error: str | None = None
+    total_chunks: int = 0
+    pending_chunks: int = 0
+    running_chunks: int = 0
+    done_chunks: int = 0
+    error_chunks: int = 0
+    total_raw_domains: int = 0
+    total_inserted_domains: int = 0
+
+
+class CtBulkChunkResponse(BaseModel):
+    chunk_id: UUID
+    job_id: UUID
+    target_tld: str
+    chunk_key: str
+    query_pattern: str
+    prefix: str
+    depth: int
+    status: str
+    attempt_count: int
+    last_error_type: str | None = None
+    last_error_excerpt: str | None = None
+    next_retry_at: datetime | None = None
+    raw_domains: int = 0
+    inserted_domains: int = 0
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class CtBulkJobCreateRequest(BaseModel):
+    tlds: list[str] = Field(default_factory=list)
+    dry_run: bool = False
+
+    @field_validator("tlds")
+    @classmethod
+    def normalize_bulk_tlds(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw_tld in value:
+            tld = raw_tld.strip().lower().lstrip(".")
+            if not tld:
+                continue
+            if tld in seen:
+                continue
+            seen.add(tld)
+            normalized.append(tld)
+        return normalized
 
 
 class CheckpointResponse(BaseModel):

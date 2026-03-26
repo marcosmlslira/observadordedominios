@@ -131,6 +131,67 @@ export interface SourceSummary {
   mode: string | null
   status_hint: string | null
   next_expected_run_hint: string | null
+  bulk_job_status: string | null
+  bulk_chunks_total: number
+  bulk_chunks_done: number
+  bulk_chunks_error: number
+  bulk_chunks_pending: number
+}
+
+export interface TldCoverage {
+  tld: string
+  effective_source: string
+  czds_available: boolean
+  ct_enabled: boolean
+  bulk_status: string
+  fallback_reason: string | null
+  priority_group: string
+  last_ct_stream_seen_at: string | null
+  last_crtsh_success_at: string | null
+}
+
+export interface CtBulkJob {
+  job_id: string
+  status: string
+  requested_tlds: string[]
+  resolved_tlds: string[]
+  priority_tlds: string[]
+  dry_run: boolean
+  initiated_by: string | null
+  started_at: string | null
+  finished_at: string | null
+  last_error: string | null
+  total_chunks: number
+  pending_chunks: number
+  running_chunks: number
+  done_chunks: number
+  error_chunks: number
+  total_raw_domains: number
+  total_inserted_domains: number
+}
+
+export interface CtBulkChunk {
+  chunk_id: string
+  job_id: string
+  target_tld: string
+  chunk_key: string
+  query_pattern: string
+  prefix: string
+  depth: number
+  status: string
+  attempt_count: number
+  last_error_type: string | null
+  last_error_excerpt: string | null
+  next_retry_at: string | null
+  raw_domains: number
+  inserted_domains: number
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface CtBulkJobCreateRequest {
+  tlds: string[]
+  dry_run: boolean
 }
 
 export interface TriggerSyncRequest {

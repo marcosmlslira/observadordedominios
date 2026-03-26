@@ -237,6 +237,35 @@ class IngestionRunRepository:
         self.db.flush()
         return runs
 
+    def mark_running_source_runs_failed(
+        self,
+        source: str,
+        *,
+        error_message: str,
+    ) -> list[IngestionRun]:
+        """Fail all currently running runs for a source regardless of TLD."""
+        runs = (
+            self.db.query(IngestionRun)
+            .filter(
+                IngestionRun.source == source,
+                IngestionRun.status == "running",
+            )
+            .order_by(IngestionRun.started_at.asc())
+            .all()
+        )
+        if not runs:
+            return []
+
+        now = datetime.now(timezone.utc)
+        for run in runs:
+            run.status = "failed"
+            run.finished_at = now
+            run.updated_at = now
+            run.error_message = error_message
+
+        self.db.flush()
+        return runs
+
     def update_progress(self, run_id: uuid.UUID, *, domains_seen: int) -> None:
         """Persist progress counters and refresh heartbeat for long-running syncs."""
         self.db.execute(

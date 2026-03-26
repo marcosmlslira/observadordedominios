@@ -47,12 +47,10 @@ def test_recover_orphaned_certstream_runs_marks_old_run_failed(monkeypatch) -> N
         def __init__(self, session) -> None:
             captured["session"] = session
 
-        def mark_running_runs_failed(self, source, tld, *, error_message, exclude_run_id=None):
+        def mark_running_source_runs_failed(self, source, *, error_message):
             captured["args"] = {
                 "source": source,
-                "tld": tld,
                 "error_message": error_message,
-                "exclude_run_id": exclude_run_id,
             }
             return [recovered_run]
 
@@ -62,7 +60,6 @@ def test_recover_orphaned_certstream_runs_marks_old_run_failed(monkeypatch) -> N
 
     assert recovered == 1
     assert captured["args"]["source"] == "certstream"
-    assert captured["args"]["tld"] == "br"
     assert "did not finalize cleanly" in captured["args"]["error_message"]
     assert db.committed == 1
     assert db.closed == 1

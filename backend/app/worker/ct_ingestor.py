@@ -19,8 +19,8 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
-from app.repositories.domain_repository import ensure_partition
 from app.repositories.ingestion_run_repository import IngestionRunRepository
+from app.services.tld_coverage import resolve_certstream_suffixes
 from app.services.use_cases.ingest_ct_batch import ingest_ct_batch
 
 logging.basicConfig(
@@ -136,38 +136,23 @@ def _flush_loop(
     logger.info("Flush loop stopped.")
 
 
-# ── Partition setup ──────────────────────────────────────────
-
-
-def _ensure_br_partitions() -> None:
-    """Ensure all configured .br TLD partitions exist."""
-    subtlds = [t.strip() for t in settings.CT_BR_SUBTLDS.split(",") if t.strip()]
-    db = SessionLocal()
-    try:
-        for tld in subtlds:
-            ensure_partition(db, tld)
-        logger.info("Ensured %d .br partitions: %s", len(subtlds), subtlds)
-    finally:
-        db.close()
-
-
 # ── Ingestion run management ─────────────────────────────────
 
 
-def _create_daily_run() -> uuid.UUID:
+def _create_daily_run(run_tld: str) -> uuid.UUID:
     """Create an ingestion_run for the current CertStream session."""
     db = SessionLocal()
     try:
         run_repo = IngestionRunRepository(db)
-        run = run_repo.create_run(source="certstream", tld="br")
+        run = run_repo.create_run(source="certstream", tld=run_tld)
         db.commit()
-        logger.info("Created CertStream ingestion run: %s", run.id)
+        logger.info("Created CertStream ingestion run: %s (%s)", run.id, run_tld)
         return run.id
     finally:
         db.close()
 
 
-def _finalize_run(run_id: uuid.UUID) -> None:
+def _finalize_run(run_id: uuid.UUID, run_tld: str) -> None:
     """Finalize the CertStream ingestion run on shutdown."""
     db = SessionLocal()
     try:
@@ -175,7 +160,7 @@ def _finalize_run(run_id: uuid.UUID) -> None:
         run = run_repo.get_run(run_id)
         if run and run.status == "running":
             run_repo.finish_run(run, status="success")
-            run_repo.upsert_checkpoint("certstream", "br", run)
+            run_repo.upsert_checkpoint("certstream", run_tld, run)
             db.commit()
             logger.info(
                 "Finalized CertStream run %s: seen=%s inserted=%s",
@@ -193,9 +178,8 @@ def _recover_orphaned_certstream_runs() -> int:
     db = SessionLocal()
     try:
         run_repo = IngestionRunRepository(db)
-        recovered = run_repo.mark_running_runs_failed(
+        recovered = run_repo.mark_running_source_runs_failed(
             "certstream",
-            "br",
             error_message=(
                 "Marked as failed on worker startup because a previous "
                 "CertStream session did not finalize cleanly"
@@ -222,14 +206,20 @@ def _recover_orphaned_certstream_runs() -> int:
 def main() -> None:
     logger.info("CT Ingestor Worker starting...")
 
-    # 1. Ensure .br partitions
-    _ensure_br_partitions()
-
     # 2. Recover orphaned runs from previous worker sessions
     _recover_orphaned_certstream_runs()
 
+    db = SessionLocal()
+    try:
+        certstream_suffixes = resolve_certstream_suffixes(db)
+    finally:
+        db.close()
+    run_tld = "multi" if len(certstream_suffixes) > 1 else certstream_suffixes[0].lstrip(".")
+
+    logger.info("Resolved CertStream suffixes: %s", certstream_suffixes)
+
     # 3. Create daily ingestion run
-    run_id = _create_daily_run()
+    run_id = _create_daily_run(run_tld)
 
     # 4. Initialize buffer
     buffer = CTBuffer(
@@ -309,7 +299,7 @@ def main() -> None:
 
             certstream_client = CertStreamClient(
                 on_domains_callback=buffer.add,
-                filter_suffix=".br",
+                filter_suffixes=certstream_suffixes,
             )
             logger.info("Starting CertStream client...")
             certstream_client.start()  # Blocks until stop() is called
@@ -319,7 +309,7 @@ def main() -> None:
     finally:
         stop_event.set()
         flush_thread.join()
-        _finalize_run(run_id)
+        _finalize_run(run_id, run_tld)
         if shutdown_requested.is_set():
             logger.info("CT Ingestor Worker stopped after graceful drain.")
         else:

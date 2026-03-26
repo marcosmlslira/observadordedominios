@@ -1,11 +1,12 @@
 """crt.sh HTTP client for batch Certificate Transparency queries.
 
-Queries crt.sh for .br domain certificates. Used as daily complementary
+Queries crt.sh for fallback TLD certificates. Used as daily complementary
 source alongside CertStream real-time ingestion.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import datetime
@@ -26,23 +27,25 @@ class CrtShClient:
     def __init__(self, timeout: int = DEFAULT_TIMEOUT) -> None:
         self._timeout = timeout
 
-    def query_br_domains(
+    def query_tld_domains(
         self,
-        subtld: str,
+        tld: str,
         *,
         min_not_before: datetime | None = None,
+        query_pattern: str | None = None,
     ) -> list[str]:
-        """Query crt.sh for domains under a specific .br sub-TLD.
+        """Query crt.sh for domains under a specific TLD or suffix.
 
         Args:
-            subtld: The sub-TLD to query (e.g., "com.br", "net.br").
+            tld: The TLD/suffix to query (e.g. "com.br", "io", "de").
             min_not_before: If set, only return domains from certificates
                            issued after this datetime.
+            query_pattern: Optional prebuilt crt.sh pattern like `a%.com.br`.
 
         Returns:
             List of raw domain names (may include wildcards, duplicates).
         """
-        query = f"%.{subtld}"
+        query = query_pattern or f"%.{tld}"
         url = CRTSH_BASE_URL
         params = {
             "q": query,
@@ -76,9 +79,17 @@ class CrtShClient:
 
         logger.info(
             "crt.sh query for %s: %d entries, %d domains extracted (min_not_before=%s)",
-            subtld, len(data), len(domains), min_not_before,
+            query, len(data), len(domains), min_not_before,
         )
         return domains
+
+    def query_br_domains(
+        self,
+        subtld: str,
+        *,
+        min_not_before: datetime | None = None,
+    ) -> list[str]:
+        return self.query_tld_domains(subtld, min_not_before=min_not_before)
 
     def _fetch_with_retry(
         self,
@@ -91,7 +102,13 @@ class CrtShClient:
                 try:
                     response = client.get(url, params=params)
                     response.raise_for_status()
-                    return response.json()
+                    try:
+                        return response.json()
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            "crt.sh returned non-JSON body (attempt %d/%d): %s",
+                            attempt + 1, MAX_RETRIES, params.get("q"),
+                        )
                 except httpx.TimeoutException:
                     logger.warning(
                         "crt.sh timeout (attempt %d/%d): %s",

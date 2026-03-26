@@ -1,6 +1,6 @@
 """CertStream WebSocket client for real-time Certificate Transparency monitoring.
 
-Connects to the CertStream server and filters for .br domains.
+Connects to the CertStream server and filters for configured suffixes.
 Uses websocket-client (sync) with auto-reconnect and exponential backoff.
 """
 
@@ -25,12 +25,22 @@ class CertStreamClient:
         self,
         on_domains_callback: Callable[[list[str]], None],
         *,
-        filter_suffix: str = ".br",
+        filter_suffix: str | None = None,
+        filter_suffixes: list[str] | None = None,
         url: str | None = None,
         max_backoff: int | None = None,
     ) -> None:
         self._callback = on_domains_callback
-        self._filter_suffix = filter_suffix
+        explicit_suffixes = filter_suffixes or ([filter_suffix] if filter_suffix else [])
+        self._filter_suffixes = sorted(
+            {
+                suffix.lower() if suffix.startswith(".") else f".{suffix.lower()}"
+                for suffix in explicit_suffixes
+                if suffix
+            },
+            key=len,
+            reverse=True,
+        ) or [".br"]
         self._url = url or settings.CT_CERTSTREAM_URL
         self._max_backoff = max_backoff or settings.CT_CERTSTREAM_RECONNECT_MAX_BACKOFF
         self._ws_app: websocket.WebSocketApp | None = None
@@ -40,8 +50,8 @@ class CertStreamClient:
     def start(self) -> None:
         """Connect and listen. Blocks the calling thread. Auto-reconnects on failure."""
         logger.info(
-            "CertStream client starting: url=%s filter=%s",
-            self._url, self._filter_suffix,
+            "CertStream client starting: url=%s filters=%s",
+            self._url, ",".join(self._filter_suffixes),
         )
 
         while self._running:
@@ -95,13 +105,14 @@ class CertStreamClient:
             return
 
         # Filter for .br domains at the earliest stage
-        br_domains = [
+        matched_domains = [
             d for d in all_domains
-            if isinstance(d, str) and d.lower().endswith(self._filter_suffix)
+            if isinstance(d, str)
+            and any(d.lower().endswith(suffix) for suffix in self._filter_suffixes)
         ]
 
-        if br_domains:
-            self._callback(br_domains)
+        if matched_domains:
+            self._callback(matched_domains)
 
     def _on_error(self, ws, error) -> None:
         logger.warning("CertStream error: %s", error)

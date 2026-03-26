@@ -99,3 +99,23 @@ export const toolsApi = {
   getExecution: (id: string) =>
     api.get<import("./types").ToolResponse>(`/v1/tools/history/${id}`),
 }
+
+export const ingestionApi = {
+  getCoverage: () =>
+    api.get<import("./types").TldCoverage[]>("/v1/ingestion/tld-coverage"),
+
+  listBulkJobs: () =>
+    api.get<import("./types").CtBulkJob[]>("/v1/ingestion/ct-bulk/jobs"),
+
+  getBulkChunks: (jobId: string) =>
+    api.get<import("./types").CtBulkChunk[]>(`/v1/ingestion/ct-bulk/jobs/${jobId}/chunks`),
+
+  startBulkJob: (body: import("./types").CtBulkJobCreateRequest) =>
+    api.post<import("./types").CtBulkJob>("/v1/ingestion/ct-bulk/jobs", body),
+
+  resumeBulkJob: (jobId: string) =>
+    api.post<import("./types").CtBulkJob>(`/v1/ingestion/ct-bulk/jobs/${jobId}/resume`),
+
+  cancelBulkJob: (jobId: string) =>
+    api.post<import("./types").CtBulkJob>(`/v1/ingestion/ct-bulk/jobs/${jobId}/cancel`),
+}
