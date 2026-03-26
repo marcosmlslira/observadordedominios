@@ -73,6 +73,7 @@ def enrich_similarity_match(
         match,
         score,
         signal_codes,
+        brand=brand,
         ownership_classification=ownership_classification,
     )
     disposition = _derive_disposition(
@@ -294,45 +295,48 @@ def _bucket_after_enrichment(
     score: float,
     signal_codes: list[str],
     *,
+    brand: MonitoredBrand,
     ownership_classification: str,
 ) -> tuple[str, str]:
     matched_rule = (match.get("matched_rule") or "").lower()
     matched_seed_type = (match.get("matched_seed_type") or "").lower()
     signal_set = set(signal_codes)
+    domain = str(match.get("domain_name") or "")
+    label = brand.brand_label or brand.brand_name or "the brand"
 
     if ownership_classification in {"official", "self_owned_related"}:
         return (
             "watchlist",
-            "Suppress from frontline triage. Evidence points to an official or self-owned related asset.",
+            f"{domain} appears to be an official or self-owned asset of {label}. Suppressed from frontline triage.",
         )
 
     if {"credential_collection_surface", "brand_impersonation_content"} & signal_set:
         return (
             "immediate_attention",
-            "Investigate immediately. This candidate shows live impersonation or credential-capture signals.",
+            f"{domain} shows live impersonation or credential-capture signals targeting {label}. Investigate immediately.",
         )
 
     if score >= 0.80 and matched_rule in {"typo_candidate", "homograph", "brand_plus_keyword"}:
         return (
             "immediate_attention",
-            "Investigate immediately. High-signal lexical pattern plus enrichment indicates a likely live threat.",
+            f"{domain} scored high on both lexical similarity and enrichment signals for {label}. Likely a live threat.",
         )
 
     if "parked_or_for_sale_page" in signal_set and matched_rule == "exact_label_match" and matched_seed_type == "domain_label":
         return (
             "defensive_gap",
-            "Treat as a defensive registration gap. The domain looks parked rather than operationally abusive.",
+            f"{domain} exactly matches a {label} label but is parked. Assess for defensive registration before it activates.",
         )
 
     if score >= 0.55:
         return (
             "defensive_gap",
-            "Review for ownership gap, escalation, or closer analyst follow-up.",
+            f"{domain} shows moderate similarity to {label} after enrichment. Review for ownership gap or escalation.",
         )
 
     return (
         "watchlist",
-        "Keep in watchlist unless new enrichment or analyst review raises operational concern.",
+        f"{domain} shows low post-enrichment signal for {label}. Keep in watchlist unless analyst flags new concern.",
     )
 
 

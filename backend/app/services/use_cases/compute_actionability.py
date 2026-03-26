@@ -103,24 +103,55 @@ def compute_actionability(
     bucket: AttentionBucket
     recommended_action: str
 
+    label = brand.brand_label or brand.brand_name or "the brand"
+
     if rule in {"typo_candidate", "homograph", "brand_plus_keyword"} and score >= 0.68:
         bucket = "immediate_attention"
-        recommended_action = "Inspect immediately for active impersonation or phishing signals."
+        if rule == "homograph":
+            recommended_action = (
+                f"{domain_name} uses look-alike characters to mimic {label}. "
+                "Inspect for active phishing infrastructure immediately."
+            )
+        elif rule == "typo_candidate":
+            recommended_action = (
+                f"{domain_name} is a likely typosquatting variant of {label}. "
+                "Check for live content or credential-capture surfaces."
+            )
+        else:
+            recommended_action = (
+                f"{domain_name} combines {label}'s name with a high-risk keyword. "
+                "Verify whether this domain is being used to impersonate the brand."
+            )
     elif rule == "exact_label_match" and seed_type == "domain_label":
         bucket = "defensive_gap"
-        recommended_action = "Review for brand protection, ownership gap, or legal follow-up."
+        recommended_action = (
+            f"{domain_name} exactly matches a registered label of {label} "
+            "but is not an official asset. Assess for defensive registration or legal action."
+        )
     elif score >= 0.72 and risk_level in {"high", "critical"}:
         bucket = "immediate_attention"
-        recommended_action = "Inspect immediately for active impersonation or phishing signals."
+        recommended_action = (
+            f"{domain_name} scores high similarity to {label} with elevated risk signals. "
+            "Inspect immediately for active impersonation or phishing."
+        )
     elif score >= 0.48:
         bucket = "defensive_gap"
-        recommended_action = "Monitor closely and assess defensive registration or escalation."
+        recommended_action = (
+            f"{domain_name} shows moderate similarity to {label}. "
+            "Monitor closely and assess whether defensive registration or escalation is warranted."
+        )
     else:
         bucket = "watchlist"
-        recommended_action = "Keep in watchlist unless enrichment adds operational risk."
+        recommended_action = (
+            f"{domain_name} shows low-confidence similarity to {label}. "
+            "Keep in watchlist unless enrichment data adds operational concern."
+        )
 
     if bucket == "watchlist" and generic_associated_seed:
-        recommended_action = "Low-signal associated-brand match; keep only for background monitoring."
+        recommended_action = (
+            f"{domain_name} is a weak match on a short associated-brand term for {label}. "
+            "Keep only for background monitoring unless new signals emerge."
+        )
 
     return {
         "actionability_score": round(score, 4),
