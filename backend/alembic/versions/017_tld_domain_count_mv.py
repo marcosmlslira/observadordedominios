@@ -14,16 +14,19 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # WITH NO DATA: creates structure instantly, no full table scan at migration time.
+    # The view is populated on the next CZDS worker cycle via REFRESH CONCURRENTLY.
     op.execute("""
-        CREATE MATERIALIZED VIEW tld_domain_count_mv AS
+        CREATE MATERIALIZED VIEW IF NOT EXISTS tld_domain_count_mv AS
         SELECT tld, COUNT(*) AS count
         FROM domain
         GROUP BY tld
         ORDER BY count DESC
+        WITH NO DATA
     """)
     # Unique index required for REFRESH MATERIALIZED VIEW CONCURRENTLY
     op.execute("""
-        CREATE UNIQUE INDEX tld_domain_count_mv_tld_idx
+        CREATE UNIQUE INDEX IF NOT EXISTS tld_domain_count_mv_tld_idx
         ON tld_domain_count_mv (tld)
     """)
 
