@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -442,6 +443,20 @@ def cancel_ct_bulk_job(
     except RuntimeError as exc:
         _raise_bulk_http_error(exc)
     return _serialize_bulk_job(job)
+
+
+@router.get(
+    "/domain-counts",
+    summary="Domain count per TLD",
+)
+def get_domain_counts(
+    db: Session = Depends(get_db),
+):
+    """Return number of domains per TLD, ordered by count descending."""
+    rows = db.execute(text(
+        "SELECT tld, COUNT(*) AS count FROM domain GROUP BY tld ORDER BY count DESC"
+    )).fetchall()
+    return [{"tld": r.tld, "count": int(r.count)} for r in rows]
 
 
 @router.get(

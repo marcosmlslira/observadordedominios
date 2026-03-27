@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { api } from "@/lib/api"
-import type { BrandListResponse, SourceSummary } from "@/lib/types"
+import type { BrandListResponse, SimilarityMetrics, SourceSummary } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,9 @@ import {
   XCircle,
   Loader2,
   Activity,
+  AlertTriangle,
+  Eye,
+  Sparkles,
 } from "lucide-react"
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -54,16 +57,19 @@ function timeAgo(dateStr: string | null): string {
 export default function DashboardPage() {
   const [brands, setBrands] = useState<BrandListResponse | null>(null)
   const [summaries, setSummaries] = useState<SourceSummary[]>([])
+  const [simMetrics, setSimMetrics] = useState<SimilarityMetrics | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       api.get<BrandListResponse>("/v1/brands?active_only=false"),
       api.get<SourceSummary[]>("/v1/ingestion/summary"),
+      api.get<SimilarityMetrics>("/v1/similarity/metrics").catch(() => null),
     ])
-      .then(([b, s]) => {
+      .then(([b, s, m]) => {
         setBrands(b)
         setSummaries(s)
+        setSimMetrics(m)
       })
       .finally(() => setLoading(false))
   }, [])
@@ -158,6 +164,90 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Similarity threat intelligence cards */}
+      {simMetrics && (
+        <div>
+          <h2 className="text-base font-semibold mb-3">Threat Intelligence</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Link href="/admin/matches?bucket=immediate_attention">
+              <Card className="hover:border-red-400/50 transition-colors cursor-pointer border-red-200/30">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Immediate Threats
+                  </CardTitle>
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-600">
+                    {simMetrics.totals.immediate_attention ?? 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">immediate_attention</Badge>
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/admin/matches?bucket=defensive_gap">
+              <Card className="hover:border-orange-400/50 transition-colors cursor-pointer border-orange-200/30">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Defensive Gap
+                  </CardTitle>
+                  <Shield className="h-4 w-4 text-orange-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-orange-600">
+                    {simMetrics.totals.defensive_gap ?? 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-300 text-orange-600">defensive_gap</Badge>
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/admin/matches?bucket=watchlist">
+              <Card className="hover:border-yellow-400/50 transition-colors cursor-pointer border-yellow-200/30">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Watchlist
+                  </CardTitle>
+                  <Eye className="h-4 w-4 text-yellow-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-yellow-700">
+                    {simMetrics.totals.watchlist ?? 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-300 text-yellow-600">watchlist</Badge>
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link href="/admin/matches">
+              <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    New (7 days)
+                  </CardTitle>
+                  <Sparkles className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {simMetrics.totals.new_last_7d ?? 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <span className="text-blue-500">{simMetrics.totals.new_last_24h ?? 0}</span> in last 24h
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Per-source health */}
       <div>

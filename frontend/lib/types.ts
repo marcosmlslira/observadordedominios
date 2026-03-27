@@ -353,6 +353,44 @@ export interface ToolDefinition {
   category: "essential" | "enrichment"
 }
 
+// ── Similarity Metrics ──────────────────────────────────
+
+export interface SimilarityMetricsTotals {
+  total_matches: number
+  immediate_attention: number
+  defensive_gap: number
+  watchlist: number
+  status_new: number
+  status_reviewing: number
+  status_dismissed: number
+  status_confirmed: number
+  risk_critical: number
+  risk_high: number
+  new_last_24h: number
+  new_last_7d: number
+  latest_detection_at: string | null
+}
+
+export interface SimilarityMetricsByBrand {
+  brand_name: string
+  brand_label: string
+  total: number
+  immediate: number
+  last_match_at: string | null
+  top_score: number | null
+}
+
+export interface SimilarityMetrics {
+  totals: SimilarityMetricsTotals
+  by_brand: SimilarityMetricsByBrand[]
+  last_scan_job: { status: string; created_at: string; finished_at: string | null } | null
+}
+
+export interface TldDomainCount {
+  tld: string
+  count: number
+}
+
 // ── Scan ────────────────────────────────────────────────
 
 export interface ScanResultResponse {
