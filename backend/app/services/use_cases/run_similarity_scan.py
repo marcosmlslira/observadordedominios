@@ -307,12 +307,26 @@ def run_similarity_scan(
             "Scan FAILED: brand=%s tld=%s", brand.brand_label, tld,
         )
         db.rollback()
-        repo.finish_scan(
-            cursor,
-            status="failed",
-            error_message=str(exc),
-        )
-        db.commit()
+        # Use raw SQL after rollback — the ORM cursor object may be in a stale state
+        # after rollback (SQLAlchemy flush errors leave the session identity map
+        # inconsistent), so we bypass the ORM to safely update the cursor.
+        try:
+            db.execute(
+                text(
+                    "UPDATE similarity_scan_cursor"
+                    " SET status='failed', error_message=:err,"
+                    "     finished_at=NOW(), updated_at=NOW()"
+                    " WHERE brand_id=:bid AND tld=:tld"
+                ),
+                {"err": str(exc)[:2000], "bid": brand.id, "tld": tld},
+            )
+            db.commit()
+        except Exception:
+            logger.exception(
+                "Failed to persist scan failure state for brand=%s tld=%s",
+                brand.brand_label, tld,
+            )
+            db.rollback()
         raise
 
 
