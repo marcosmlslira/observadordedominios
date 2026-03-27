@@ -447,15 +447,23 @@ def cancel_ct_bulk_job(
 
 @router.get(
     "/domain-counts",
-    summary="Domain count per TLD",
+    summary="Domain count per TLD (from daily materialized view)",
 )
 def get_domain_counts(
     db: Session = Depends(get_db),
 ):
-    """Return number of domains per TLD, ordered by count descending."""
-    rows = db.execute(text(
-        "SELECT tld, COUNT(*) AS count FROM domain GROUP BY tld ORDER BY count DESC"
-    )).fetchall()
+    """Read pre-aggregated domain counts from tld_domain_count_mv.
+
+    The view is refreshed once per day at the end of the CZDS catchup cycle.
+    Returns an empty list if the view has not been populated yet.
+    """
+    try:
+        rows = db.execute(text(
+            "SELECT tld, count FROM tld_domain_count_mv ORDER BY count DESC"
+        )).fetchall()
+    except Exception:
+        # View may not exist yet (before first migration run)
+        return []
     return [{"tld": r.tld, "count": int(r.count)} for r in rows]
 
 

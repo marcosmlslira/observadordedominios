@@ -14,6 +14,7 @@ from app.infra.external.czds_client import CZDSAuthRateLimitedError, CZDSClient
 from app.infra.db.session import SessionLocal
 from app.models.czds_tld_policy import CzdsTldPolicy
 from app.repositories.ingestion_run_repository import IngestionRunRepository
+from app.services.tld_domain_count import refresh_tld_domain_count_mv
 from app.services.use_cases.sync_czds_tld import (
     CooldownActiveError,
     SyncAlreadyRunningError,
@@ -158,10 +159,12 @@ def run_bootstrap_until_complete() -> None:
 
 
 def run_catchup_cycle() -> None:
-    """Run the normal cycle and then immediately backfill any never-synced TLDs."""
+    """Run the normal cycle, backfill missing TLDs, then refresh snapshot."""
     run_sync_cycle()
     if not STOP_EVENT.is_set():
         run_bootstrap_until_complete()
+    if not STOP_EVENT.is_set():
+        refresh_tld_domain_count_mv()
 
 
 def main() -> None:
