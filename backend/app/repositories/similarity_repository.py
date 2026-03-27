@@ -803,9 +803,7 @@ class SimilarityRepository:
         """)).fetchall()
 
         last_job = self.db.execute(text("""
-            SELECT status, created_at, finished_at,
-                   (SELECT COUNT(*) FROM similarity_scan_job_tld WHERE job_id = ssj.id AND status = 'completed') AS tlds_ok,
-                   (SELECT COUNT(*) FROM similarity_scan_job_tld WHERE job_id = ssj.id AND status = 'failed')    AS tlds_failed
+            SELECT status, created_at, finished_at
             FROM similarity_scan_job ssj
             ORDER BY created_at DESC
             LIMIT 1
