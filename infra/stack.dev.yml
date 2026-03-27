@@ -166,7 +166,7 @@ services:
       - ENVIRONMENT=development
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - SIMILARITY_SCAN_CRON=0 9 * * *
-    command: ["python", "-m", "app.worker.similarity_worker"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.worker.similarity_worker"]
     networks:
       - app-network
     depends_on:
