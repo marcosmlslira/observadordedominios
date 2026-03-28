@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToolResultRenderer } from "@/components/tools/result-renderers"
+import { LLMAssessmentCard } from "@/components/tools/result-renderers/llm-assessment"
 import { ToolResultEnvelope } from "@/components/tools/tool-result-envelope"
 import {
   Table,
@@ -492,7 +493,7 @@ export default function MatchesPage() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-mono">
               {selectedMatch?.domain_name}.{selectedMatch?.tld}
@@ -601,6 +602,10 @@ export default function MatchesPage() {
                 </div>
               )}
 
+              {selectedMatch.llm_assessment && (
+                <LLMAssessmentCard assessment={selectedMatch.llm_assessment} />
+              )}
+
               {selectedMatch.enrichment_summary && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
                   <div className="flex items-center justify-between">
@@ -696,6 +701,11 @@ export default function MatchesPage() {
                     {enriching ? "Running..." : "Run Quick Analysis"}
                   </Button>
                 </div>
+                {selectedMatch.last_enriched_at && !enrichment && (
+                  <Badge variant="secondary" className="text-xs">
+                    Já analisado · {new Date(selectedMatch.last_enriched_at).toLocaleString()}
+                  </Badge>
+                )}
 
                 {enrichment && (
                   <div className="space-y-3">

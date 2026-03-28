@@ -250,6 +250,14 @@ export interface SimilarityMatch {
     error?: string
   } | null
   last_enriched_at: string | null
+  llm_assessment: {
+    risco_score: number
+    categoria: string
+    parecer_resumido: string
+    principais_motivos: string[]
+    recomendacao_acao: string
+    confianca: number
+  } | null
   first_detected_at: string
   domain_first_seen: string
   status: string

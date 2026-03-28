@@ -29,6 +29,7 @@ services:
       - S3_BUCKET=observador-zones
       - S3_FORCE_PATH_STYLE=false
       - CORS_ORIGINS=https://observadordedominios.com.br,https://www.observadordedominios.com.br
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     networks:
       - app-network
     deploy:
@@ -100,6 +101,7 @@ services:
       - ENVIRONMENT=production
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - SIMILARITY_SCAN_CRON=0 9 * * *
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     networks:
       - app-network
     depends_on:

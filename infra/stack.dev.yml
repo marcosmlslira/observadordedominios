@@ -43,6 +43,7 @@ services:
       - ADMIN_PASSWORD_HASH=$$2b$$12$$Z3xwD2M0fUiVKq151s47g.QsuOmfw3plR5lCIFtnO2K3JDSwjRIA2
       - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
       - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     networks:
       - app-network
     depends_on:
@@ -166,6 +167,7 @@ services:
       - ENVIRONMENT=development
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - SIMILARITY_SCAN_CRON=0 9 * * *
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
     command: ["sh", "-c", "alembic upgrade head && python -m app.worker.similarity_worker"]
     networks:
       - app-network

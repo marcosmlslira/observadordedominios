@@ -47,6 +47,9 @@ class SimilarityMatch(Base):
     first_detected_at = Column(DateTime(timezone=True), nullable=False)
     domain_first_seen = Column(DateTime(timezone=True), nullable=False)
 
+    # LLM Assessment
+    llm_assessment = Column(JSONB, nullable=True)
+
     # Review workflow
     status = Column(String(16), nullable=False, default="new")
     # new | reviewing | dismissed | confirmed_threat

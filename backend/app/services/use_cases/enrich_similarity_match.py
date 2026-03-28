@@ -114,6 +114,14 @@ def enrich_similarity_match(
         compact_tools["website_clone"] = clone_result
     confidence = _derive_confidence(tool_results, score, signal_codes)
 
+    from app.services.use_cases.generate_llm_assessment import generate_llm_assessment
+    llm_result = generate_llm_assessment(
+        match={**match, "risk_level": match.get("risk_level"), "attention_bucket": bucket},
+        brand_name=str(brand.brand_name or ""),
+        tool_results=tool_results,
+        signals=signals,
+    )
+
     return {
         "actionability_score": round(score, 4),
         "attention_bucket": bucket,
@@ -125,6 +133,7 @@ def enrich_similarity_match(
         "disposition": disposition,
         "confidence": confidence,
         "delivery_risk": delivery_risk,
+        "llm_assessment": llm_result,
         "enrichment_summary": {
             "signals": signals,
             "tools": compact_tools,

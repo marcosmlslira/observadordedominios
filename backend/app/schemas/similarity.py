@@ -84,6 +84,7 @@ class MatchResponse(BaseModel):
     disposition: str | None = None
     confidence: float | None = None
     delivery_risk: str | None = None
+    llm_assessment: dict | None = None
     first_detected_at: datetime
     domain_first_seen: datetime
     status: str

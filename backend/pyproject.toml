@@ -27,6 +27,7 @@ playwright = "^1.49.0"
 imagehash = "^4.3.0"
 Pillow = "^11.0.0"
 geoip2 = "^4.8.0"
+openai = ">=1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.5"

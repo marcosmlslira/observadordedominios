@@ -548,6 +548,7 @@ class SimilarityRepository:
             "disposition",
             "confidence",
             "delivery_risk",
+            "llm_assessment",
             "first_detected_at",
             "domain_first_seen",
             "matched_channel",
@@ -577,6 +578,7 @@ class SimilarityRepository:
                     f":enrichment_summary{suffix}, :last_enriched_at{suffix}, "
                     f":ownership_classification{suffix}, :self_owned{suffix}, "
                     f":disposition{suffix}, :confidence{suffix}, :delivery_risk{suffix}, "
+                    f":llm_assessment{suffix}, "
                     f":first_detected_at{suffix}, :domain_first_seen{suffix}, "
                     f"'new', :matched_channel{suffix}, "
                     f":matched_seed_id{suffix}, :matched_seed_value{suffix}, "
@@ -594,8 +596,8 @@ class SimilarityRepository:
                     reasons, risk_level, actionability_score, attention_bucket,
                     attention_reasons, recommended_action, enrichment_status,
                     enrichment_summary, last_enriched_at, ownership_classification,
-                    self_owned, disposition, confidence, delivery_risk, first_detected_at,
-                    domain_first_seen, status, matched_channel, matched_seed_id,
+                    self_owned, disposition, confidence, delivery_risk, llm_assessment,
+                    first_detected_at, domain_first_seen, status, matched_channel, matched_seed_id,
                     matched_seed_value, matched_seed_type, matched_rule, source_stream
                 ) VALUES {", ".join(values_clauses)}
                 ON CONFLICT (brand_id, domain_name) DO UPDATE SET
@@ -635,6 +637,7 @@ class SimilarityRepository:
                     self_owned = EXCLUDED.self_owned,
                     confidence = EXCLUDED.confidence,
                     delivery_risk = EXCLUDED.delivery_risk,
+                    llm_assessment = EXCLUDED.llm_assessment,
                     matched_channel = EXCLUDED.matched_channel,
                     matched_seed_id = EXCLUDED.matched_seed_id,
                     matched_seed_value = EXCLUDED.matched_seed_value,

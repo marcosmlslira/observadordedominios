@@ -120,6 +120,11 @@ class Settings(BaseSettings):
     # S3 bucket for tool artifacts (screenshots etc.)
     TOOLS_S3_BUCKET: str = "observador-tools"
 
+    # ── LLM / OpenRouter ──────────────────────────────────
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_TIMEOUT_SECONDS: float = 20.0
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 
