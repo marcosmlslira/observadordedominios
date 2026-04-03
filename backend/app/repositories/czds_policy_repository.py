@@ -88,6 +88,22 @@ class CzdsPolicyRepository:
             self.db.flush()
         return policy
 
+    def patch(self, tld: str, **fields: object) -> CzdsTldPolicy:
+        policy = self.ensure(tld)
+        for key, value in fields.items():
+            setattr(policy, key, value)
+        policy.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+        return policy
+
+    def update_priorities(self, ordered_tlds: list[str]) -> None:
+        for idx, tld in enumerate(ordered_tlds, start=1):
+            policy = self.get(tld)
+            if policy:
+                policy.priority = idx
+                policy.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+
     def record_success(self, tld: str) -> CzdsTldPolicy:
         now = datetime.now(timezone.utc)
         policy = self.ensure(tld)

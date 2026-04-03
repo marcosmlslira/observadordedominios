@@ -40,7 +40,7 @@ services:
       - S3_FORCE_PATH_STYLE=true
       - CZDS_ENABLED_TLDS=com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
       - ADMIN_EMAIL=admin@observador.com
-      - ADMIN_PASSWORD_HASH=$$2b$$12$$Z3xwD2M0fUiVKq151s47g.QsuOmfw3plR5lCIFtnO2K3JDSwjRIA2
+      - ADMIN_PASSWORD_HASH=$$2b$$12$$yO4Ti.ntPbWQKbl7cdADq.TbSjmfZjy/DMZmjZnjOUCRUy2vySexy
       - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
       - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}

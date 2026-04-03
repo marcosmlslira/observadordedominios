@@ -16,6 +16,9 @@ from app.core.config import settings
 from app.repositories.czds_policy_repository import CzdsPolicyRepository
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.schemas.czds_ingestion import (
+    CzdsPolicyItemResponse,
+    CzdsPolicyPatchRequest,
+    CzdsPolicyReorderRequest,
     CzdsPolicyResponse,
     CzdsPolicyUpdateRequest,
     ErrorResponse,
@@ -155,6 +158,42 @@ def replace_policy(
         tlds=[item.tld for item in items],
         items=items,
     )
+
+
+@router.patch(
+    "/policy/{tld}",
+    response_model=CzdsPolicyItemResponse,
+    summary="Toggle or edit a single TLD policy",
+)
+def patch_policy(
+    tld: str,
+    body: CzdsPolicyPatchRequest,
+    db: Session = Depends(get_db),
+):
+    """Apply partial updates to a single TLD policy."""
+    fields = body.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    repo = CzdsPolicyRepository(db)
+    policy = repo.patch(tld, **fields)
+    db.commit()
+    return policy
+
+
+@router.post(
+    "/policy/reorder",
+    status_code=204,
+    summary="Reorder TLD priorities in batch",
+)
+def reorder_policy(
+    body: CzdsPolicyReorderRequest,
+    db: Session = Depends(get_db),
+):
+    """Set priority = index+1 for each TLD in the provided order."""
+    repo = CzdsPolicyRepository(db)
+    repo.update_priorities(body.tlds)
+    db.commit()
 
 
 @router.get(

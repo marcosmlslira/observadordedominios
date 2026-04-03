@@ -101,6 +101,15 @@ export const toolsApi = {
 }
 
 export const ingestionApi = {
+  getCycleStatus: () =>
+    api.get<import("./types").IngestionCycleStatus>("/v1/ingestion/cycle-status"),
+
+  patchPolicy: (tld: string, body: import("./types").CzdsPolicyPatchRequest) =>
+    api.patch<import("./types").CzdsPolicyItem>(`/v1/czds/policy/${tld}`, body),
+
+  reorderPolicy: (tlds: string[]) =>
+    api.post<void>("/v1/czds/policy/reorder", { tlds }),
+
   getCoverage: () =>
     api.get<import("./types").TldCoverage[]>("/v1/ingestion/tld-coverage"),
 

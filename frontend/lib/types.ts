@@ -209,7 +209,49 @@ export interface CzdsPolicyItem {
   is_enabled: boolean
   priority: number
   cooldown_hours: number
+  failure_count: number
+  last_error_code: number | null
+  last_error_at: string | null
+  suspended_until: string | null
   notes: string | null
+}
+
+export interface CzdsPolicyPatchRequest {
+  is_enabled?: boolean
+  priority?: number
+  cooldown_hours?: number
+}
+
+export interface CycleStatus {
+  is_active: boolean
+  total_tlds: number
+  completed_tlds: number
+  failed_tlds: number
+  skipped_tlds: number
+  current_tld: string | null
+  cycle_started_at: string | null
+  estimated_completion_at: string | null
+  avg_tld_duration_seconds: number | null
+}
+
+export interface ScheduleEntry {
+  source: string
+  cron_expression: string
+  next_run_at: string | null
+  mode: string
+}
+
+export interface HealthSummary {
+  total_tlds_enabled: number
+  tlds_ok: number
+  tlds_suspended: number
+  tlds_failing: number
+}
+
+export interface IngestionCycleStatus {
+  czds_cycle: CycleStatus
+  schedules: ScheduleEntry[]
+  health: HealthSummary
 }
 
 export interface CzdsPolicyResponse {

@@ -188,3 +188,47 @@ class CheckpointResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str
+
+
+# ── CZDS Policy Patch/Reorder ─────────────────────────────
+class CzdsPolicyPatchRequest(BaseModel):
+    is_enabled: bool | None = None
+    priority: int | None = None
+    cooldown_hours: int | None = None
+
+
+class CzdsPolicyReorderRequest(BaseModel):
+    tlds: list[str]  # desired order → priority = index + 1
+
+
+# ── Cycle Status ──────────────────────────────────────────
+class CycleStatusResponse(BaseModel):
+    is_active: bool
+    total_tlds: int
+    completed_tlds: int
+    failed_tlds: int
+    skipped_tlds: int
+    current_tld: str | None
+    cycle_started_at: datetime | None
+    estimated_completion_at: datetime | None
+    avg_tld_duration_seconds: float | None
+
+
+class ScheduleEntry(BaseModel):
+    source: str
+    cron_expression: str
+    next_run_at: str | None
+    mode: str  # "cron" | "realtime" | "manual"
+
+
+class HealthSummary(BaseModel):
+    total_tlds_enabled: int
+    tlds_ok: int
+    tlds_suspended: int
+    tlds_failing: int
+
+
+class IngestionCycleStatusResponse(BaseModel):
+    czds_cycle: CycleStatusResponse
+    schedules: list[ScheduleEntry]
+    health: HealthSummary

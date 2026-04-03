@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from uuid import UUID
 
@@ -16,11 +16,16 @@ from app.core.dependencies import get_current_admin
 from app.infra.db.session import get_db
 from app.repositories.ct_bulk_repository import CtBulkRepository
 from app.repositories.ingestion_run_repository import IngestionRunRepository
+from app.repositories.czds_policy_repository import CzdsPolicyRepository
 from app.schemas.czds_ingestion import CtBulkChunkResponse
 from app.schemas.czds_ingestion import CtBulkJobCreateRequest
 from app.schemas.czds_ingestion import CtBulkJobResponse
 from app.schemas.czds_ingestion import (
     CheckpointResponse,
+    CycleStatusResponse,
+    HealthSummary,
+    IngestionCycleStatusResponse,
+    ScheduleEntry,
     TldCoverageResponse,
     ErrorResponse,
     RunStatusResponse,
@@ -244,6 +249,112 @@ def get_summary(
     """Per-source aggregation: total runs, success/fail counts, last run, totals."""
     run_repo = IngestionRunRepository(db)
     return [SourceSummaryResponse(**row) for row in _build_source_summary_rows(run_repo)]
+
+
+@router.get(
+    "/cycle-status",
+    response_model=IngestionCycleStatusResponse,
+    summary="CZDS cycle progress, schedules, and health",
+)
+def get_cycle_status(
+    db: Session = Depends(get_db),
+):
+    """Derive the CZDS cycle state from existing run + policy data."""
+    policy_repo = CzdsPolicyRepository(db)
+    run_repo = IngestionRunRepository(db)
+
+    all_policies = policy_repo.list_all()
+    enabled_policies = [p for p in all_policies if p.is_enabled]
+    total_tlds = len(enabled_policies)
+
+    # Find today's CZDS runs (since midnight UTC or earliest running)
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    czds_runs = run_repo.list_runs(limit=500, source="czds")
+    today_runs = [r for r in czds_runs if r.started_at >= today_start]
+
+    completed = [r for r in today_runs if r.status == "success"]
+    failed = [r for r in today_runs if r.status == "failed"]
+    running = [r for r in today_runs if r.status == "running"]
+
+    # Skipped = suspended or in cooldown
+    now = datetime.now(timezone.utc)
+    suspended_tlds = [
+        p for p in enabled_policies
+        if p.suspended_until and p.suspended_until > now
+    ]
+
+    current_tld = running[0].tld if running else None
+    is_active = len(running) > 0
+    cycle_started_at = min((r.started_at for r in today_runs), default=None)
+
+    # Average duration of completed runs today
+    durations = []
+    for r in completed:
+        if r.finished_at and r.started_at:
+            durations.append((r.finished_at - r.started_at).total_seconds())
+    avg_duration = sum(durations) / len(durations) if durations else None
+
+    # Estimate completion
+    estimated_completion = None
+    if is_active and avg_duration and total_tlds > 0:
+        done_count = len(completed) + len(failed)
+        remaining = max(0, total_tlds - done_count - len(suspended_tlds))
+        if remaining > 0:
+            estimated_completion = now + timedelta(seconds=avg_duration * remaining)
+
+    # Health summary across ALL policies (not just today)
+    tlds_failing = sum(1 for p in enabled_policies if (p.failure_count or 0) > 0)
+    tlds_suspended_count = len(suspended_tlds)
+    tlds_ok = total_tlds - tlds_failing - tlds_suspended_count
+
+    # Schedules
+    schedules = [
+        ScheduleEntry(
+            source="czds",
+            cron_expression=settings.CZDS_SYNC_CRON,
+            next_run_at=_next_cron_hint(settings.CZDS_SYNC_CRON),
+            mode="cron",
+        ),
+        ScheduleEntry(
+            source="certstream",
+            cron_expression="",
+            next_run_at=None,
+            mode="realtime",
+        ),
+        ScheduleEntry(
+            source="crtsh",
+            cron_expression=settings.CT_CRTSH_SYNC_CRON,
+            next_run_at=_next_cron_hint(settings.CT_CRTSH_SYNC_CRON),
+            mode="cron",
+        ),
+        ScheduleEntry(
+            source="crtsh-bulk",
+            cron_expression="",
+            next_run_at=None,
+            mode="manual",
+        ),
+    ]
+
+    return IngestionCycleStatusResponse(
+        czds_cycle=CycleStatusResponse(
+            is_active=is_active,
+            total_tlds=total_tlds,
+            completed_tlds=len(completed),
+            failed_tlds=len(failed),
+            skipped_tlds=len(suspended_tlds),
+            current_tld=current_tld,
+            cycle_started_at=cycle_started_at,
+            estimated_completion_at=estimated_completion,
+            avg_tld_duration_seconds=avg_duration,
+        ),
+        schedules=schedules,
+        health=HealthSummary(
+            total_tlds_enabled=total_tlds,
+            tlds_ok=max(0, tlds_ok),
+            tlds_suspended=tlds_suspended_count,
+            tlds_failing=tlds_failing,
+        ),
+    )
 
 
 @router.get(
