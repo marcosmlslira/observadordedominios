@@ -1,5 +1,8 @@
 ## **VISÃO DO PRODUTO**
 
+Documento guia do estado ideal do mecanismo principal:
+- [North Star 10/10 - Brand Protection](/C:/PROJETOS/observadordedominios/.specs/features/domain_similarity/vision_10_10.md)
+
 Para empresas que possuem marca registrada, SaaS, fintechs e negócios digitais
 Que precisam monitorar riscos de fraude, phishing e uso indevido de marca em domínios da internet
 O Observador de Domínios

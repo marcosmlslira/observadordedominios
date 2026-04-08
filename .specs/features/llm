@@ -1,0 +1,113 @@
+**PRD – Observador de Domínios Inteligente (Fase 2)**  
+**Versão:** 1.0  
+**Data:** 28 de março de 2026  
+**Objetivo principal:** Elevar drasticamente a qualidade e inteligência do parecer final entregue ao cliente, transformando o observador de domínios em uma ferramenta que não apenas detecta, mas **explica, prioriza e aconselha** com clareza profissional.
+
+### 1. Visão Geral e Objetivos
+O módulo atual coleta dados brutos (similaridade, homograph, conteúdo, DNS, WHOIS, reports maliciosos).  
+Agora vamos adicionar uma camada de **inteligência real** usando OpenRouter + LLM gratuito para:
+
+- Analisar todos os dados de forma contextualizada  
+- Gerar um **parecer humano-like**, objetivo e acionável  
+- Aumentar a precisão da classificação de risco  
+- Reduzir falsos positivos/negativos através de raciocínio passo a passo  
+
+**Objetivos mensuráveis:**
+- Parecer final com qualidade ≥ 9/10 (avaliação interna de especialistas)  
+- Classificação de risco com justificativa clara e 3-4 motivos principais  
+- Tempo total por domínio < 12 segundos (média)  
+- Custo da LLM = R$ 0,00 (usando apenas modelos free do OpenRouter)
+
+### 2. Escopo
+**Incluso:**
+- Integração com OpenRouter (modelos free)
+- Coleta estruturada de dados (sem LLM nessa etapa)
+- Geração de resumo estruturado (JSON + Markdown)
+- Prompt avançado de análise (Chain-of-Thought + Structured Output)
+- Parecer final em português claro e profissional
+- Sistema de fallback automático entre modelos free
+
+**Excluído (para manter baixa complexidade):**
+- Cache avançado (Redis ou similar)
+- Interface administrativa nova
+- Multi-tenant
+- Histórico completo de análises
+
+### 3. Requisitos Funcionais
+
+**3.1 Coleta de Dados (já existente + melhorias)**
+- Usar: `dnstwist` (similaridade + homograph), `trafilatura` (conteúdo limpo), `dnspython` (MX, SPF, DKIM, DMARC), `python-whois`, Google Safe Browsing (API free) e PhishTank.
+- Gerar um **resumo estruturado** único (JSON + versão Markdown legível) contendo:
+  - Similaridade e homograph
+  - Idade do domínio e proprietário
+  - Configurações de e-mail completas
+  - Extrato inteligente do conteúdo do site (título, meta, frases chave, presença de formulários de login, palavras de phishing)
+  - Reports de malícia
+  - Flags automáticos (ex: domínio_novo + sem_dkim + homograph)
+
+**3.2 Camada de Inteligência (nova)**
+- Enviar o resumo estruturado para OpenRouter
+- Usar **modelos gratuitos prioritários** (março/2026):
+  1. `minimax/minimax-m2.5:free` (melhor escolha – excelente em produtividade, raciocínio e saída estruturada, 197K contexto)
+  2. `openrouter/free` (router automático que escolhe o melhor modelo free disponível)
+  3. Fallback: `nvidia/nemotron-3-super-120b-a12b:free` ou `stepfun/step-3.5-flash:free`
+
+**3.3 Prompt Avançado (chave para inteligência)**
+O prompt será otimizado com:
+- Chain-of-Thought explícito (passo a passo)
+- Análise contextual completa
+- Structured Output (JSON schema obrigatório)
+- Exemplos few-shot de análises boas/ruins
+- Instruções claras para evitar linguagem genérica
+
+**3.4 Saída Final para o Cliente**
+O LLM deve retornar um JSON com:
+```json
+{
+  "risco_score": 0-100,
+  "categoria": "Phishing Provável | Tiposquatting | Homograph | Legítimo | Alto Risco Corporativo",
+  "parecer_resumido": "Texto curto (6-8 linhas) em português",
+  "principais_motivos": ["motivo1", "motivo2", "motivo3"],
+  "recomendacao_acao": "Bloquear imediatamente | Monitorar | Ignorar",
+  "confianca": 0-100
+}
+```
+O frontend exibirá isso de forma bonita e acionável.
+
+### 4. Requisitos Não-Funcionais
+- **Custo:** 100% gratuito na camada LLM
+- **Desempenho:** < 12s por domínio (incluindo coleta + LLM)
+- **Confiabilidade:** Fallback automático entre modelos free
+- **Qualidade:** Parecer deve ser claro, direto, sem fluff, com tom profissional e útil para o cliente final
+- **Idioma:** Todo o output final 100% em português brasileiro
+
+### 5. Stack Tecnológica (simples)
+- Python + OpenAI client (compatível com OpenRouter)
+- Bibliotecas já usadas: dnstwist, trafilatura, dnspython, python-whois
+- LiteLLM (opcional mas recomendado – facilita troca de modelo e fallback)
+- OpenRouter API (base_url = https://openrouter.ai/api/v1)
+
+### 6. Fluxo Simplificado
+1. Detector de similaridade identifica domínio
+2. Coleta todos os dados → monta resumo estruturado
+3. Envia para OpenRouter (modelo MiniMax M2.5:free)
+4. LLM retorna JSON estruturado
+5. Salva e exibe parecer inteligente para o usuário
+
+### 7. Fases de Implementação (2 semanas)
+**Semana 1:**
+- Criar função `build_domain_summary()` (JSON + Markdown)
+- Criar prompt final otimizado (eu forneço o template completo)
+- Integrar OpenRouter com LiteLLM
+
+**Semana 2:**
+- Testar com 50 domínios reais (phishing, legítimos, homographs)
+- Ajustar prompt com base nos resultados
+- Implementar fallback e structured output
+- Deploy e validação final
+
+### 8. Métricas de Sucesso
+- 90%+ dos pareceres considerados “inteligentes e úteis” em avaliação manual
+- Redução de falsos positivos em pelo menos 40%
+- Tempo médio por análise < 12 segundos
+- Zero custo na camada de LLM

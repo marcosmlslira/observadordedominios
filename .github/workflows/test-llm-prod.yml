@@ -1,0 +1,36 @@
+name: Test LLM Production
+on:
+  workflow_dispatch:
+
+jobs:
+  test-llm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H 158.69.211.109 >> ~/.ssh/known_hosts
+
+      - name: SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Copy script to server and run in backend container
+        run: |
+          SERVER="ubuntu@158.69.211.109"
+
+          # Copiar script para o servidor
+          scp backend/app/debug_scripts/test_llm_prod.py "${SERVER}:/tmp/test_llm_prod.py"
+
+          # Encontrar container do backend
+          CONTAINER=$(ssh "$SERVER" "docker ps -q -f name=observador_backend --filter status=running | head -1")
+          echo "Container: $CONTAINER"
+
+          # Copiar script para dentro do container
+          ssh "$SERVER" "docker cp /tmp/test_llm_prod.py ${CONTAINER}:/app/app/debug_scripts/test_llm_prod.py"
+
+          # Executar
+          ssh "$SERVER" "docker exec $CONTAINER python app/debug_scripts/test_llm_prod.py"

@@ -9,10 +9,11 @@ import threading
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from sqlalchemy import text
+
 from app.core.config import settings
 from app.infra.external.czds_client import CZDSAuthRateLimitedError, CZDSClient
 from app.infra.db.session import SessionLocal
-from app.models.czds_tld_policy import CzdsTldPolicy
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.tld_domain_count import refresh_tld_domain_count_mv
 from app.services.use_cases.sync_czds_tld import (
@@ -37,18 +38,21 @@ def _wait_or_stop(seconds: int) -> bool:
 
 def _get_enabled_tlds() -> list[str]:
     """
-    Read enabled TLDs from the database (preferred) or env var fallback.
+    Read enabled TLDs ordered by corpus size ascending (smallest first).
+    Falls back to env var if DB is unavailable.
     """
     db = SessionLocal()
     try:
-        policies = (
-            db.query(CzdsTldPolicy)
-            .filter(CzdsTldPolicy.is_enabled == True)
-            .order_by(CzdsTldPolicy.priority.asc(), CzdsTldPolicy.tld.asc())
-            .all()
-        )
-        if policies:
-            return [p.tld for p in policies]
+        result = db.execute(text("""
+            SELECT p.tld
+            FROM czds_tld_policy p
+            LEFT JOIN tld_domain_count_mv m ON p.tld = m.tld
+            WHERE p.is_enabled = true
+            ORDER BY COALESCE(m.count, 999999999) ASC, p.priority ASC, p.tld ASC
+        """))
+        tlds = [row[0] for row in result]
+        if tlds:
+            return tlds
     except Exception:
         logger.warning("Could not read czds_tld_policy, falling back to env.")
     finally:

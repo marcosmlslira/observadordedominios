@@ -141,10 +141,11 @@ def _hyphen_variants(name: str) -> set[str]:
     return result
 
 
-def _tld_variations(name: str, original_tld: str) -> list[dict]:
+def _tld_variations(name: str, original_tld: str, extra_tlds: list[str] | None = None) -> list[dict]:
     """Generate same name with different TLDs."""
+    tld_list = list(dict.fromkeys(POPULAR_TLDS + (extra_tlds or [])))
     result = []
-    for tld in POPULAR_TLDS:
+    for tld in tld_list:
         if tld != original_tld:
             result.append({"domain": f"{name}.{tld}", "type": "tld_variation"})
     return result
@@ -174,7 +175,7 @@ def _check_registered(domain: str) -> bool:
     return False
 
 
-def generate_variants(domain: str, check_registration: bool = True) -> dict:
+def generate_variants(domain: str, check_registration: bool = True, extra_tlds: list[str] | None = None) -> dict:
     """Generate typosquatting variants and optionally check registration."""
     try:
         parsed = parse_registrable_domain(domain)
@@ -216,7 +217,7 @@ def generate_variants(domain: str, check_registration: bool = True) -> dict:
         typed_variants.append({"domain": f"{v}.{tld}", "type": vtype})
 
     # Add TLD variations (original name, different TLD)
-    typed_variants.extend(_tld_variations(name, tld))
+    typed_variants.extend(_tld_variations(name, tld, extra_tlds=extra_tlds))
 
     # Add affix variants (limit to avoid explosion)
     typed_variants.extend(_affix_variants(name, tld)[:40])
