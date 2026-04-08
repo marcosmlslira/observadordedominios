@@ -19,25 +19,26 @@ logger = logging.getLogger(__name__)
 _BATCH_SIZE = 50_000
 
 
-def _batch_size_for_tld(db: Session, tld: str) -> int:
+def _batch_size_for_tld(tld: str) -> int:
     """Return an adaptive batch size based on TLD domain count from materialized view.
 
-    Uses a SAVEPOINT so a query failure never corrupts the outer transaction.
+    Uses its own DB session so a query failure never affects the caller's transaction.
     """
-    sp = db.begin_nested()
+    from app.infra.db.session import SessionLocal
+    db = SessionLocal()
     try:
         count = db.execute(
             text('SELECT "count" FROM tld_domain_count_mv WHERE tld = :tld'),
             {"tld": tld},
         ).scalar()
-        sp.commit()
         if count and count > 10_000_000:
             return 100_000
         if count and count > 1_000_000:
             return 75_000
     except Exception:
-        sp.rollback()
         logger.debug("Could not read domain count for TLD=%s, using default batch size", tld)
+    finally:
+        db.close()
     return _BATCH_SIZE
 
 
@@ -81,7 +82,7 @@ def apply_zone_delta(
     repo = DomainRepository(db)
     run_repo = IngestionRunRepository(db)
 
-    batch_size = _batch_size_for_tld(db, tld)
+    batch_size = _batch_size_for_tld(tld)
     batch: list[str] = []
     total_parsed = 0
 
