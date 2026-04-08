@@ -20,17 +20,23 @@ _BATCH_SIZE = 50_000
 
 
 def _batch_size_for_tld(db: Session, tld: str) -> int:
-    """Return an adaptive batch size based on TLD domain count from materialized view."""
+    """Return an adaptive batch size based on TLD domain count from materialized view.
+
+    Uses a SAVEPOINT so a query failure never corrupts the outer transaction.
+    """
+    sp = db.begin_nested()
     try:
         count = db.execute(
-            text("SELECT count FROM tld_domain_count_mv WHERE tld = :tld"),
+            text('SELECT "count" FROM tld_domain_count_mv WHERE tld = :tld'),
             {"tld": tld},
         ).scalar()
+        sp.commit()
         if count and count > 10_000_000:
             return 100_000
         if count and count > 1_000_000:
             return 75_000
     except Exception:
+        sp.rollback()
         logger.debug("Could not read domain count for TLD=%s, using default batch size", tld)
     return _BATCH_SIZE
 
