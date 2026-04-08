@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import signal
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -12,7 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.infra.external.czds_client import CZDSAuthRateLimitedError, CZDSClient
+from app.infra.external.czds_client import CZDSAuthRateLimitedError
 from app.infra.db.session import SessionLocal
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.tld_domain_count import refresh_tld_domain_count_mv
@@ -29,6 +30,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("czds_ingestor")
 STOP_EVENT = threading.Event()
+
+_SIZE_THRESHOLD = 1_000_000  # TLDs abaixo deste valor rodam em paralelo
+_PARALLEL_WORKERS = 4
 
 
 def _wait_or_stop(seconds: int) -> bool:
@@ -81,20 +85,90 @@ def _get_missing_bootstrap_tlds() -> list[str]:
     return [tld for tld in tlds if tld not in completed]
 
 
+def _get_tld_sizes() -> dict[str, int]:
+    """Query domain counts per TLD from the materialized view."""
+    db = SessionLocal()
+    try:
+        result = db.execute(text("SELECT tld, count FROM tld_domain_count_mv"))
+        return {row[0]: row[1] for row in result}
+    except Exception:
+        logger.warning("Could not read tld_domain_count_mv for size classification.")
+        return {}
+    finally:
+        db.close()
+
+
+def _sync_single_tld(tld: str) -> None:
+    """Sync one TLD with its own DB session and CZDS client. Re-raises CZDSAuthRateLimitedError."""
+    db = SessionLocal()
+    try:
+        logger.info("▶ Syncing TLD=%s", tld)
+        run_id = sync_czds_tld(db, tld)
+        logger.info("✅ TLD=%s completed: run_id=%s", tld, run_id)
+    except CooldownActiveError:
+        logger.info("⏭ TLD=%s skipped (cooldown active)", tld)
+    except TldSuspendedError as exc:
+        logger.info("⏭ TLD=%s skipped (%s)", tld, exc)
+    except SyncAlreadyRunningError:
+        logger.warning("⏭ TLD=%s skipped (already running)", tld)
+    except CZDSAuthRateLimitedError:
+        raise
+    except Exception:
+        logger.exception("❌ TLD=%s failed", tld)
+    finally:
+        db.close()
+
+
 def run_sync_cycle(tlds: list[str] | None = None) -> None:
-    """Execute a sync cycle for the provided TLDs in priority order."""
+    """Execute a sync cycle: small TLDs in parallel, large TLDs serially."""
     tlds = tlds or _get_enabled_tlds()
     logger.info("Starting sync cycle for TLDs: %s", tlds)
-    shared_czds_client = CZDSClient()
 
-    for tld in tlds:
+    sizes = _get_tld_sizes()
+    small_tlds = [t for t in tlds if sizes.get(t, _SIZE_THRESHOLD) < _SIZE_THRESHOLD]
+    large_tlds = [t for t in tlds if sizes.get(t, _SIZE_THRESHOLD) >= _SIZE_THRESHOLD]
+    logger.info(
+        "TLD split: %d small (parallel, max_workers=%d), %d large (serial)",
+        len(small_tlds), _PARALLEL_WORKERS, len(large_tlds),
+    )
+
+    # ── Small TLDs in parallel ────────────────────────────────────────────────
+    if small_tlds and not STOP_EVENT.is_set():
+        auth_throttled = False
+        with ThreadPoolExecutor(max_workers=_PARALLEL_WORKERS) as pool:
+            futures = {
+                pool.submit(_sync_single_tld, tld): tld
+                for tld in small_tlds
+                if not STOP_EVENT.is_set()
+            }
+            for future in as_completed(futures):
+                tld = futures[future]
+                try:
+                    future.result()
+                except CZDSAuthRateLimitedError:
+                    logger.warning(
+                        "CZDS auth throttled during parallel sync of TLD=%s. "
+                        "Waiting %d seconds.",
+                        tld, settings.CZDS_AUTH_RATE_LIMIT_BACKOFF_SECONDS,
+                    )
+                    auth_throttled = True
+                except Exception:
+                    logger.exception("❌ TLD=%s failed (parallel)", tld)
+
+        if auth_throttled:
+            _wait_or_stop(settings.CZDS_AUTH_RATE_LIMIT_BACKOFF_SECONDS)
+            logger.info("Sync cycle aborted after auth throttle.")
+            return
+
+    # ── Large TLDs serially ───────────────────────────────────────────────────
+    for tld in large_tlds:
         if STOP_EVENT.is_set():
             logger.info("Stop requested. Ending sync cycle before TLD=%s.", tld)
             break
         db = SessionLocal()
         try:
             logger.info("▶ Syncing TLD=%s", tld)
-            run_id = sync_czds_tld(db, tld, czds_client=shared_czds_client)
+            run_id = sync_czds_tld(db, tld)
             logger.info("✅ TLD=%s completed: run_id=%s", tld, run_id)
         except CooldownActiveError:
             logger.info("⏭ TLD=%s skipped (cooldown active)", tld)

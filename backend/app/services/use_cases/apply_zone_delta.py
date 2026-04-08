@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.repositories.ingestion_run_repository import IngestionRunRepository
@@ -16,6 +17,22 @@ from app.repositories.domain_repository import DomainRepository
 logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 50_000
+
+
+def _batch_size_for_tld(db: Session, tld: str) -> int:
+    """Return an adaptive batch size based on TLD domain count from materialized view."""
+    try:
+        count = db.execute(
+            text("SELECT count FROM tld_domain_count_mv WHERE tld = :tld"),
+            {"tld": tld},
+        ).scalar()
+        if count and count > 10_000_000:
+            return 100_000
+        if count and count > 1_000_000:
+            return 75_000
+    except Exception:
+        logger.debug("Could not read domain count for TLD=%s, using default batch size", tld)
+    return _BATCH_SIZE
 
 
 def _parse_zone_stream(path: Path, tld: str):
@@ -58,13 +75,14 @@ def apply_zone_delta(
     repo = DomainRepository(db)
     run_repo = IngestionRunRepository(db)
 
+    batch_size = _batch_size_for_tld(db, tld)
     batch: list[str] = []
     total_parsed = 0
 
     for domain_name in _parse_zone_stream(zone_file_path, tld):
         batch.append(domain_name)
 
-        if len(batch) >= _BATCH_SIZE:
+        if len(batch) >= batch_size:
             repo.bulk_upsert(batch, tld, ts)
             total_parsed += len(batch)
             logger.info("Upserted %d domains so far...", total_parsed)

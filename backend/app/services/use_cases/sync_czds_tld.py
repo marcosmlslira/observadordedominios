@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import gzip
 import logging
 import os
 import shutil
 import uuid
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -275,6 +277,12 @@ def sync_czds_tld(
         except Exception as exc:
             logger.exception("Sync FAILED for TLD=%s run_id=%s", tld, run.id)
             db.rollback()
+
+            # Corrupted gzip file — remove local cache to force redownload on next run
+            if isinstance(exc, (gzip.BadGzipFile, EOFError, zlib.error)):
+                if local_path is not None and local_path.exists():
+                    local_path.unlink()
+                    logger.warning("Removed corrupted zone file cache: %s", local_path)
 
             # Cleanup S3 artifact from failed run (avoid orphans)
             if object_key is not None:
