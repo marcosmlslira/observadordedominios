@@ -108,7 +108,10 @@ class OpenIntelClient:
 
         fs = s3fs.S3FileSystem(anon=True, client_kwargs=client_kwargs)
 
-        suffix = f".{tld}"
+        # Domain names in OpenINTEL Parquet are FQDN with trailing dot: "example.fr."
+        # The pyarrow filter must use the FQDN suffix to match correctly.
+        fqdn_suffix = f".{tld}."
+        plain_suffix = f".{tld}"
         tld_depth = len(tld.split(".")) + 1  # labels in apex: "example.fr" → 2
 
         seen: set[str] = set()
@@ -119,7 +122,7 @@ class OpenIntelClient:
                 dataset = ds.dataset(path, filesystem=fs, format="parquet")
                 scanner = dataset.scanner(
                     columns=[self.qname_col],
-                    filter=pc.ends_with(ds.field(self.qname_col), suffix),
+                    filter=pc.ends_with(ds.field(self.qname_col), fqdn_suffix),
                     batch_size=50_000,
                 )
                 for batch in scanner.to_batches():
@@ -130,7 +133,7 @@ class OpenIntelClient:
                             continue
 
                         domain = qname.rstrip(".").lower()
-                        if not domain.endswith(suffix):
+                        if not domain.endswith(plain_suffix):
                             continue
 
                         parts = domain.split(".")
