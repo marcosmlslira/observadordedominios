@@ -2,6 +2,56 @@
 
 > Gerado em: 2026-04-03
 > Base: dados reais de produção (`obs` PostgreSQL, logs do worker)
+> Revalidado em código em: 2026-04-08 (sem acesso direto ao banco/logs de produção neste ciclo)
+
+---
+
+## Revalidação (2026-04-08)
+
+### Escopo de validação
+- Validação estática feita no código e configuração versionada deste repositório.
+- Itens dependentes de estado runtime (ex.: run travado específico de `.com`, throughput real do dia, tamanho atual de índices em produção) continuam **não verificáveis** sem consulta ao ambiente produtivo.
+
+### O que permanece válido
+| Hipótese original | Status em 2026-04-08 | Evidência no repositório |
+|---|---|---|
+| `CZDS_RUNNING_STALE_MINUTES = 60` pode matar runs longos | ✅ Confirmado | `backend/app/core/config.py` mantém `60`; `infra/stack.yml` e `infra/stack.dev.yml` não sobrescrevem |
+| Batch fixo de 50k | ✅ Confirmado | `_BATCH_SIZE = 50_000` em `backend/app/services/use_cases/apply_zone_delta.py` |
+| Processamento serial por TLD no worker | ✅ Confirmado | `for tld in tlds` em `backend/app/worker/czds_ingestor.py` |
+| Reuso de arquivo local por até 24h pode perpetuar `.gz` ruim após falha | ✅ Confirmado | `sync_czds_tld` reutiliza `/data/czds/{tld}.zone.gz` se `mtime < 24h`; remoção só no sucesso |
+| PostgreSQL sem tuning explícito no stack | ✅ Confirmado | `infra/stack.yml` e `infra/stack.dev.yml` não definem `shared_buffers`, `work_mem`, `max_wal_size`, etc. |
+
+### O que precisa ser tratado como parcialmente válido
+| Hipótese original | Reavaliação | Observação |
+|---|---|---|
+| "Com timeout=60, `.com` será morto durante execução normal de 4–6h" | ⚠️ Parcial | O código faz heartbeat (`touch_run`) em etapas e `update_progress` a cada batch; timeout de 60 tende a atingir runs realmente travados, não necessariamente runs longos saudáveis. |
+| "Run fantasma de `.com` há 4+ dias" | ❓ Não verificável agora | Era verdadeiro no recorte de 2026-03-29 do documento; requer query atual em produção para confirmar persistência. |
+
+### Detalhes adicionais que não estavam no documento original
+
+#### 1) Quarentena automática de TLD (novo mitigador operacional)
+- Há política de quarentena para TLD com erro 403/404 via `czds_tld_policy`.
+- Config padrão:
+  - `CZDS_TLD_FORBIDDEN_SUSPEND_HOURS = 168`
+  - `CZDS_TLD_NOT_FOUND_SUSPEND_HOURS = 168`
+- Isso reduz retries inúteis para TLD sem acesso/autorização.
+
+#### 2) Pré-validação de autorização antes do download
+- O fluxo consulta `list_authorized_tlds()` antes de baixar a zone.
+- Se o TLD não estiver na lista atual da conta, o run falha cedo (404 lógico), evitando tráfego e tentativa desnecessária.
+
+#### 3) Ordenação inteligente dos TLDs no worker
+- O worker ordena por `tld_domain_count_mv` crescente (menores primeiro), com fallback para env.
+- Isso melhora tempo de bootstrap parcial, embora o loop ainda seja serial.
+
+#### 4) Proteções de consistência já presentes
+- Lock por TLD com advisory lock (`pg_try_advisory_lock`), evitando execução paralela concorrente para mesmo TLD.
+- Cleanup de artefato S3 órfão quando run falha após upload.
+- Cleanup do cache local apenas em sucesso (reduz lixo em cenário saudável, mas mantém risco de reuso de arquivo corrompido no cenário de falha).
+
+#### 5) Risco operacional adicional (fora do foco de performance, mas crítico)
+- `infra/stack.dev.yml` contém credenciais CZDS em texto plano.
+- Recomendado mover para secrets/variáveis externas e rotacionar credenciais.
 
 ---
 
@@ -311,4 +361,33 @@ SELECT DATE(started_at),
 FROM ingestion_run
 WHERE source = 'czds' AND status = 'success'
 GROUP BY 1 ORDER BY 1 DESC;
+```
+
+### Queries adicionais para revalidar "a realidade permanece" em produção
+
+```sql
+-- 1) Verificar se ainda existe run CZDS travado (qualquer TLD)
+SELECT tld, status, started_at, updated_at, finished_at, domains_seen, error_message
+FROM ingestion_run
+WHERE source = 'czds' AND status = 'running'
+ORDER BY started_at ASC;
+
+-- 2) Idade em minutos dos runs running (para avaliar stale timeout)
+SELECT
+  tld,
+  ROUND(EXTRACT(EPOCH FROM (NOW() - updated_at))/60, 1) AS minutes_since_heartbeat,
+  ROUND(EXTRACT(EPOCH FROM (NOW() - started_at))/60, 1) AS minutes_since_start,
+  domains_seen
+FROM ingestion_run
+WHERE source = 'czds' AND status = 'running'
+ORDER BY minutes_since_heartbeat DESC;
+
+-- 3) Falhas recorrentes de gzip/corrupção por TLD
+SELECT tld, count(*) AS failures, max(started_at) AS last_failure
+FROM ingestion_run
+WHERE source = 'czds'
+  AND status = 'failed'
+  AND error_message ILIKE '%end-of-stream%'
+GROUP BY tld
+ORDER BY failures DESC, last_failure DESC;
 ```

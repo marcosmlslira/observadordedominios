@@ -85,9 +85,6 @@ class Settings(BaseSettings):
     CT_CRTSH_COOLDOWN_HOURS: int = 20
     CT_CRTSH_QUERY_OVERLAP_HOURS: int = 25
     CT_BR_SUBTLDS: str = "br,com.br,net.br,org.br,gov.br,edu.br,mil.br,app.br,dev.br,log.br,ong.br"
-    CT_BULK_MAX_PARALLEL_CHUNKS: int = 2
-    CT_BULK_SPLIT_MAX_DEPTH: int = 2
-    CT_BULK_RESPONSE_SIZE_LIMIT_MB: int = 8
 
     # ── Similarity Worker ──────────────────────────────────────
     SIMILARITY_SCAN_CRON: str = "0 9 * * *"

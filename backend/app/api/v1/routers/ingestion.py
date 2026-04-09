@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from uuid import UUID
@@ -14,12 +13,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.dependencies import get_current_admin
 from app.infra.db.session import get_db
-from app.repositories.ct_bulk_repository import CtBulkRepository
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.czds_policy_repository import CzdsPolicyRepository
-from app.schemas.czds_ingestion import CtBulkChunkResponse
-from app.schemas.czds_ingestion import CtBulkJobCreateRequest
-from app.schemas.czds_ingestion import CtBulkJobResponse
 from app.schemas.czds_ingestion import (
     CheckpointResponse,
     CycleStatusResponse,
@@ -32,14 +27,6 @@ from app.schemas.czds_ingestion import (
     SourceSummaryResponse,
 )
 from app.services.tld_coverage import resolve_tld_coverages
-from app.services.use_cases.bulk_load_crtsh import (
-    cancel_bulk_job,
-    create_bulk_job,
-    list_bulk_chunks,
-    list_bulk_jobs,
-    resume_bulk_job,
-    run_bulk_job,
-)
 
 router = APIRouter(
     prefix="/v1/ingestion",
@@ -47,7 +34,7 @@ router = APIRouter(
     dependencies=[Depends(get_current_admin)],
 )
 
-SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh", "crtsh-bulk")
+SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh")
 
 
 def _next_cron_hint(cron_expr: str) -> str | None:
@@ -85,8 +72,6 @@ def _next_cron_hint(cron_expr: str) -> str | None:
 
 def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
     indexed = {row["source"]: row for row in run_repo.get_source_summary()}
-    bulk_repo = CtBulkRepository(run_repo.db)
-    active_bulk_job = bulk_repo.get_active_job()
     rows: list[dict] = []
 
     for source in SUMMARY_SOURCE_ORDER:
@@ -124,15 +109,6 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
                 row["status_hint"] = "crt.sh runs only on its daily cron."
             else:
                 row["status_hint"] = "crt.sh is scheduled and waiting for the next daily cron."
-        elif source == "crtsh-bulk":
-            row["mode"] = "Manual backfill"
-            row["status_hint"] = "Manual historical backfill. No automatic scheduler."
-            if active_bulk_job:
-                row["bulk_job_status"] = active_bulk_job.status
-                row["bulk_chunks_total"] = active_bulk_job.total_chunks
-                row["bulk_chunks_done"] = active_bulk_job.done_chunks
-                row["bulk_chunks_error"] = active_bulk_job.error_chunks
-                row["bulk_chunks_pending"] = active_bulk_job.pending_chunks + active_bulk_job.running_chunks
         elif source == "czds":
             row["mode"] = "Serial worker"
             row["status_hint"] = "Processes enabled TLDs one by one in priority order."
@@ -141,35 +117,6 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
 
     return rows
 
-
-def _resolve_bulk_statuses(db: Session, tlds: list[str]) -> dict[str, str]:
-    repo = CtBulkRepository(db)
-    statuses: dict[str, str] = {}
-    jobs = repo.list_jobs(limit=20)
-
-    for tld in tlds:
-        status = "manual"
-        for job in jobs:
-            chunks = repo.list_chunks(job.id, limit=100000, target_tld=tld)
-            if not chunks:
-                continue
-
-            chunk_states = {chunk.status for chunk in chunks}
-            if "running" in chunk_states:
-                status = "running"
-            elif chunk_states & {"pending", "retry"}:
-                status = "pending"
-            elif "error" in chunk_states:
-                status = "error"
-            elif chunk_states <= {"done", "split"}:
-                status = "complete"
-            else:
-                status = job.status
-            break
-
-        statuses[tld] = status
-
-    return statuses
 
 
 @router.get(
@@ -327,12 +274,6 @@ def get_cycle_status(
             next_run_at=_next_cron_hint(settings.CT_CRTSH_SYNC_CRON),
             mode="cron",
         ),
-        ScheduleEntry(
-            source="crtsh-bulk",
-            cron_expression="",
-            next_run_at=None,
-            mode="manual",
-        ),
     ]
 
     return IngestionCycleStatusResponse(
@@ -376,7 +317,6 @@ def list_tld_coverage(
 
     checkpoints = {(cp.source, cp.tld): cp for cp in run_repo.list_checkpoints()}
     resolved = resolve_tld_coverages(db)
-    bulk_statuses = _resolve_bulk_statuses(db, [item.tld for item in resolved])
     coverage_rows = []
     for item in resolved:
         crtsh_cp = checkpoints.get(("crtsh", item.tld))
@@ -386,7 +326,7 @@ def list_tld_coverage(
                 effective_source=item.effective_source,
                 czds_available=item.czds_available,
                 ct_enabled=item.ct_enabled,
-                bulk_status=bulk_statuses.get(item.tld, item.bulk_status),
+                bulk_status=item.bulk_status,
                 fallback_reason=item.fallback_reason,
                 priority_group=item.priority_group,
                 last_ct_stream_seen_at=certstream_seen_at if item.ct_enabled else None,
@@ -394,166 +334,6 @@ def list_tld_coverage(
             )
         )
     return coverage_rows
-
-
-def _serialize_bulk_job(job) -> CtBulkJobResponse:
-    return CtBulkJobResponse(
-        job_id=job.id,
-        status=job.status,
-        requested_tlds=list(job.requested_tlds or []),
-        resolved_tlds=list(job.resolved_tlds or []),
-        priority_tlds=list(job.priority_tlds or []),
-        dry_run=bool(job.dry_run),
-        initiated_by=job.initiated_by,
-        started_at=job.started_at,
-        finished_at=job.finished_at,
-        last_error=job.last_error,
-        total_chunks=job.total_chunks,
-        pending_chunks=job.pending_chunks,
-        running_chunks=job.running_chunks,
-        done_chunks=job.done_chunks,
-        error_chunks=job.error_chunks,
-        total_raw_domains=int(job.total_raw_domains or 0),
-        total_inserted_domains=int(job.total_inserted_domains or 0),
-    )
-
-
-def _start_bulk_runner(job_id: UUID) -> None:
-    thread = threading.Thread(target=run_bulk_job, args=(job_id,), daemon=True, name=f"ct-bulk-{job_id}")
-    thread.start()
-
-
-def _raise_bulk_http_error(exc: RuntimeError) -> None:
-    message = str(exc)
-    if "already active" in message:
-        raise HTTPException(status_code=409, detail=message) from exc
-    if "not found" in message:
-        raise HTTPException(status_code=404, detail=message) from exc
-    raise HTTPException(status_code=400, detail=message) from exc
-
-
-@router.get(
-    "/ct-bulk/jobs",
-    response_model=list[CtBulkJobResponse],
-    summary="List crt.sh bulk jobs",
-)
-def get_ct_bulk_jobs(
-    db: Session = Depends(get_db),
-):
-    del db
-    return [_serialize_bulk_job(job) for job in list_bulk_jobs()]
-
-
-@router.get(
-    "/ct-bulk/jobs/{job_id}",
-    response_model=CtBulkJobResponse,
-    summary="Get a crt.sh bulk job",
-)
-def get_ct_bulk_job(
-    job_id: UUID,
-    db: Session = Depends(get_db),
-):
-    repo = CtBulkRepository(db)
-    job = repo.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Bulk job not found")
-    repo.refresh_job_metrics(job)
-    db.commit()
-    return _serialize_bulk_job(job)
-
-
-@router.get(
-    "/ct-bulk/jobs/{job_id}/chunks",
-    response_model=list[CtBulkChunkResponse],
-    summary="List chunks for a crt.sh bulk job",
-)
-def get_ct_bulk_chunks(
-    job_id: UUID,
-    status: str | None = None,
-    target_tld: str | None = None,
-    db: Session = Depends(get_db),
-):
-    del db
-    return [
-        CtBulkChunkResponse(
-            chunk_id=chunk.id,
-            job_id=chunk.job_id,
-            target_tld=chunk.target_tld,
-            chunk_key=chunk.chunk_key,
-            query_pattern=chunk.query_pattern,
-            prefix=chunk.prefix,
-            depth=chunk.depth,
-            status=chunk.status,
-            attempt_count=chunk.attempt_count,
-            last_error_type=chunk.last_error_type,
-            last_error_excerpt=chunk.last_error_excerpt,
-            next_retry_at=chunk.next_retry_at,
-            raw_domains=int(chunk.raw_domains or 0),
-            inserted_domains=int(chunk.inserted_domains or 0),
-            started_at=chunk.started_at,
-            finished_at=chunk.finished_at,
-        )
-        for chunk in list_bulk_chunks(job_id, status=status, target_tld=target_tld)
-    ]
-
-
-@router.post(
-    "/ct-bulk/jobs",
-    response_model=CtBulkJobResponse,
-    status_code=202,
-    summary="Start a manual crt.sh bulk job",
-)
-def start_ct_bulk_job(
-    body: CtBulkJobCreateRequest,
-    current_admin: str = Depends(get_current_admin),
-    db: Session = Depends(get_db),
-):
-    del db
-    try:
-        job = create_bulk_job(
-            requested_tlds=body.tlds or None,
-            dry_run=body.dry_run,
-            initiated_by=current_admin,
-        )
-    except RuntimeError as exc:
-        _raise_bulk_http_error(exc)
-    _start_bulk_runner(job.id)
-    return _serialize_bulk_job(job)
-
-
-@router.post(
-    "/ct-bulk/jobs/{job_id}/resume",
-    response_model=CtBulkJobResponse,
-    summary="Resume a crt.sh bulk job with failed chunks",
-)
-def resume_ct_bulk_job(
-    job_id: UUID,
-    db: Session = Depends(get_db),
-):
-    del db
-    try:
-        job = resume_bulk_job(job_id)
-    except RuntimeError as exc:
-        _raise_bulk_http_error(exc)
-    _start_bulk_runner(job.id)
-    return _serialize_bulk_job(job)
-
-
-@router.post(
-    "/ct-bulk/jobs/{job_id}/cancel",
-    response_model=CtBulkJobResponse,
-    summary="Cancel a running crt.sh bulk job",
-)
-def cancel_ct_bulk_job(
-    job_id: UUID,
-    db: Session = Depends(get_db),
-):
-    del db
-    try:
-        job = cancel_bulk_job(job_id)
-    except RuntimeError as exc:
-        _raise_bulk_http_error(exc)
-    return _serialize_bulk_job(job)
 
 
 @router.get(

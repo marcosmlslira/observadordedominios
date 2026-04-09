@@ -29,7 +29,7 @@ class TldCoverage:
     effective_source: str
     czds_available: bool
     ct_enabled: bool
-    bulk_status: str
+    bulk_status: str  # kept for API schema compatibility; always "n/a" or "manual"
     fallback_reason: str | None
     priority_group: str
 
