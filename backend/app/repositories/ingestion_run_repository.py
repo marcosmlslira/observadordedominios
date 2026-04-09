@@ -332,3 +332,26 @@ class IngestionRunRepository:
 
     def get_checkpoint(self, source: str, tld: str) -> IngestionCheckpoint | None:
         return self.db.get(IngestionCheckpoint, (source, tld))
+
+    def has_any_source_running(self, source: str) -> bool:
+        """True if any run for this source is currently in 'running' status (any TLD)."""
+        return (
+            self.db.query(IngestionRun)
+            .filter(IngestionRun.source == source, IngestionRun.status == "running")
+            .first()
+        ) is not None
+
+    def has_successful_run_after(self, source: str, tld: str, after: "date") -> bool:
+        """True if a successful run for source/tld was started on or after `after` (00:00 UTC)."""
+        from datetime import date as _date
+        after_dt = datetime(after.year, after.month, after.day, tzinfo=timezone.utc)
+        return (
+            self.db.query(IngestionRun)
+            .filter(
+                IngestionRun.source == source,
+                IngestionRun.tld == tld,
+                IngestionRun.status == "success",
+                IngestionRun.started_at >= after_dt,
+            )
+            .first()
+        ) is not None

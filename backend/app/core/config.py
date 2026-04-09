@@ -117,6 +117,18 @@ class Settings(BaseSettings):
     # S3 bucket for tool artifacts (screenshots etc.)
     TOOLS_S3_BUCKET: str = "observador-tools"
 
+    # ── OpenINTEL ────────────────────────────────────────────
+    OPENINTEL_S3_BUCKET: str = "openintel"
+    OPENINTEL_S3_REGION: str = "us-east-1"
+    OPENINTEL_S3_ENDPOINT: str = ""          # empty = default AWS S3
+    OPENINTEL_S3_PREFIX: str = "forward-dns/openintel/"
+    OPENINTEL_S3_QNAME_COLUMN: str = "qname"
+    OPENINTEL_ENABLED_TLDS: str = "br,uk,de,fr,au,ca,nl,eu,us"
+    OPENINTEL_SYNC_CRON: str = "0 2 * * *"  # 02:00 UTC — before CZDS at 07:00
+    OPENINTEL_FORCE_COOLDOWN_HOURS: int = 22
+    OPENINTEL_RUNNING_STALE_MINUTES: int = 120
+    OPENINTEL_MAX_LOOKBACK_DAYS: int = 3
+
     # ── LLM / OpenRouter ──────────────────────────────────
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_TIMEOUT_SECONDS: float = 20.0

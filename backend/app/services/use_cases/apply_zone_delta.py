@@ -72,14 +72,18 @@ def _parse_zone_stream(path: Path, tld: str):
                     seen_in_batch.clear()
 
 
-def apply_zone_delta(
+def apply_domain_names_delta(
     db: Session,
+    domain_iter,
     *,
-    zone_file_path: Path,
     tld: str,
     run_id: uuid.UUID,
 ) -> dict[str, int]:
-    """Parse zone file in streaming mode and upsert directly into domain."""
+    """Batch upsert an iterator of pre-parsed domain names into the domain table.
+
+    Shared by apply_zone_delta (CZDS) and sync_openintel_tld (OpenINTEL).
+    The caller is responsible for providing normalised, deduplicated names.
+    """
     ts = datetime.now(timezone.utc)
     repo = DomainRepository(db)
     run_repo = IngestionRunRepository(db)
@@ -88,7 +92,7 @@ def apply_zone_delta(
     batch: list[str] = []
     total_parsed = 0
 
-    for domain_name in _parse_zone_stream(zone_file_path, tld):
+    for domain_name in domain_iter:
         batch.append(domain_name)
 
         if len(batch) >= batch_size:
@@ -114,3 +118,19 @@ def apply_zone_delta(
         "reactivated": 0,
         "deleted": 0,
     }
+
+
+def apply_zone_delta(
+    db: Session,
+    *,
+    zone_file_path: Path,
+    tld: str,
+    run_id: uuid.UUID,
+) -> dict[str, int]:
+    """Parse zone file in streaming mode and upsert directly into domain."""
+    return apply_domain_names_delta(
+        db,
+        _parse_zone_stream(zone_file_path, tld),
+        tld=tld,
+        run_id=run_id,
+    )

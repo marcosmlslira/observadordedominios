@@ -34,7 +34,7 @@ router = APIRouter(
     dependencies=[Depends(get_current_admin)],
 )
 
-SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh")
+SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh", "openintel")
 
 
 def _next_cron_hint(cron_expr: str) -> str | None:
@@ -112,6 +112,15 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
         elif source == "czds":
             row["mode"] = "Serial worker"
             row["status_hint"] = "Processes enabled TLDs one by one in priority order."
+        elif source == "openintel":
+            row["mode"] = "Daily cron"
+            row["next_expected_run_hint"] = _next_cron_hint(settings.OPENINTEL_SYNC_CRON)
+            if row["running_now"] > 0:
+                row["status_hint"] = "OpenINTEL batch is running now."
+            elif row["last_run_at"]:
+                row["status_hint"] = "OpenINTEL runs only on its daily cron."
+            else:
+                row["status_hint"] = "OpenINTEL is scheduled and waiting for the next daily cron."
 
         rows.append(row)
 
