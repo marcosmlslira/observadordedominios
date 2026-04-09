@@ -1,4 +1,8 @@
-"""CZDS Ingestor Worker — scheduled execution of zone file syncs."""
+"""CZDS Ingestor Worker — scheduled execution of zone file syncs.
+
+Parallel processing: small TLDs (<1M domains) run concurrently via ThreadPoolExecutor.
+Large TLDs run serially to avoid memory contention.
+"""
 
 from __future__ import annotations
 
