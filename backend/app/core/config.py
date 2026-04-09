@@ -118,10 +118,10 @@ class Settings(BaseSettings):
     TOOLS_S3_BUCKET: str = "observador-tools"
 
     # ── OpenINTEL ────────────────────────────────────────────
-    OPENINTEL_S3_BUCKET: str = "openintel"
+    OPENINTEL_S3_BUCKET: str = "openintel-public"
     OPENINTEL_S3_REGION: str = "us-east-1"
-    OPENINTEL_S3_ENDPOINT: str = ""          # empty = default AWS S3
-    OPENINTEL_S3_PREFIX: str = "forward-dns/openintel/"
+    OPENINTEL_S3_ENDPOINT: str = "https://object.openintel.nl"
+    OPENINTEL_S3_PREFIX: str = "fdns/basis=zonefile/"
     OPENINTEL_S3_QNAME_COLUMN: str = "qname"
     OPENINTEL_ENABLED_TLDS: str = "br,uk,de,fr,au,ca,nl,eu,us"
     OPENINTEL_SYNC_CRON: str = "0 2 * * *"  # 02:00 UTC — before CZDS at 07:00

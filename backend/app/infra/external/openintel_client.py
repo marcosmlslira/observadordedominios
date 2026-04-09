@@ -51,8 +51,8 @@ class OpenIntelClient:
             d = today - timedelta(days=days_back)
             prefix = (
                 f"{self.prefix}"
+                f"source={tld}/"
                 f"year={d.year:04d}/month={d.month:02d}/day={d.day:02d}/"
-                f"type={tld}/"
             )
             try:
                 resp = self._s3.list_objects_v2(
