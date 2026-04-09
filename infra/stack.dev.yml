@@ -168,6 +168,32 @@ services:
       restart_policy:
         condition: on-failure
 
+  openintel_ingestor:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      # Controlled local testing: only fr, 1 day lookback, no CZDS conflict guard needed locally
+      - OPENINTEL_ENABLED_TLDS=fr
+      - OPENINTEL_S3_BUCKET=openintel-public
+      - OPENINTEL_S3_ENDPOINT=https://object.openintel.nl
+      - OPENINTEL_S3_PREFIX=fdns/basis=zonefile/
+      - OPENINTEL_S3_QNAME_COLUMN=query_name
+      - OPENINTEL_MAX_LOOKBACK_DAYS=1
+      - OPENINTEL_SYNC_CRON=0 2 * * *
+    command: ["python", "-m", "app.worker.openintel_ingestor"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
   similarity_worker:
     image: observadordedominios-backend:dev
     volumes:
