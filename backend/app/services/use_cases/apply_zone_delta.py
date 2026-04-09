@@ -31,8 +31,10 @@ def _batch_size_for_tld(tld: str) -> int:
             text('SELECT "count" FROM tld_domain_count_mv WHERE tld = :tld'),
             {"tld": tld},
         ).scalar()
+        if count and count > 100_000_000:
+            return 25_000   # Very large tables: smaller batches to limit index memory pressure
         if count and count > 10_000_000:
-            return 100_000
+            return 50_000
         if count and count > 1_000_000:
             return 75_000
     except Exception:
