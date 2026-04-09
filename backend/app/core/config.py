@@ -122,8 +122,8 @@ class Settings(BaseSettings):
     OPENINTEL_S3_REGION: str = "us-east-1"
     OPENINTEL_S3_ENDPOINT: str = "https://object.openintel.nl"
     OPENINTEL_S3_PREFIX: str = "fdns/basis=zonefile/"
-    OPENINTEL_S3_QNAME_COLUMN: str = "qname"
-    OPENINTEL_ENABLED_TLDS: str = "br,uk,de,fr,au,ca,nl,eu,us"
+    OPENINTEL_S3_QNAME_COLUMN: str = "query_name"
+    OPENINTEL_ENABLED_TLDS: str = "fr,ch,se,sk,ee,li,nu"
     OPENINTEL_SYNC_CRON: str = "0 2 * * *"  # 02:00 UTC — before CZDS at 07:00
     OPENINTEL_FORCE_COOLDOWN_HOURS: int = 22
     OPENINTEL_RUNNING_STALE_MINUTES: int = 120

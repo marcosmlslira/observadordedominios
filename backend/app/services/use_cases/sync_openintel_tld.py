@@ -114,7 +114,7 @@ def sync_openintel_tld(
                 f"No OpenINTEL snapshot found for TLD={tld} "
                 f"within {settings.OPENINTEL_MAX_LOOKBACK_DAYS} days"
             )
-        s3_key, snapshot_date = result
+        s3_keys, snapshot_date = result
 
         # ── 8. Idempotency: skip if this snapshot was already ingested ────────
         if not force and run_repo.has_successful_run_after(source, tld, snapshot_date):
@@ -130,16 +130,16 @@ def sync_openintel_tld(
             run = run_repo.create_run(source, tld)
         db.commit()
         logger.info(
-            "OpenINTEL run=%s TLD=%s snapshot=%s key=%s",
+            "OpenINTEL run=%s TLD=%s snapshot=%s parts=%d",
             run.id,
             tld,
             snapshot_date,
-            s3_key,
+            len(s3_keys),
         )
 
         try:
             # ── 10. Stream Parquet → apply delta ──────────────────────────────
-            domain_iter = client.stream_apex_domains(s3_key, tld)
+            domain_iter = client.stream_apex_domains(s3_keys, tld)
             metrics = apply_domain_names_delta(
                 db,
                 domain_iter,
