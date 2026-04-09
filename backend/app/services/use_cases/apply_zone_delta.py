@@ -23,10 +23,12 @@ def _batch_size_for_tld(tld: str) -> int:
     """Return an adaptive batch size based on TLD domain count from materialized view.
 
     Uses its own DB session so a query failure never affects the caller's transaction.
+    A 2-second lock_timeout prevents hanging if the materialized view is being refreshed.
     """
     from app.infra.db.session import SessionLocal
     db = SessionLocal()
     try:
+        db.execute(text("SET LOCAL lock_timeout = '2s'"))
         count = db.execute(
             text('SELECT "count" FROM tld_domain_count_mv WHERE tld = :tld'),
             {"tld": tld},
