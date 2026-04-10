@@ -29,6 +29,62 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ct_ingestor")
 
+_active_crtsh_cron: str = settings.CT_CRTSH_SYNC_CRON
+_crtsh_scheduler_ref = None  # set to BackgroundScheduler in main()
+
+
+def _extract_tld(domain: str) -> str:
+    """Extract the TLD (last label) from a domain name."""
+    parts = domain.rsplit(".", 1)
+    return parts[-1].lower() if len(parts) > 1 else domain.lower()
+
+
+def _is_tld_enabled_certstream(tld: str) -> bool:
+    """
+    Check if a TLD is enabled for CertStream ingestion.
+    Auto-creates the row with is_enabled=True if it doesn't exist yet.
+    """
+    db = SessionLocal()
+    try:
+        from app.repositories.ingestion_config_repository import IngestionConfigRepository
+        repo = IngestionConfigRepository(db)
+        policy = repo.get_tld_policy("certstream", tld)
+        if policy is None:
+            repo.ensure_tld("certstream", tld, is_enabled=True)
+            db.commit()
+            return True
+        return policy.is_enabled
+    except Exception:
+        logger.exception("TLD policy check failed for tld=%s, allowing through", tld)
+        return True
+    finally:
+        db.close()
+
+
+def _reload_crtsh_cron_if_changed() -> None:
+    global _active_crtsh_cron
+    if _crtsh_scheduler_ref is None or not _crtsh_scheduler_ref.running:
+        return
+    db = SessionLocal()
+    try:
+        from app.repositories.ingestion_config_repository import IngestionConfigRepository
+        from apscheduler.triggers.cron import CronTrigger
+        repo = IngestionConfigRepository(db)
+        db_cron = repo.get_cron("certstream") or settings.CT_CRTSH_SYNC_CRON
+        if db_cron != _active_crtsh_cron:
+            parts = db_cron.split()
+            trigger = CronTrigger(
+                minute=parts[0], hour=parts[1], day=parts[2],
+                month=parts[3], day_of_week=parts[4],
+            )
+            _crtsh_scheduler_ref.reschedule_job("crtsh_sync", trigger=trigger)
+            logger.info("crtsh cron updated: %s → %s", _active_crtsh_cron, db_cron)
+            _active_crtsh_cron = db_cron
+    except Exception:
+        logger.exception("Failed to reload crtsh cron from DB")
+    finally:
+        db.close()
+
 
 # ── CTBuffer ─────────────────────────────────────────────────
 
@@ -101,6 +157,13 @@ def _flush_loop(
         if not domains:
             continue
 
+        # Filter to enabled TLDs only
+        filtered = [d for d in domains if _is_tld_enabled_certstream(_extract_tld(d))]
+        if not filtered:
+            logger.debug("All %d domains filtered out by TLD policy", len(domains))
+            continue
+        domains = filtered
+
         db = SessionLocal()
         try:
             metrics = ingest_ct_batch(
@@ -121,6 +184,8 @@ def _flush_loop(
 
     # Final flush on shutdown
     domains = buffer.drain()
+    if domains:
+        domains = [d for d in domains if _is_tld_enabled_certstream(_extract_tld(d))]
     if domains:
         db = SessionLocal()
         try:
@@ -241,6 +306,8 @@ def main() -> None:
             from app.services.use_cases.sync_crtsh import run_crtsh_sync
 
             scheduler = BackgroundScheduler()
+            global _crtsh_scheduler_ref
+            _crtsh_scheduler_ref = scheduler
             cron_parts = settings.CT_CRTSH_SYNC_CRON.split()
             trigger = CronTrigger(
                 minute=cron_parts[0] if len(cron_parts) > 0 else "0",
@@ -249,8 +316,12 @@ def main() -> None:
                 month=cron_parts[3] if len(cron_parts) > 3 else "*",
                 day_of_week=cron_parts[4] if len(cron_parts) > 4 else "*",
             )
+            def _run_crtsh():
+                _reload_crtsh_cron_if_changed()
+                run_crtsh_sync()
+
             scheduler.add_job(
-                run_crtsh_sync, trigger,
+                _run_crtsh, trigger,
                 id="crtsh_sync", replace_existing=True,
             )
             scheduler.start()
