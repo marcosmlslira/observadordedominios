@@ -35,8 +35,36 @@ logging.basicConfig(
 logger = logging.getLogger("czds_ingestor")
 STOP_EVENT = threading.Event()
 
+_active_cron: str = settings.CZDS_SYNC_CRON
+_scheduler_ref = None  # set to BlockingScheduler in main()
+
 _SIZE_THRESHOLD = 1_000_000  # TLDs abaixo deste valor rodam em paralelo
 _PARALLEL_WORKERS = 4
+
+
+def _reload_cron_if_changed() -> None:
+    """Check DB for updated cron; reschedule APScheduler job if it changed."""
+    global _active_cron
+    if _scheduler_ref is None or not _scheduler_ref.running:
+        return
+    db = SessionLocal()
+    try:
+        from app.repositories.ingestion_config_repository import IngestionConfigRepository
+        repo = IngestionConfigRepository(db)
+        db_cron = repo.get_cron("czds") or settings.CZDS_SYNC_CRON
+        if db_cron != _active_cron:
+            parts = db_cron.split()
+            trigger = CronTrigger(
+                minute=parts[0], hour=parts[1], day=parts[2],
+                month=parts[3], day_of_week=parts[4],
+            )
+            _scheduler_ref.reschedule_job("czds_sync", trigger=trigger)
+            logger.info("CZDS cron updated: %s → %s", _active_cron, db_cron)
+            _active_cron = db_cron
+    except Exception:
+        logger.exception("Failed to reload CZDS cron from DB")
+    finally:
+        db.close()
 
 
 def _wait_or_stop(seconds: int) -> bool:
@@ -125,6 +153,7 @@ def _sync_single_tld(tld: str) -> None:
 
 def run_sync_cycle(tlds: list[str] | None = None) -> None:
     """Execute a sync cycle: small TLDs in parallel, large TLDs serially."""
+    _reload_cron_if_changed()
     tlds = tlds or _get_enabled_tlds()
     logger.info("Starting sync cycle for TLDs: %s", tlds)
 
@@ -262,7 +291,9 @@ def main() -> None:
         return
 
     # Schedule recurring syncs
+    global _scheduler_ref
     scheduler = BlockingScheduler()
+    _scheduler_ref = scheduler
     cron_parts = settings.CZDS_SYNC_CRON.split()
     trigger = CronTrigger(
         minute=cron_parts[0] if len(cron_parts) > 0 else "0",
