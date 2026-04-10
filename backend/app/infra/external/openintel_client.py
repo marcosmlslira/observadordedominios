@@ -1,7 +1,9 @@
-"""OpenINTEL S3 client — discover and stream Parquet snapshots without local download."""
+"""OpenINTEL clients — S3 Parquet (zonefile) and web CSV.GZ (ccTLD domain lists)."""
 
 from __future__ import annotations
 
+import gzip
+import io
 import logging
 from datetime import date, timedelta
 from typing import Iterator
@@ -162,3 +164,131 @@ class OpenIntelClient:
                     s3_key,
                     exc_info=True,
                 )
+
+
+class OpenIntelCctldClient:
+    """Download ccTLD apex-domain lists from OpenINTEL website (HTTP CSV.GZ).
+
+    OpenINTEL hosts 307 ccTLD domain lists at:
+      https://openintel.nl/download/domain-lists/cctlds/tld={tld}/year=YYYY/month=MM/day=DD/
+    The actual file is served via an S3 proxy at object.openintel.nl/seeseetld/lists/
+    and requires:
+      - Cookie: openintel-data-agreement-accepted=true
+      - Referer: the canonical page URL (nginx checks it)
+
+    File format: CSV.GZ — plain domain names, one per line, no header.
+    """
+
+    def __init__(self) -> None:
+        from app.core.config import settings
+
+        self.s3_base = settings.OPENINTEL_CCTLD_S3_BASE.rstrip("/")
+        self.web_url = settings.OPENINTEL_CCTLD_WEB_URL.rstrip("/")
+        self.cookie_name = settings.OPENINTEL_CCTLD_COOKIE_NAME
+        self.cookie_value = settings.OPENINTEL_CCTLD_COOKIE_VALUE
+        self.max_lookback_days = settings.OPENINTEL_MAX_LOOKBACK_DAYS
+
+    def _file_url(self, tld: str, d: date) -> str:
+        return (
+            f"{self.s3_base}/tld={tld}"
+            f"/year={d.year:04d}/month={d.month:02d}/day={d.day:02d}"
+            f"/ccTLD-domain-names-list.{tld}.{d.isoformat()}.csv.gz"
+        )
+
+    def _referer(self, tld: str, d: date) -> str:
+        return (
+            f"{self.web_url}/tld={tld}"
+            f"/year={d.year:04d}/month={d.month:02d}/day={d.day:02d}/"
+        )
+
+    def discover_snapshot(self, tld: str) -> tuple[list[str], date] | None:
+        """Return ([url], snapshot_date) for the most recent available file.
+
+        Scans backwards from today up to max_lookback_days using HEAD requests.
+        """
+        import httpx
+
+        today = date.today()
+        headers = {
+            "Cookie": f"{self.cookie_name}={self.cookie_value}",
+        }
+
+        for days_back in range(self.max_lookback_days + 1):
+            d = today - timedelta(days=days_back)
+            url = self._file_url(tld, d)
+            headers["Referer"] = self._referer(tld, d)
+            try:
+                resp = httpx.head(url, headers=headers, timeout=15, follow_redirects=True)
+                if resp.status_code == 200:
+                    logger.debug(
+                        "OpenINTEL ccTLD snapshot found for TLD=%s date=%s", tld, d
+                    )
+                    return [url], d
+                logger.debug(
+                    "OpenINTEL ccTLD HEAD %s → %d — skipping", url, resp.status_code
+                )
+            except Exception:
+                logger.debug(
+                    "Error checking OpenINTEL ccTLD URL for TLD=%s date=%s — skipping",
+                    tld,
+                    d,
+                    exc_info=True,
+                )
+
+        logger.info(
+            "No OpenINTEL ccTLD snapshot found for TLD=%s within %d days",
+            tld,
+            self.max_lookback_days,
+        )
+        return None
+
+    def stream_apex_domains(self, file_refs: list[str], tld: str) -> Iterator[str]:
+        """Yield apex domain names from a CSV.GZ URL.
+
+        Each line in the file is a bare domain name (e.g. ``example.ac``).
+        Only the most recent file URL is passed (list always has one element).
+        """
+        import httpx
+
+        url = file_refs[0]
+        headers = {
+            "Cookie": f"{self.cookie_name}={self.cookie_value}",
+            "Referer": url,  # generous referer — file URL itself also accepted
+        }
+
+        # Re-derive the proper referer from the URL path
+        # URL pattern: .../tld={tld}/year=YYYY/month=MM/day=DD/ccTLD-domain-names-list.{tld}.{date}.csv.gz
+        try:
+            dir_url = url.rsplit("/", 1)[0] + "/"
+            # Build the canonical page referer
+            tld_part = f"tld={tld}"
+            if tld_part in dir_url:
+                after_base = dir_url[dir_url.index(tld_part):]
+                headers["Referer"] = f"{self.web_url}/{after_base}"
+        except Exception:
+            pass  # keep fallback referer
+
+        try:
+            with httpx.stream("GET", url, headers=headers, timeout=60, follow_redirects=True) as resp:
+                resp.raise_for_status()
+                raw = b"".join(resp.iter_bytes())
+
+            with gzip.open(io.BytesIO(raw), "rt", encoding="utf-8", errors="replace") as f:
+                seen: set[str] = set()
+                for line in f:
+                    domain = line.strip().lower()
+                    if not domain:
+                        continue
+                    if domain not in seen:
+                        seen.add(domain)
+                        yield domain
+                        if len(seen) >= 500_000:
+                            seen.clear()
+
+        except Exception:
+            logger.warning(
+                "Failed to stream ccTLD file for TLD=%s url=%s",
+                tld,
+                url,
+                exc_info=True,
+            )

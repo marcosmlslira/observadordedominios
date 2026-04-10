@@ -1,4 +1,4 @@
-"""Use case: sync a single TLD from OpenINTEL public S3 — discover, stream, upsert."""
+"""Use case: sync a single TLD from OpenINTEL — S3 zonefile or web CSV.GZ."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.infra.external.openintel_client import OpenIntelClient
+from app.infra.external.openintel_client import OpenIntelClient, OpenIntelCctldClient
 from app.repositories.domain_repository import ensure_partition
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.use_cases.apply_zone_delta import apply_domain_names_delta
@@ -107,7 +107,12 @@ def sync_openintel_tld(
                     )
 
         # ── 7. Discover snapshot ──────────────────────────────────────────────
-        client = OpenIntelClient()
+        if tld in settings.openintel_zonefile_tlds_set:
+            client: OpenIntelClient | OpenIntelCctldClient = OpenIntelClient()
+            logger.debug("OpenINTEL routing TLD=%s → S3 zonefile", tld)
+        else:
+            client = OpenIntelCctldClient()
+            logger.debug("OpenINTEL routing TLD=%s → web CSV.GZ", tld)
         result = client.discover_snapshot(tld)
         if result is None:
             raise SnapshotNotFoundError(

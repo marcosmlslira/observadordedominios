@@ -123,11 +123,22 @@ class Settings(BaseSettings):
     OPENINTEL_S3_ENDPOINT: str = "https://object.openintel.nl"
     OPENINTEL_S3_PREFIX: str = "fdns/basis=zonefile/"
     OPENINTEL_S3_QNAME_COLUMN: str = "query_name"
-    OPENINTEL_ENABLED_TLDS: str = "fr,ch,se,sk,ee,li,nu"
+    # TLDs available in S3 zonefile (richer DNS data); all others use web CSV.GZ
+    OPENINTEL_ZONEFILE_TLDS: str = "ch,ee,fed.us,fr,gov,li,nu,root,se,sk"
+    OPENINTEL_ENABLED_TLDS: str = "ac,br,uk,de,fr,se,nu,ch,li,sk,ee"
     OPENINTEL_SYNC_CRON: str = "0 2 * * *"  # 02:00 UTC — before CZDS at 07:00
     OPENINTEL_FORCE_COOLDOWN_HOURS: int = 22
     OPENINTEL_RUNNING_STALE_MINUTES: int = 120
-    OPENINTEL_MAX_LOOKBACK_DAYS: int = 3
+    OPENINTEL_MAX_LOOKBACK_DAYS: int = 14
+    # ccTLD web download source (307 ccTLDs via OpenINTEL website + S3 proxy)
+    OPENINTEL_CCTLD_WEB_URL: str = "https://openintel.nl/download/domain-lists/cctlds/"
+    OPENINTEL_CCTLD_COOKIE_NAME: str = "openintel-data-agreement-accepted"
+    OPENINTEL_CCTLD_COOKIE_VALUE: str = "true"
+    OPENINTEL_CCTLD_S3_BASE: str = "https://object.openintel.nl/seeseetld/lists"
+
+    @property
+    def openintel_zonefile_tlds_set(self) -> set[str]:
+        return {t.strip() for t in self.OPENINTEL_ZONEFILE_TLDS.split(",") if t.strip()}
 
     # ── LLM / OpenRouter ──────────────────────────────────
     OPENROUTER_API_KEY: str = ""
