@@ -31,13 +31,52 @@ logging.basicConfig(
 )
 logger = logging.getLogger("openintel_ingestor")
 STOP_EVENT = threading.Event()
+_active_cron: str = settings.OPENINTEL_SYNC_CRON
+_scheduler_ref: BlockingScheduler | None = None
 
 
 def _get_enabled_tlds() -> list[str]:
+    """Read enabled TLDs from DB; fall back to env if table is empty."""
+    db = SessionLocal()
+    try:
+        from app.repositories.ingestion_config_repository import IngestionConfigRepository
+        repo = IngestionConfigRepository(db)
+        db_tlds = repo.list_enabled_tlds("openintel")
+        if db_tlds:
+            return db_tlds
+    except Exception:
+        logger.exception("Failed to read OpenINTEL TLDs from DB, falling back to env")
+    finally:
+        db.close()
     raw = settings.OPENINTEL_ENABLED_TLDS
     if not raw:
         return []
     return [t.strip().lower() for t in raw.split(",") if t.strip()]
+
+
+def _reload_cron_if_changed() -> None:
+    """Check DB for updated cron; reschedule APScheduler job if it changed."""
+    global _active_cron
+    if _scheduler_ref is None or not _scheduler_ref.running:
+        return
+    db = SessionLocal()
+    try:
+        from app.repositories.ingestion_config_repository import IngestionConfigRepository
+        repo = IngestionConfigRepository(db)
+        db_cron = repo.get_cron("openintel") or settings.OPENINTEL_SYNC_CRON
+        if db_cron != _active_cron:
+            parts = db_cron.split()
+            trigger = CronTrigger(
+                minute=parts[0], hour=parts[1], day=parts[2],
+                month=parts[3], day_of_week=parts[4],
+            )
+            _scheduler_ref.reschedule_job("openintel_sync", trigger=trigger)
+            logger.info("Cron updated: %s → %s", _active_cron, db_cron)
+            _active_cron = db_cron
+    except Exception:
+        logger.exception("Failed to reload cron from DB")
+    finally:
+        db.close()
 
 
 def run_sync_cycle() -> None:
@@ -47,6 +86,7 @@ def run_sync_cycle() -> None:
     conflict). Skips individual TLDs on cooldown, already-ingested snapshots,
     or missing S3 data — without failing the cycle.
     """
+    _reload_cron_if_changed()
     tlds = _get_enabled_tlds()
     if not tlds:
         logger.info("No OpenINTEL TLDs configured. Skipping cycle.")
@@ -103,7 +143,9 @@ def main() -> None:
         logger.info("Stop requested during startup. Exiting worker.")
         return
 
+    global _scheduler_ref
     scheduler = BlockingScheduler()
+    _scheduler_ref = scheduler
     cron_parts = settings.OPENINTEL_SYNC_CRON.split()
     trigger = CronTrigger(
         minute=cron_parts[0] if len(cron_parts) > 0 else "0",
