@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     OPENINTEL_ENABLED_TLDS: str = "ac,br,uk,de,fr,se,nu,ch,li,sk,ee"
     OPENINTEL_SYNC_CRON: str = "0 2 * * *"  # 02:00 UTC — before CZDS at 07:00
     OPENINTEL_FORCE_COOLDOWN_HOURS: int = 22
-    OPENINTEL_RUNNING_STALE_MINUTES: int = 120
+    OPENINTEL_RUNNING_STALE_MINUTES: int = 60
     OPENINTEL_MAX_LOOKBACK_DAYS: int = 14
     # ccTLD web download source (307 ccTLDs via OpenINTEL website + S3 proxy)
     OPENINTEL_CCTLD_WEB_URL: str = "https://openintel.nl/download/domain-lists/cctlds/"

@@ -16,6 +16,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
+from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.use_cases.sync_openintel_tld import (
     CooldownActiveError,
     CzdsRunningError,
@@ -79,6 +80,27 @@ def _reload_cron_if_changed() -> None:
         db.close()
 
 
+def _recover_stale_at_cycle_start() -> None:
+    """Mark orphaned running OpenINTEL runs as failed before starting a new cycle."""
+    db = SessionLocal()
+    try:
+        run_repo = IngestionRunRepository(db)
+        stale = run_repo.recover_all_stale_for_source(
+            "openintel", stale_after_minutes=settings.OPENINTEL_RUNNING_STALE_MINUTES
+        )
+        if stale:
+            db.commit()
+            logger.warning(
+                "Recovered %d stale OpenINTEL run(s) at cycle start: %s",
+                len(stale),
+                [r.tld for r in stale],
+            )
+    except Exception:
+        logger.warning("Could not recover stale OpenINTEL runs", exc_info=True)
+    finally:
+        db.close()
+
+
 def run_sync_cycle() -> None:
     """Sync all enabled TLDs serially.
 
@@ -86,6 +108,7 @@ def run_sync_cycle() -> None:
     conflict). Skips individual TLDs on cooldown, already-ingested snapshots,
     or missing S3 data — without failing the cycle.
     """
+    _recover_stale_at_cycle_start()
     _reload_cron_if_changed()
     tlds = _get_enabled_tlds()
     if not tlds:
