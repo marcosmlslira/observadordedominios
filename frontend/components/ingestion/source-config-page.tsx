@@ -46,68 +46,54 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
     setLoading(true)
     setError(null)
     try {
-      const [configs, tldPolicies, checkpoints] = await Promise.all([
+      const [configs, tldPolicies, checkpoints, tldRunMetrics] = await Promise.all([
         getIngestionConfigs(),
         getTldPolicies(source),
         ingestionApi.getCheckpoints(source),
+        ingestionApi.getTldRunMetrics(source, 10),
       ])
 
       const sourceConfig = configs.find((c) => c.source === source) ?? null
       setConfig(sourceConfig)
       setPolicies(tldPolicies)
 
-      // Build checkpoint index: tld → last_successful_run_at
+      // Build lookup maps
       const checkpointMap = Object.fromEntries(
         checkpoints.map((c: { tld: string; last_successful_run_at: string | null }) => [
           c.tld,
           c.last_successful_run_at,
         ])
       )
+      const metricsMap = Object.fromEntries(
+        tldRunMetrics.map((m) => [m.tld, m.runs])
+      )
 
-      // For each TLD in policies, fetch last 10 runs
-      const rowPromises = tldPolicies.map(async (p): Promise<TldMetricsRow> => {
-        try {
-          const runs = await ingestionApi.getRuns({ source, tld: p.tld, limit: 10 })
-          const lastRun = runs[0] ?? null
-          const durationSeconds =
-            lastRun?.finished_at && lastRun?.started_at
-              ? (new Date(lastRun.finished_at).getTime() -
-                  new Date(lastRun.started_at).getTime()) /
-                1000
-              : null
+      const rows: TldMetricsRow[] = tldPolicies.map((p): TldMetricsRow => {
+        const runs = metricsMap[p.tld] ?? []
+        const lastRun = runs[0] ?? null
+        const durationSeconds =
+          lastRun?.finished_at && lastRun?.started_at
+            ? (new Date(lastRun.finished_at).getTime() - new Date(lastRun.started_at).getTime()) / 1000
+            : null
 
-          return {
-            tld: p.tld,
-            is_enabled: p.is_enabled,
-            last_duration_seconds: durationSeconds,
-            last_domains_inserted: lastRun?.domains_inserted ?? null,
-            last_successful_run_at: checkpointMap[p.tld] ?? null,
-            recent_runs: runs
-              .slice()
-              .reverse() // oldest first
-              .map((r) => ({
-                status: r.status as "success" | "failed" | "running",
-                duration_seconds: r.finished_at
-                  ? (new Date(r.finished_at).getTime() -
-                      new Date(r.started_at).getTime()) /
-                    1000
-                  : null,
-                started_at: r.started_at,
-              })),
-          }
-        } catch {
-          return {
-            tld: p.tld,
-            is_enabled: p.is_enabled,
-            last_duration_seconds: null,
-            last_domains_inserted: null,
-            last_successful_run_at: checkpointMap[p.tld] ?? null,
-            recent_runs: [],
-          }
+        return {
+          tld: p.tld,
+          is_enabled: p.is_enabled,
+          last_duration_seconds: durationSeconds,
+          last_domains_inserted: lastRun?.domains_inserted ?? null,
+          last_successful_run_at: checkpointMap[p.tld] ?? null,
+          recent_runs: runs
+            .slice()
+            .reverse() // oldest first for sparkbar
+            .map((r) => ({
+              status: r.status as "success" | "failed" | "running",
+              duration_seconds: r.finished_at
+                ? (new Date(r.finished_at).getTime() - new Date(r.started_at).getTime()) / 1000
+                : null,
+              started_at: r.started_at,
+            })),
         }
       })
-
-      const rows = await Promise.all(rowPromises)
       // Sort: enabled first, then alphabetically
       rows.sort((a, b) => {
         if (a.is_enabled !== b.is_enabled) return a.is_enabled ? -1 : 1

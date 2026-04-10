@@ -368,6 +368,43 @@ class IngestionRunRepository:
     def get_checkpoint(self, source: str, tld: str) -> IngestionCheckpoint | None:
         return self.db.get(IngestionCheckpoint, (source, tld))
 
+    def get_tld_run_metrics(self, source: str, runs_per_tld: int = 10) -> list[dict]:
+        """Return last N runs per TLD for a source in a single window-function query.
+
+        Result is a list of dicts keyed by tld, each with a 'runs' list (newest first).
+        """
+        rows = self.db.execute(
+            text("""
+                WITH ranked AS (
+                    SELECT
+                        tld,
+                        status,
+                        started_at,
+                        finished_at,
+                        domains_inserted,
+                        ROW_NUMBER() OVER (PARTITION BY tld ORDER BY started_at DESC) AS rn
+                    FROM ingestion_run
+                    WHERE source = :source
+                )
+                SELECT tld, status, started_at, finished_at, domains_inserted
+                FROM ranked
+                WHERE rn <= :runs_per_tld
+                ORDER BY tld, started_at DESC
+            """),
+            {"source": source, "runs_per_tld": runs_per_tld},
+        ).fetchall()
+
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row.tld, []).append({
+                "status": row.status,
+                "started_at": row.started_at,
+                "finished_at": row.finished_at,
+                "domains_inserted": row.domains_inserted,
+            })
+
+        return [{"tld": tld, "runs": runs} for tld, runs in grouped.items()]
+
     def has_any_source_running(self, source: str) -> bool:
         """True if any run for this source is currently in 'running' status (any TLD)."""
         return (

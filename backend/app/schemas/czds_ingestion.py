@@ -169,3 +169,15 @@ class IngestionCycleStatusResponse(BaseModel):
     czds_cycle: CycleStatusResponse
     schedules: list[ScheduleEntry]
     health: HealthSummary
+
+
+class TldRunMetricItem(BaseModel):
+    status: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    domains_inserted: int | None = None
+
+
+class TldRunMetricsResponse(BaseModel):
+    tld: str
+    runs: list[TldRunMetricItem]

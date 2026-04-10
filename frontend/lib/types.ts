@@ -499,3 +499,15 @@ export interface TriggerTldResponse {
   tld: string
   status: string
 }
+
+export interface TldRunMetricItem {
+  status: string
+  started_at: string
+  finished_at: string | null
+  domains_inserted: number | null
+}
+
+export interface TldRunMetrics {
+  tld: string
+  runs: TldRunMetricItem[]
+}

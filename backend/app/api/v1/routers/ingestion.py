@@ -25,6 +25,8 @@ from app.schemas.czds_ingestion import (
     ErrorResponse,
     RunStatusResponse,
     SourceSummaryResponse,
+    TldRunMetricsResponse,
+    TldRunMetricItem,
 )
 from app.services.tld_coverage import resolve_tld_coverages
 
@@ -372,6 +374,32 @@ def get_domain_counts(
         # View may not exist yet (before first migration run)
         return []
     return [{"tld": r.tld, "count": int(r.count)} for r in rows]
+
+
+@router.get(
+    "/tld-run-metrics",
+    response_model=list[TldRunMetricsResponse],
+    summary="Last N runs per TLD for a given source (single query, replaces per-TLD polling)",
+)
+def get_tld_run_metrics(
+    source: str,
+    runs_per_tld: int = 10,
+    db: Session = Depends(get_db),
+):
+    """Return the last `runs_per_tld` runs for every TLD of a given source.
+
+    Uses a single window-function query instead of one query per TLD.
+    Intended for the ingestion config page sparkbars.
+    """
+    run_repo = IngestionRunRepository(db)
+    raw = run_repo.get_tld_run_metrics(source, runs_per_tld=runs_per_tld)
+    return [
+        TldRunMetricsResponse(
+            tld=item["tld"],
+            runs=[TldRunMetricItem(**r) for r in item["runs"]],
+        )
+        for item in raw
+    ]
 
 
 @router.get(

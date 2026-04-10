@@ -137,6 +137,11 @@ export const ingestionApi = {
     if (tld) params.set("tld", tld)
     return api.get<import("./types").IngestionRun[]>(`/v1/ingestion/runs?${params}`)
   },
+
+  getTldRunMetrics: (source: string, runsPerTld = 10) =>
+    api.get<import("./types").TldRunMetrics[]>(
+      `/v1/ingestion/tld-run-metrics?source=${encodeURIComponent(source)}&runs_per_tld=${runsPerTld}`
+    ),
 }
 
 // ── Ingestion Config API ──────────────────────────────────────
