@@ -68,6 +68,7 @@ class IngestionRunRepository:
         offset: int = 0,
         source: str | None = None,
         status: str | None = None,
+        tld: str | None = None,
     ) -> list[IngestionRun]:
         """List ingestion runs ordered by newest first, with optional filters."""
         query = self.db.query(IngestionRun)
@@ -75,6 +76,8 @@ class IngestionRunRepository:
             query = query.filter(IngestionRun.source == source)
         if status:
             query = query.filter(IngestionRun.status == status)
+        if tld:
+            query = query.filter(IngestionRun.tld == tld)
         return (
             query.order_by(IngestionRun.started_at.desc())
             .offset(offset)

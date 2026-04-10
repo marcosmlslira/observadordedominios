@@ -127,4 +127,48 @@ export const ingestionApi = {
 
   cancelBulkJob: (jobId: string) =>
     api.post<import("./types").CtBulkJob>(`/v1/ingestion/ct-bulk/jobs/${jobId}/cancel`),
+
+  getCheckpoints: (source: string) =>
+    api.get<import("./types").CheckpointResponse[]>(`/v1/ingestion/checkpoints?source=${source}`),
+
+  getRuns: ({ source, tld, limit = 10 }: { source: string; tld?: string; limit?: number }) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (source) params.set("source", source)
+    if (tld) params.set("tld", tld)
+    return api.get<import("./types").IngestionRun[]>(`/v1/ingestion/runs?${params}`)
+  },
+}
+
+// ── Ingestion Config API ──────────────────────────────────────
+
+export function getIngestionConfigs() {
+  return api.get<import("./types").IngestionSourceConfig[]>("/v1/ingestion/config")
+}
+
+export function updateIngestionCron(source: string, cron_expression: string) {
+  return api.put<import("./types").IngestionSourceConfig>(
+    `/v1/ingestion/config/${source}`,
+    { cron_expression }
+  )
+}
+
+export function getTldPolicies(source: string) {
+  return api.get<import("./types").IngestionTldPolicy[]>(`/v1/ingestion/tld-policy/${source}`)
+}
+
+export function patchTldPolicy(source: string, tld: string, is_enabled: boolean) {
+  return api.patch<import("./types").IngestionTldPolicy>(
+    `/v1/ingestion/tld-policy/${source}/${tld}`,
+    { is_enabled }
+  )
+}
+
+export function bulkSetTldPolicies(
+  source: string,
+  tlds: Array<{ tld: string; is_enabled: boolean }>
+) {
+  return api.put<import("./types").IngestionTldPolicy[]>(
+    `/v1/ingestion/tld-policy/${source}`,
+    { tlds }
+  )
 }
