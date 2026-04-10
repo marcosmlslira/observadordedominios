@@ -3,18 +3,19 @@ import { SourceConfigPage } from "@/components/ingestion/source-config-page"
 const VALID_SOURCES = ["czds", "certstream", "openintel"]
 
 interface Props {
-  params: { source: string }
+  params: Promise<{ source: string }>
 }
 
-export default function IngestionSourcePage({ params }: Props) {
-  if (!VALID_SOURCES.includes(params.source)) {
+export default async function IngestionSourcePage({ params }: Props) {
+  const { source } = await params
+  if (!VALID_SOURCES.includes(source)) {
     return (
       <div className="p-8 text-muted-foreground">
-        Fonte desconhecida: {params.source}
+        Fonte desconhecida: {source}
       </div>
     )
   }
-  return <SourceConfigPage source={params.source} />
+  return <SourceConfigPage source={source} />
 }
 
 export function generateStaticParams() {
