@@ -36,7 +36,13 @@ class OpenIntelClient:
         from botocore.config import Config
 
         boto_kwargs: dict = {
-            "config": Config(signature_version=UNSIGNED),
+            "config": Config(
+                signature_version=UNSIGNED,
+                connect_timeout=10,
+                read_timeout=30,
+                retries={"max_attempts": 2},
+                s3={"addressing_style": "path"},
+            ),
             "region_name": self.region,
         }
         if self.endpoint:
