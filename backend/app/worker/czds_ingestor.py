@@ -83,7 +83,9 @@ def _get_enabled_tlds() -> list[str]:
             SELECT p.tld
             FROM czds_tld_policy p
             LEFT JOIN tld_domain_count_mv m ON p.tld = m.tld
-            WHERE p.is_enabled = true
+            LEFT JOIN ingestion_tld_policy itp
+                   ON itp.source = 'czds' AND itp.tld = p.tld
+            WHERE COALESCE(itp.is_enabled, p.is_enabled) = true
             ORDER BY COALESCE(m.count, 999999999) ASC, p.priority ASC, p.tld ASC
         """))
         tlds = [row[0] for row in result]
