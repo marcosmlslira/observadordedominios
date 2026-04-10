@@ -45,7 +45,7 @@ function emptySummary(source: string): SourceSummary {
     total_runs: 0, successful_runs: 0, failed_runs: 0, running_now: 0,
     last_run_at: null, last_success_at: null, last_status: null,
     total_domains_seen: 0, total_domains_inserted: 0,
-    mode: null, status_hint: null, next_expected_run_hint: null,
+    mode: null, cron_expression: null, status_hint: null, next_expected_run_hint: null,
     bulk_job_status: null, bulk_chunks_total: 0, bulk_chunks_done: 0,
     bulk_chunks_error: 0, bulk_chunks_pending: 0,
   }
