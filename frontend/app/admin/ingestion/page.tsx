@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RefreshCw } from "lucide-react"
+import Link from "next/link"
 
 import { IngestionRunGrid } from "@/components/ingestion-run-grid"
 import { CycleProgress } from "@/components/ingestion/cycle-progress"
@@ -53,6 +54,55 @@ export default function IngestionPage() {
           />
         </div>
       </div>
+
+      {/* Source summary cards */}
+      {(() => {
+        const SOURCES = [
+          { key: "czds", label: "CZDS" },
+          { key: "certstream", label: "CertStream" },
+          { key: "openintel", label: "OpenINTEL" },
+        ]
+        const schedules = data.cycleStatus?.schedules ?? []
+
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {SOURCES.map(({ key, label }) => {
+              const schedule = schedules.find((s) => s.source === key)
+              const summary = data.summaries.find((s) => s.source === key)
+              const isRealtime = schedule?.mode === "realtime"
+              const statusColor =
+                (summary?.running_now ?? 0) > 0 ? "text-blue-400" :
+                summary?.last_status === "success" ? "text-green-500" :
+                "text-muted-foreground"
+
+              return (
+                <div
+                  key={key}
+                  className="rounded-lg border bg-card p-4 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm">{label}</span>
+                    <span className={`text-xs ${statusColor}`}>
+                      ● {(summary?.running_now ?? 0) > 0 ? "Running" : summary?.last_status ?? "Idle"}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {isRealtime
+                      ? "Stream contínuo"
+                      : `Cron: ${schedule?.cron_expression ?? "—"}`}
+                  </div>
+                  <Link
+                    href={`/admin/ingestion/${key}`}
+                    className="text-xs text-blue-400 hover:underline"
+                  >
+                    Configurar →
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       <Tabs defaultValue="overview">
         <TabsList>
