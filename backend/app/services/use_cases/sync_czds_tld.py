@@ -292,13 +292,11 @@ def sync_czds_tld(
                 except Exception:
                     logger.warning("Failed to cleanup S3 artifact: %s", object_key, exc_info=True)
 
-            # Cleanup artifact DB record if it was created
-            if artifact is not None:
-                try:
-                    db.delete(artifact)
-                    db.flush()
-                except Exception:
-                    logger.warning("Failed to cleanup artifact DB record", exc_info=True)
+            # NOTE: No explicit db.delete(artifact) needed — db.rollback() already
+            # undoes the flushed-but-uncommitted artifact row.  Calling db.delete()
+            # + db.flush() after a rollback would silently fail and leave the session
+            # in a "pending rollback" state, causing PendingRollbackError on the
+            # subsequent db.commit() below.
 
             run_repo.finish_run(run, status="failed", error_message=str(exc))
             db.commit()
