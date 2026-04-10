@@ -58,11 +58,11 @@ def sync_openintel_tld(
     source = "openintel"
     run_repo = IngestionRunRepository(db)
 
-    # ── 1. Abort if CZDS is currently writing to the same partitions ──────────
-    if run_repo.has_any_source_running("czds"):
+    # ── 1. Abort if CZDS is currently writing to the same TLD partition ──────
+    if run_repo.has_running_run("czds", tld):
         raise CzdsRunningError(
-            "CZDS sync is currently running — OpenINTEL cannot write to the same "
-            "partitions. Retry after CZDS finishes."
+            f"CZDS sync for TLD={tld} is currently running — OpenINTEL cannot write "
+            "to the same partition. Retry after CZDS finishes."
         )
 
     # ── 2. Recover stale OpenINTEL runs for this TLD ──────────────────────────
