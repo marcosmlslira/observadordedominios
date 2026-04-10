@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { Play, Loader2 } from "lucide-react"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
@@ -12,7 +13,9 @@ import type { TldMetricsRow } from "@/lib/types"
 
 interface TldMetricsTableProps {
   rows: TldMetricsRow[]
+  source: string
   onToggle: (tld: string, enabled: boolean) => Promise<void>
+  onTrigger?: (tld: string) => Promise<void>
   onEnableAll: () => void
   onDisableAll: () => void
 }
@@ -44,12 +47,16 @@ function formatDate(iso: string | null): string {
 
 export function TldMetricsTable({
   rows,
+  source,
   onToggle,
+  onTrigger,
   onEnableAll,
   onDisableAll,
 }: TldMetricsTableProps) {
   const [filter, setFilter] = useState("")
   const [toggling, setToggling] = useState<Set<string>>(new Set())
+  const [triggering, setTriggering] = useState<Set<string>>(new Set())
+  const [triggered, setTriggered] = useState<Set<string>>(new Set())
 
   const filtered = useMemo(
     () => rows.filter((r) => r.tld.includes(filter.toLowerCase())),
@@ -68,6 +75,18 @@ export function TldMetricsTable({
         next.delete(tld)
         return next
       })
+    }
+  }
+
+  async function handleTrigger(tld: string) {
+    if (!onTrigger) return
+    setTriggering((prev) => new Set(prev).add(tld))
+    try {
+      await onTrigger(tld)
+      setTriggered((prev) => new Set(prev).add(tld))
+      setTimeout(() => setTriggered((prev) => { const n = new Set(prev); n.delete(tld); return n }), 3000)
+    } finally {
+      setTriggering((prev) => { const n = new Set(prev); n.delete(tld); return n })
     }
   }
 
@@ -101,6 +120,7 @@ export function TldMetricsTable({
               <TableHead className="text-right text-xs">Inseridos</TableHead>
               <TableHead className="text-center text-xs">Última OK</TableHead>
               <TableHead className="text-center text-xs">Últimas 10</TableHead>
+              {onTrigger && <TableHead className="text-center text-xs">Trigger</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -131,11 +151,31 @@ export function TldMetricsTable({
                     }))}
                   />
                 </TableCell>
+                {onTrigger && (
+                  <TableCell className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={triggering.has(row.tld) || triggered.has(row.tld)}
+                      onClick={() => handleTrigger(row.tld)}
+                      title={triggered.has(row.tld) ? "Na fila" : `Executar ${row.tld} agora`}
+                    >
+                      {triggering.has(row.tld) ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : triggered.has(row.tld) ? (
+                        <span className="text-[10px] text-green-600">✓</span>
+                      ) : (
+                        <Play className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-6">
+                <TableCell colSpan={onTrigger ? 7 : 6} className="text-center text-xs text-muted-foreground py-6">
                   Nenhum TLD encontrado
                 </TableCell>
               </TableRow>

@@ -172,3 +172,10 @@ export function bulkSetTldPolicies(
     { tlds }
   )
 }
+
+export function triggerTldIngestion(source: string, tld: string, force = false) {
+  return api.post<import("./types").TriggerTldResponse>(
+    `/v1/ingestion/trigger/${source}/${tld}`,
+    { force }
+  )
+}

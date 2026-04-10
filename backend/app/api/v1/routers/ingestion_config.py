@@ -1,21 +1,39 @@
-"""Ingestion config API — cron management and generic TLD policy."""
+"""Ingestion config API — cron management, generic TLD policy, and manual triggers."""
 
 from __future__ import annotations
+
+import logging
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_admin
-from app.infra.db.session import get_db
+from app.infra.db.session import SessionLocal, get_db
 from app.repositories.ingestion_config_repository import IngestionConfigRepository
+from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.schemas.ingestion_config import (
     CronUpdateRequest,
     SourceConfigResponse,
     TldPolicyBulkRequest,
     TldPolicyPatchRequest,
     TldPolicyResponse,
+    TriggerTldRequest,
+    TriggerTldResponse,
 )
 from app.services.ingestion_config_service import InvalidSourceError, validate_source
+from app.services.use_cases.sync_czds_tld import (
+    CooldownActiveError as CzdsCooldownError,
+    SyncAlreadyRunningError as CzdsSyncRunningError,
+    sync_czds_tld,
+)
+from app.services.use_cases.sync_openintel_tld import (
+    CooldownActiveError as OpenintelCooldownError,
+    SyncAlreadyRunningError as OpenintelSyncRunningError,
+    sync_openintel_tld,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/v1/ingestion",
@@ -96,6 +114,74 @@ def bulk_upsert_tld_policy(
     )
     db.commit()
     return policies
+
+
+@router.post(
+    "/trigger/{source}/{tld}",
+    response_model=TriggerTldResponse,
+    status_code=202,
+    summary="Trigger manual ingestion for a specific TLD",
+)
+def trigger_tld(
+    source: str,
+    tld: str,
+    body: TriggerTldRequest,
+    db: Session = Depends(get_db),
+):
+    """Queue an immediate ingestion run for a single TLD.
+
+    Supported sources: czds, openintel.
+    Returns 202 with run_id when accepted.
+    Returns 409 if a run is already in progress for this TLD.
+    Returns 429 if the cooldown window has not elapsed (use force=true to override).
+    """
+    _validate_source_or_404(source)
+    tld = tld.lower()
+
+    if source not in ("czds", "openintel"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Manual trigger is not supported for source '{source}'",
+        )
+
+    run_repo = IngestionRunRepository(db)
+
+    # Recover any stale runs before checking for in-progress
+    stale = run_repo.recover_stale_runs(source, tld, stale_after_minutes=120)
+    if stale:
+        db.commit()
+
+    if run_repo.has_running_run(source, tld):
+        raise HTTPException(status_code=409, detail=f"Run already in progress for {source}/{tld}")
+
+    run = run_repo.create_run(source, tld)
+    db.commit()
+    run_id = run.id
+
+    def _background() -> None:
+        bg_db = SessionLocal()
+        try:
+            if source == "czds":
+                sync_czds_tld(bg_db, tld, force=body.force, run_id=run_id)
+            else:
+                sync_openintel_tld(bg_db, tld, force=body.force, run_id=run_id)
+        except (CzdsCooldownError, OpenintelCooldownError) as exc:
+            logger.warning("Cooldown active for %s/%s: %s", source, tld, exc)
+        except (CzdsSyncRunningError, OpenintelSyncRunningError) as exc:
+            logger.warning("Sync already running for %s/%s: %s", source, tld, exc)
+        except Exception:
+            logger.exception("Background trigger failed for %s/%s", source, tld)
+        finally:
+            bg_db.close()
+
+    threading.Thread(target=_background, daemon=True).start()
+
+    return TriggerTldResponse(
+        run_id=str(run_id),
+        source=source,
+        tld=tld,
+        status="queued",
+    )
 
 
 def _validate_source_or_404(source: str) -> None:

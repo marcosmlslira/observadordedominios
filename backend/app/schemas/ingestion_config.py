@@ -36,6 +36,10 @@ class TldPolicyBulkRequest(BaseModel):
     tlds: list[TldPolicyBulkItem]
 
 
+class TriggerTldRequest(BaseModel):
+    force: bool = False
+
+
 # ── Responses ─────────────────────────────────────────────────
 
 class SourceConfigResponse(BaseModel):
@@ -53,3 +57,10 @@ class TldPolicyResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TriggerTldResponse(BaseModel):
+    run_id: str
+    source: str
+    tld: str
+    status: str  # "queued"

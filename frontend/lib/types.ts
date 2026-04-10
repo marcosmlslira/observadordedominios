@@ -492,3 +492,10 @@ export interface TldMetricsRow {
     started_at: string
   }>
 }
+
+export interface TriggerTldResponse {
+  run_id: string
+  source: string
+  tld: string
+  status: string
+}
