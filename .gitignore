@@ -1,3 +1,7 @@
+# Git worktrees
+.worktrees/
+.superpowers/
+
 # Node dependencies
 node_modules/
 
