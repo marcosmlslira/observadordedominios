@@ -3,13 +3,8 @@
 import { useIngestionData } from "@/hooks/use-ingestion-data"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CheckCircle2, XCircle, Loader2, Activity, Clock, RefreshCw } from "lucide-react"
 import Link from "next/link"
-
-import { RunsTable } from "@/components/ingestion/runs-table"
-import { TldCoverageTable } from "@/components/ingestion/tld-coverage-table"
-import { BulkCrtshPanel } from "@/components/ingestion/bulk-crtsh-panel"
 
 const SOURCE_CONFIG = [
   { key: "czds",       label: "CZDS",       href: "/admin/ingestion/czds" },
@@ -169,44 +164,6 @@ export default function IngestionPage() {
           </div>
         </div>
       )}
-
-      {/* Tabs */}
-      <Tabs defaultValue="runs">
-        <TabsList>
-          <TabsTrigger value="runs">Execuções</TabsTrigger>
-          <TabsTrigger value="coverage">Cobertura por TLD</TabsTrigger>
-          <TabsTrigger value="bulk">Bulk crt.sh</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="runs" className="mt-4">
-          <RunsTable
-            runs={data.runs}
-            activeSource={data.activeSource}
-            onSourceChange={data.setActiveSource}
-          />
-        </TabsContent>
-
-        <TabsContent value="coverage" className="mt-4">
-          <TldCoverageTable
-            coverage={data.coverage}
-            domainCounts={data.domainCounts}
-          />
-        </TabsContent>
-
-        <TabsContent value="bulk" className="mt-4">
-          <BulkCrtshPanel
-            bulkJobs={data.bulkJobs}
-            bulkChunks={data.bulkChunks}
-            selectedBulkJobId={data.selectedBulkJobId}
-            onSelectJob={data.setSelectedBulkJobId}
-            onStartJob={data.startBulkJob}
-            onResumeJob={data.resumeBulkJob}
-            onCancelJob={data.cancelBulkJob}
-            busy={data.bulkBusy}
-            error={data.bulkError}
-          />
-        </TabsContent>
-      </Tabs>
     </div>
   )
 }
