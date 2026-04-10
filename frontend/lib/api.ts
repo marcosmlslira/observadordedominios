@@ -135,7 +135,7 @@ export const ingestionApi = {
     const params = new URLSearchParams({ limit: String(limit) })
     if (source) params.set("source", source)
     if (tld) params.set("tld", tld)
-    return api.get<import("./types").RunStatusResponse[]>(`/v1/ingestion/runs?${params}`)
+    return api.get<import("./types").IngestionRun[]>(`/v1/ingestion/runs?${params}`)
   },
 }
 

@@ -458,21 +458,6 @@ export interface ScanSummaryResponse {
 
 // ── Ingestion Run / Checkpoint responses ─────────────────
 
-export interface RunStatusResponse {
-  run_id: string
-  source: string
-  tld: string
-  status: string
-  started_at: string
-  finished_at: string | null
-  domains_seen: number
-  domains_inserted: number
-  domains_reactivated: number
-  domains_deleted: number
-  artifact_key: string | null
-  error_message: string | null
-}
-
 export interface CheckpointResponse {
   source: string
   tld: string
