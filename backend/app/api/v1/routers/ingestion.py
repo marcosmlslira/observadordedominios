@@ -96,6 +96,7 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
 
         if source == "certstream":
             row["mode"] = "Realtime stream"
+            row["cron_expression"] = None
             if row["running_now"] > 0:
                 row["status_hint"] = "Streaming continuously from CertStream."
             elif row["last_success_at"]:
@@ -104,6 +105,7 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
                 row["status_hint"] = "No CertStream session completed yet."
         elif source == "crtsh":
             row["mode"] = "Daily cron"
+            row["cron_expression"] = settings.CT_CRTSH_SYNC_CRON
             row["next_expected_run_hint"] = _next_cron_hint(settings.CT_CRTSH_SYNC_CRON)
             if row["running_now"] > 0:
                 row["status_hint"] = "crt.sh batch is running now."
@@ -112,10 +114,13 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
             else:
                 row["status_hint"] = "crt.sh is scheduled and waiting for the next daily cron."
         elif source == "czds":
-            row["mode"] = "Serial worker"
+            row["mode"] = "Daily cron"
+            row["cron_expression"] = settings.CZDS_SYNC_CRON
+            row["next_expected_run_hint"] = _next_cron_hint(settings.CZDS_SYNC_CRON)
             row["status_hint"] = "Processes enabled TLDs one by one in priority order."
         elif source == "openintel":
             row["mode"] = "Daily cron"
+            row["cron_expression"] = settings.OPENINTEL_SYNC_CRON
             row["next_expected_run_hint"] = _next_cron_hint(settings.OPENINTEL_SYNC_CRON)
             if row["running_now"] > 0:
                 row["status_hint"] = "OpenINTEL batch is running now."

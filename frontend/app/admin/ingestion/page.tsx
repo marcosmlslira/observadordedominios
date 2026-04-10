@@ -1,165 +1,184 @@
 "use client"
 
-import { useState } from "react"
 import { useIngestionData } from "@/hooks/use-ingestion-data"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RefreshCw } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Activity, Clock, RefreshCw } from "lucide-react"
 import Link from "next/link"
 
-import { IngestionRunGrid } from "@/components/ingestion-run-grid"
-import { CycleProgress } from "@/components/ingestion/cycle-progress"
-import { HealthSummaryCards } from "@/components/ingestion/health-summary"
-import { SourceHealthCards } from "@/components/ingestion/source-health-cards"
-import { TldPolicyTable } from "@/components/ingestion/tld-policy-table"
 import { RunsTable } from "@/components/ingestion/runs-table"
 import { TldCoverageTable } from "@/components/ingestion/tld-coverage-table"
 import { BulkCrtshPanel } from "@/components/ingestion/bulk-crtsh-panel"
-import { TriggerSyncDialog } from "@/components/ingestion/trigger-sync-dialog"
+
+const SOURCE_CONFIG = [
+  { key: "czds",       label: "CZDS",       href: "/admin/ingestion/czds" },
+  { key: "certstream", label: "CertStream",  href: "/admin/ingestion/certstream" },
+  { key: "openintel",  label: "OpenINTEL",   href: "/admin/ingestion/openintel" },
+  { key: "crtsh",      label: "crt.sh",      href: null },
+]
+
+function timeAgo(dateStr: string | null): string {
+  if (!dateStr) return "nunca"
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 1) return "agora"
+  if (mins < 60) return `${mins}min atrás`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h atrás`
+  return `${Math.floor(hours / 24)}d atrás`
+}
+
+function timeUntil(dateStr: string | null): string {
+  if (!dateStr) return "—"
+  const diff = new Date(dateStr).getTime() - Date.now()
+  if (diff <= 0) return "agora"
+  const mins = Math.floor(diff / 60_000)
+  if (mins < 60) return `em ${mins}min`
+  const hours = Math.floor(mins / 60)
+  const rem = mins % 60
+  return `em ${hours}h${rem > 0 ? ` ${rem}min` : ""}`
+}
+
+function formatDuration(startedAt: string, finishedAt: string | null): string {
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now()
+  const secs = Math.floor((end - new Date(startedAt).getTime()) / 1000)
+  if (secs < 60) return `${secs}s`
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return n.toLocaleString()
+}
 
 export default function IngestionPage() {
   const data = useIngestionData()
-  const [syncDialogTld, setSyncDialogTld] = useState("net")
 
   if (data.loading) {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Ingestion Monitoring</h1>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
         </div>
-        <Skeleton className="h-96 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
       </div>
     )
   }
+
+  const activeRuns = data.runs.filter((r) => r.status === "running")
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Ingestion Monitoring</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={data.fetchData}>
-            <RefreshCw className="h-3 w-3 mr-1" />
-            Refresh
-          </Button>
-          <TriggerSyncDialog
-            onTrigger={data.triggerSync}
-            syncing={data.syncing}
-            syncError={data.syncError}
-            defaultTld={syncDialogTld}
-          />
-        </div>
+        <Button variant="outline" size="sm" onClick={data.fetchData}>
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Refresh
+        </Button>
       </div>
 
-      {/* Source summary cards */}
-      {(() => {
-        const SOURCES = [
-          { key: "czds", label: "CZDS" },
-          { key: "certstream", label: "CertStream" },
-          { key: "openintel", label: "OpenINTEL" },
-        ]
-        const schedules = data.cycleStatus?.schedules ?? []
+      {/* Source status cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {SOURCE_CONFIG.map(({ key, label, href }) => {
+          const s = data.summaries.find((x) => x.source === key)
+          const isRunning = (s?.running_now ?? 0) > 0
+          const status = isRunning ? "running" : (s?.last_status ?? null)
 
-        return (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {SOURCES.map(({ key, label }) => {
-              const schedule = schedules.find((s) => s.source === key)
-              const summary = data.summaries.find((s) => s.source === key)
-              const isRealtime = schedule?.mode === "realtime"
-              const statusColor =
-                (summary?.running_now ?? 0) > 0 ? "text-blue-400" :
-                summary?.last_status === "success" ? "text-green-500" :
-                "text-muted-foreground"
+          return (
+            <div key={key} className="rounded-lg border bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-sm">{label}</span>
+                <span className={`text-xs flex items-center gap-1 ${
+                  isRunning            ? "text-blue-400"
+                  : status === "success" ? "text-emerald-500"
+                  : status === "failed"  ? "text-red-500"
+                  : "text-muted-foreground"
+                }`}>
+                  {isRunning            ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : status === "success" ? <CheckCircle2 className="h-3 w-3" />
+                  : status === "failed"  ? <XCircle className="h-3 w-3" />
+                  : <Activity className="h-3 w-3" />}
+                  {isRunning ? "Rodando" : status === "success" ? "OK" : status ?? "Idle"}
+                </span>
+              </div>
 
-              return (
-                <div
-                  key={key}
-                  className="rounded-lg border bg-card p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm">{label}</span>
-                    <span className={`text-xs ${statusColor}`}>
-                      ● {(summary?.running_now ?? 0) > 0 ? "Running" : summary?.last_status ?? "Idle"}
-                    </span>
+              {s ? (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>{s.mode ?? "—"}</span>
+                    {s.cron_expression && (
+                      <code className="text-[10px] bg-muted px-1 py-0.5 rounded font-mono">
+                        {s.cron_expression}
+                      </code>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {isRealtime
-                      ? "Stream contínuo"
-                      : `Cron: ${schedule?.cron_expression ?? "—"}`}
+                  {s.next_expected_run_hint && !isRunning && (
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      <span>Próximo {timeUntil(s.next_expected_run_hint)}</span>
+                    </div>
+                  )}
+                  <div>Último: {timeAgo(s.last_run_at)}</div>
+                  <div className="text-foreground font-medium">
+                    {formatCount(s.total_domains_inserted)} inseridos
                   </div>
-                  <Link
-                    href={`/admin/ingestion/${key}`}
-                    className="text-xs text-blue-400 hover:underline"
-                  >
-                    Configurar →
-                  </Link>
                 </div>
-              )
-            })}
-          </div>
-        )
-      })()}
+              ) : (
+                <div className="text-xs text-muted-foreground">Sem dados</div>
+              )}
 
-      <Tabs defaultValue="overview">
+              {href && (
+                <Link href={href} className="text-xs text-blue-400 hover:underline block">
+                  Configurar →
+                </Link>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Active runs */}
+      {activeRuns.length > 0 && (
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <div className="px-4 py-3 border-b flex items-center gap-2">
+            <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+            <h2 className="text-sm font-medium">
+              Execuções Ativas ({activeRuns.length})
+            </h2>
+          </div>
+          <div className="divide-y">
+            {activeRuns.map((r) => (
+              <div key={r.run_id} className="px-4 py-2.5 flex items-center gap-4 text-sm">
+                <span className="font-medium w-24 shrink-0">{r.source}</span>
+                <span className="font-mono text-xs text-muted-foreground w-20 shrink-0">
+                  .{r.tld}
+                </span>
+                <span className="text-xs text-muted-foreground flex-1">
+                  iniciado {timeAgo(r.started_at)} · {formatDuration(r.started_at, null)} em andamento
+                </span>
+                {r.domains_seen > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {formatCount(r.domains_seen)} vistos
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <Tabs defaultValue="runs">
         <TabsList>
-          <TabsTrigger value="overview">Visao Geral</TabsTrigger>
-          <TabsTrigger value="runs">Execucoes</TabsTrigger>
+          <TabsTrigger value="runs">Execuções</TabsTrigger>
           <TabsTrigger value="coverage">Cobertura por TLD</TabsTrigger>
           <TabsTrigger value="bulk">Bulk crt.sh</TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Visao Geral */}
-        <TabsContent value="overview" className="space-y-4 mt-4">
-          <CycleProgress cycleStatus={data.cycleStatus} />
-
-          <HealthSummaryCards
-            health={data.cycleStatus?.health ?? null}
-            domainCounts={data.domainCounts}
-            summaries={data.summaries}
-          />
-
-          <SourceHealthCards
-            summaries={data.summaries}
-            activeSource={data.activeSource}
-            onSourceClick={data.setActiveSource}
-          />
-
-          <Card className="border-border-subtle bg-background/70">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Run History</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Last 30 executions per source. Hover a cell for details.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <IngestionRunGrid runs={data.allRuns} />
-            </CardContent>
-          </Card>
-
-          <Card className="border-border-subtle bg-background/70">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">CZDS TLD Policy</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Toggle, priorize e configure cada TLD individualmente.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <TldPolicyTable
-                items={data.policyItems}
-                domainCounts={data.domainCounts}
-                onPatch={data.patchPolicy}
-                onTriggerSync={(tld) => { setSyncDialogTld(tld) }}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 2: Execucoes */}
-        <TabsContent value="runs" className="space-y-4 mt-4">
+        <TabsContent value="runs" className="mt-4">
           <RunsTable
             runs={data.runs}
             activeSource={data.activeSource}
@@ -167,7 +186,6 @@ export default function IngestionPage() {
           />
         </TabsContent>
 
-        {/* Tab 3: Cobertura por TLD */}
         <TabsContent value="coverage" className="mt-4">
           <TldCoverageTable
             coverage={data.coverage}
@@ -175,7 +193,6 @@ export default function IngestionPage() {
           />
         </TabsContent>
 
-        {/* Tab 4: Bulk crt.sh */}
         <TabsContent value="bulk" className="mt-4">
           <BulkCrtshPanel
             bulkJobs={data.bulkJobs}

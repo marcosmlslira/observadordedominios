@@ -129,6 +129,7 @@ export interface SourceSummary {
   total_domains_seen: number
   total_domains_inserted: number
   mode: string | null
+  cron_expression: string | null
   status_hint: string | null
   next_expected_run_hint: string | null
   bulk_job_status: string | null
