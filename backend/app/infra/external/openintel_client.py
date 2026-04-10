@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import gzip
 import io
 import logging
+import zlib
 from datetime import date, timedelta
 from typing import Iterator
 
@@ -269,21 +269,35 @@ class OpenIntelCctldClient:
             pass  # keep fallback referer
 
         try:
-            with httpx.stream("GET", url, headers=headers, timeout=60, follow_redirects=True) as resp:
+            with httpx.stream("GET", url, headers=headers, timeout=600, follow_redirects=True) as resp:
                 resp.raise_for_status()
-                raw = b"".join(resp.iter_bytes())
-
-            with gzip.open(io.BytesIO(raw), "rt", encoding="utf-8", errors="replace") as f:
+                # True streaming decompression — never buffers the full file in RAM.
+                # zlib.MAX_WBITS | 16 enables gzip autodetect mode.
+                dec = zlib.decompressobj(zlib.MAX_WBITS | 16)
+                leftover = b""
                 seen: set[str] = set()
-                for line in f:
-                    domain = line.strip().lower()
-                    if not domain:
-                        continue
-                    if domain not in seen:
-                        seen.add(domain)
+                for chunk in resp.iter_bytes(chunk_size=65536):
+                    data = dec.decompress(chunk)
+                    buf = leftover + data
+                    *lines, leftover = buf.split(b"\n")
+                    for raw_line in lines:
+                        domain = raw_line.decode("utf-8", errors="replace").strip().lower()
+                        if not domain:
+                            continue
+                        if domain not in seen:
+                            seen.add(domain)
+                            yield domain
+                            if len(seen) >= 500_000:
+                                seen.clear()
+                # Flush zlib decompressor and process any remaining data.
+                try:
+                    leftover += dec.flush()
+                except Exception:
+                    pass
+                if leftover:
+                    domain = leftover.decode("utf-8", errors="replace").strip().lower()
+                    if domain and domain not in seen:
                         yield domain
-                        if len(seen) >= 500_000:
-                            seen.clear()
 
         except Exception:
             logger.warning(
