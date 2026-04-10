@@ -155,7 +155,22 @@ def run_sync_cycle() -> None:
     logger.info("OpenINTEL sync cycle finished.")
 
 
+def _shutdown(signum, frame) -> None:
+    """SIGTERM/SIGINT handler — stops after the current TLD finishes."""
+    logger.info(
+        "Received signal %s. Finishing current TLD before stopping.",
+        signum,
+    )
+    STOP_EVENT.set()
+    if _scheduler_ref is not None and _scheduler_ref.running:
+        _scheduler_ref.shutdown(wait=False)
+
+
 def main() -> None:
+    # Register signal handlers before the initial sync so Docker stop_grace_period works.
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
     logger.info("OpenINTEL Ingestor Worker starting…")
     logger.info("Cron schedule: %s", settings.OPENINTEL_SYNC_CRON)
 
@@ -185,18 +200,6 @@ def main() -> None:
         max_instances=1,
         coalesce=True,
     )
-
-    def _shutdown(signum, frame):
-        logger.info(
-            "Received signal %s. Finishing current TLD before stopping.",
-            signum,
-        )
-        STOP_EVENT.set()
-        if scheduler.running:
-            scheduler.shutdown(wait=False)
-
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT, _shutdown)
 
     logger.info("Scheduler started. Waiting for next trigger…")
     try:
