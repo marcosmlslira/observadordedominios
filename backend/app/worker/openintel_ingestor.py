@@ -11,11 +11,13 @@ import logging
 import signal
 import threading
 
+from sqlalchemy import text
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
+from app.repositories.domain_repository import ensure_partition
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.use_cases.sync_openintel_tld import (
     CooldownActiveError,
@@ -76,6 +78,39 @@ def _reload_cron_if_changed() -> None:
             _active_cron = db_cron
     except Exception:
         logger.exception("Failed to reload cron from DB")
+    finally:
+        db.close()
+
+
+def _prewarm_all_partitions(tlds: list[str]) -> None:
+    """Pre-create domain table partitions for all configured TLDs.
+
+    Running DDL (CREATE TABLE ... PARTITION OF) during the ingest hot-path
+    requires ACCESS EXCLUSIVE on the parent domain table, which blocks concurrent
+    INSERT batches from other workers. By creating all partitions at startup —
+    before any ingest cycle begins — ensure_partition() becomes a no-op during
+    the hot-path, eliminating the DDL/DML lock contention entirely.
+    """
+    if not tlds:
+        return
+    db = SessionLocal()
+    try:
+        created = 0
+        for tld in tlds:
+            try:
+                before = db.execute(
+                    text("SELECT 1 FROM pg_class WHERE relname = :n"),
+                    {"n": f"domain_{tld.replace('-', '_').replace('.', '_')}"},
+                ).scalar()
+                if not before:
+                    ensure_partition(db, tld)
+                    created += 1
+            except Exception:
+                logger.warning("Could not pre-create partition for TLD=%s", tld, exc_info=True)
+        if created:
+            logger.info("Pre-created %d new partition(s) at startup.", created)
+        else:
+            logger.info("All %d TLD partitions already exist.", len(tlds))
     finally:
         db.close()
 
@@ -173,6 +208,10 @@ def main() -> None:
 
     logger.info("OpenINTEL Ingestor Worker starting…")
     logger.info("Cron schedule: %s", settings.OPENINTEL_SYNC_CRON)
+
+    # Pre-create all TLD partitions so ensure_partition() is a no-op during
+    # the hot-path and can never block concurrent INSERT batches from other workers.
+    _prewarm_all_partitions(_get_enabled_tlds())
 
     logger.info("Running initial sync cycle…")
     run_sync_cycle()
