@@ -455,3 +455,55 @@ export interface ScanResultResponse {
 export interface ScanSummaryResponse {
   results: ScanResultResponse[]
 }
+
+// ── Ingestion Run / Checkpoint responses ─────────────────
+
+export interface RunStatusResponse {
+  run_id: string
+  source: string
+  tld: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  domains_seen: number
+  domains_inserted: number
+  domains_reactivated: number
+  domains_deleted: number
+  artifact_key: string | null
+  error_message: string | null
+}
+
+export interface CheckpointResponse {
+  source: string
+  tld: string
+  last_successful_run_id: string
+  last_successful_run_at: string
+}
+
+// ── Ingestion Config ──────────────────────────────────────
+
+export interface IngestionSourceConfig {
+  source: string
+  cron_expression: string
+  updated_at: string
+}
+
+export interface IngestionTldPolicy {
+  source: string
+  tld: string
+  is_enabled: boolean
+  updated_at: string
+}
+
+export interface TldMetricsRow {
+  tld: string
+  is_enabled: boolean
+  last_duration_seconds: number | null   // finished_at - started_at of last run
+  last_domains_inserted: number | null
+  last_successful_run_at: string | null
+  recent_runs: Array<{                   // last 10 runs, oldest→newest
+    status: "success" | "failed" | "running"
+    duration_seconds: number | null
+    started_at: string
+  }>
+}
