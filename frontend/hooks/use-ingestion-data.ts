@@ -84,14 +84,15 @@ export function useIngestionData(): IngestionData {
   const fetchData = useCallback(async () => {
     try {
       const sourceParam = activeSource === "all" ? "" : `&source=${activeSource}`
+      const emptyCzdsPolicy: CzdsPolicyResponse = { source: "env", tlds: [], items: [] }
       const [runsData, allRunsData, summaryData, policyData, coverageData, bulkJobsData, countsData, cycleData] =
         await Promise.all([
           api.get<IngestionRun[]>(`/v1/ingestion/runs?limit=50${sourceParam}`),
           api.get<IngestionRun[]>("/v1/ingestion/runs?limit=200"),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
-          api.get<CzdsPolicyResponse>("/v1/czds/policy"),
-          ingestionApi.getCoverage(),
-          ingestionApi.listBulkJobs(),
+          api.get<CzdsPolicyResponse>("/v1/czds/policy").catch(() => emptyCzdsPolicy),
+          ingestionApi.getCoverage().catch(() => [] as TldCoverage[]),
+          ingestionApi.listBulkJobs().catch(() => [] as CtBulkJob[]),
           api.get<TldDomainCount[]>("/v1/ingestion/domain-counts").catch(() => [] as TldDomainCount[]),
           ingestionApi.getCycleStatus().catch(() => null),
         ])
