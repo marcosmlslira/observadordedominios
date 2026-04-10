@@ -6,7 +6,7 @@ import logging
 from app.api import health
 from app.api.v1.routers import auth, czds_ingestion, ingestion, ingestion_config, monitored_brands, similarity, tools
 from app.core.config import settings
-from app.infra.database import SessionLocal
+from app.infra.db.session import SessionLocal
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.use_cases.tools.registry import register_all_tools
 
