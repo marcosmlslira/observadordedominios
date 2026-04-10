@@ -119,6 +119,7 @@ export default function IngestionPage() {
           <HealthSummaryCards
             health={data.cycleStatus?.health ?? null}
             domainCounts={data.domainCounts}
+            summaries={data.summaries}
           />
 
           <SourceHealthCards

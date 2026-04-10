@@ -1,6 +1,6 @@
 "use client"
 
-import type { HealthSummary as HealthSummaryType, TldDomainCount } from "@/lib/types"
+import type { HealthSummary as HealthSummaryType, TldDomainCount, SourceSummary } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 function formatCount(n: number): string {
@@ -12,10 +12,15 @@ function formatCount(n: number): string {
 interface HealthSummaryProps {
   health: HealthSummaryType | null
   domainCounts: TldDomainCount[]
+  summaries?: SourceSummary[]
 }
 
-export function HealthSummaryCards({ health, domainCounts }: HealthSummaryProps) {
-  const totalDomains = domainCounts.reduce((sum, d) => sum + d.count, 0)
+export function HealthSummaryCards({ health, domainCounts, summaries = [] }: HealthSummaryProps) {
+  // Prefer per-TLD MV data; fall back to sum of ingestion run totals when MV is not populated
+  const mvTotal = domainCounts.reduce((sum, d) => sum + d.count, 0)
+  const summaryTotal = summaries.reduce((sum, s) => sum + s.total_domains_inserted, 0)
+  const totalDomains = mvTotal > 0 ? mvTotal : summaryTotal
+  const domainCountLabel = mvTotal > 0 ? `${domainCounts.length} TLDs cobertos` : `${summaries.length} fontes`
   const totalEnabled = health?.total_tlds_enabled ?? 0
 
   return (
@@ -65,7 +70,7 @@ export function HealthSummaryCards({ health, domainCounts }: HealthSummaryProps)
             {formatCount(totalDomains)}
           </div>
           <p className="text-xs text-muted-foreground">
-            {domainCounts.length} TLDs cobertos
+            {domainCountLabel}
           </p>
         </CardContent>
       </Card>

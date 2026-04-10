@@ -284,6 +284,12 @@ def get_cycle_status(
             next_run_at=_next_cron_hint(settings.CT_CRTSH_SYNC_CRON),
             mode="cron",
         ),
+        ScheduleEntry(
+            source="openintel",
+            cron_expression=settings.OPENINTEL_SYNC_CRON,
+            next_run_at=_next_cron_hint(settings.OPENINTEL_SYNC_CRON),
+            mode="cron",
+        ),
     ]
 
     return IngestionCycleStatusResponse(

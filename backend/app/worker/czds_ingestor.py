@@ -153,8 +153,31 @@ def _sync_single_tld(tld: str) -> None:
         db.close()
 
 
+def _recover_stale_at_cycle_start() -> None:
+    """Mark orphaned running CZDS runs as failed before starting a new cycle."""
+    db = SessionLocal()
+    try:
+        from app.repositories.ingestion_run_repository import IngestionRunRepository
+        run_repo = IngestionRunRepository(db)
+        stale = run_repo.recover_all_stale_for_source(
+            "czds", stale_after_minutes=settings.CZDS_RUNNING_STALE_MINUTES
+        )
+        if stale:
+            db.commit()
+            logger.info(
+                "Recovered %d stale CZDS run(s) at cycle start: %s",
+                len(stale),
+                [r.tld for r in stale],
+            )
+    except Exception:
+        logger.warning("Could not recover stale CZDS runs", exc_info=True)
+    finally:
+        db.close()
+
+
 def run_sync_cycle(tlds: list[str] | None = None) -> None:
     """Execute a sync cycle: small TLDs in parallel, large TLDs serially."""
+    _recover_stale_at_cycle_start()
     _reload_cron_if_changed()
     tlds = tlds or _get_enabled_tlds()
     logger.info("Starting sync cycle for TLDs: %s", tlds)

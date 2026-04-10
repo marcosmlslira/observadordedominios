@@ -8,10 +8,11 @@ const SOURCE_LABELS: Record<string, string> = {
   czds: "CZDS",
   certstream: "CertStream",
   crtsh: "crt.sh",
+  openintel: "OpenINTEL",
   "crtsh-bulk": "crt.sh Bulk",
 }
 
-const SUMMARY_SOURCES = ["czds", "certstream", "crtsh", "crtsh-bulk"] as const
+const SUMMARY_SOURCES = ["czds", "certstream", "crtsh", "openintel"] as const
 
 function StatusIcon({ status }: { status: string | null }) {
   switch (status) {

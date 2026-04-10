@@ -199,6 +199,38 @@ class IngestionRunRepository:
         self.db.flush()
         return stale_runs
 
+    def recover_all_stale_for_source(
+        self,
+        source: str,
+        *,
+        stale_after_minutes: int,
+    ) -> list[IngestionRun]:
+        """Mark ALL orphaned running runs for a source as failed (no TLD filter)."""
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_after_minutes)
+        stale_runs = (
+            self.db.query(IngestionRun)
+            .filter(
+                IngestionRun.source == source,
+                IngestionRun.status == "running",
+                IngestionRun.started_at < cutoff,
+            )
+            .all()
+        )
+        if not stale_runs:
+            return []
+        now = datetime.now(timezone.utc)
+        for run in stale_runs:
+            run.status = "failed"
+            run.finished_at = now
+            run.updated_at = now
+            age_minutes = int((now - run.started_at).total_seconds() // 60)
+            run.error_message = (
+                f"Automatically marked failed after {age_minutes}m "
+                f"(stale threshold: {stale_after_minutes}m, likely caused by worker restart)"
+            )
+        self.db.flush()
+        return stale_runs
+
     def touch_run(self, run: IngestionRun) -> IngestionRun:
         """Refresh run heartbeat without changing business status."""
         run.updated_at = datetime.now(timezone.utc)
