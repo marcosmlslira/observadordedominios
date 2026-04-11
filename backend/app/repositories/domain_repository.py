@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 def ensure_partition(db: Session, tld: str) -> None:
     """Create a partition for the TLD if it doesn't exist yet.
 
+    Uses lock_timeout='0' (non-blocking) so the DDL never queues an
+    ACCESS EXCLUSIVE lock that would cascade-block concurrent INSERTs.
+    If the lock is unavailable, rolls back cleanly and re-raises so the
+    caller can skip this TLD and retry on the next cycle.
+
     Handles multi-level TLDs: dots and hyphens are replaced with underscores
     in the partition name, but the actual TLD value is preserved in FOR VALUES IN.
 
@@ -31,12 +36,32 @@ def ensure_partition(db: Session, tld: str) -> None:
     ).scalar()
 
     if not exists:
-        db.execute(text(
-            f"CREATE TABLE {partition_name} PARTITION OF domain "
-            f"FOR VALUES IN ('{tld}')"
-        ))
-        db.commit()
-        logger.info("Created partition %s for TLD=%s", partition_name, tld)
+        try:
+            # lock_timeout='0' means fail immediately if ACCESS EXCLUSIVE is unavailable
+            # instead of queueing — prevents cascading stalls of concurrent INSERTs.
+            db.execute(text("SET LOCAL lock_timeout = '0'"))
+            db.execute(text(
+                f"CREATE TABLE {partition_name} PARTITION OF domain "
+                f"FOR VALUES IN ('{tld}')"
+            ))
+            db.commit()
+            logger.info("Created partition %s for TLD=%s", partition_name, tld)
+        except Exception as exc:
+            db.rollback()
+            # Re-check: another process may have created it during our attempt
+            created_by_other = db.execute(
+                text("SELECT 1 FROM pg_class WHERE relname = :name"),
+                {"name": partition_name},
+            ).scalar()
+            if created_by_other:
+                logger.info("Partition %s already created by concurrent process", partition_name)
+                return
+            logger.warning(
+                "Cannot create partition %s (lock unavailable or error): %s — "
+                "TLD will be retried on next cycle.",
+                partition_name, exc,
+            )
+            raise
 
 
 def list_partition_tlds(db: Session) -> list[str]:
