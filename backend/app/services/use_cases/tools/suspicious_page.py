@@ -253,6 +253,7 @@ class SuspiciousPageService(BaseToolService):
                     break
 
         # Check external resources
+        external_count = 0
         for tag in soup.find_all(["script", "link", "img"]):
             src = tag.get("src") or tag.get("href") or ""
             if src.startswith("http") and target not in src:
