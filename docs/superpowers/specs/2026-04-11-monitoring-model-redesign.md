@@ -105,6 +105,14 @@ CREATE INDEX ix_event_brand_cycle ON monitoring_event (brand_id, cycle_id);
 CREATE INDEX ix_event_tool_latest ON monitoring_event (match_id, tool_name, created_at DESC);
 ```
 
+**Nota sobre imutabilidade:** `monitoring_event` não possui `updated_at` por design — eventos são imutáveis e nunca modificados após criação. Esta é uma exceção explícita à regra de modelagem de `updated_at` em toda tabela.
+
+**Retenção e purging:**
+- `monitoring_event`: reter por **90 dias**. Eventos com mais de 90 dias são purgados por batch job noturno. O `match_state_snapshot` e `brand_domain_health` mantêm o estado derivado atual independente dos eventos fonte, garantindo que a purga não afeta a operação.
+- `monitoring_cycle`: reter por **180 dias**. Ciclos antigos são purgados. Para histórico longo prazo, métricas agregadas podem ser extraídas antes da purga.
+- Volume estimado de `monitoring_event`: ~16 ferramentas × 50 matches × N brands/dia para enrichment + 10 ferramentas × M domínios oficiais/dia para health. Para 50 brands com 3 domínios cada: ~(800 enrichment + 1500 health) = ~2300 eventos/dia ≈ 70k/mês. Com índices parciais e purge de 90 dias, volume máximo de ~210k linhas — gerenciável.
+- `monitoring_cycle.cycle_id` em `monitoring_event` usa `ON DELETE SET NULL` — se um cycle é purgado, eventos órfãos mantêm seus dados intactos (apenas perdem a referência ao cycle). Eventos órfãos serão purgados pelo próprio batch de 90 dias.
+
 #### `monitoring_cycle` — Ciclo de monitoramento diário
 
 Um cycle por brand por dia. Agrega progresso de todas as etapas.
@@ -195,6 +203,7 @@ CREATE TABLE match_state_snapshot (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     match_id                UUID NOT NULL UNIQUE REFERENCES similarity_match(id) ON DELETE CASCADE,
     brand_id                UUID NOT NULL REFERENCES monitored_brand(id) ON DELETE CASCADE,
+    organization_id         UUID NOT NULL,
 
     -- Score derivado
     derived_score           FLOAT NOT NULL,
@@ -394,6 +403,9 @@ derived_score = clamp(0, 1,
 | URLhaus | Listado | `+0.20` |
 | PhishTank | Verificado e ativo | `+0.28` |
 | PhishTank | Na base, não verificado | `+0.12` |
+| Blacklist Check | Listado em ≥1 DNSBL | `+0.10` |
+| Blacklist Check | Listado em ≥3 DNSBLs | `+0.18` |
+| Subdomain Takeover | Vulnerabilidade detectada | informacional (sem ajuste de score — ferramenta defensiva, não de ameaça externa) |
 | Website Clone | Clone detectado | → `immediate_attention` direto |
 
 ---
@@ -482,12 +494,12 @@ def compute_state_fingerprint(snapshot: MatchStateSnapshot, latest_events: list)
 
 ## 8. API
 
-### 8.1 Endpoints Existentes — Mantidos
+### 8.1 Endpoints Existentes — Mantidos ou Modificados
 
 | Método | Endpoint | Mudança |
 |---|---|---|
 | `POST` | `/v1/brands` | Sem mudança |
-| `GET` | `/v1/brands` | Sem mudança |
+| `GET` | `/v1/brands` | **Modificado** — cada item inclui `monitoring_summary` (latest_cycle, threat_counts, overall_health) para alimentar os cards da lista |
 | `PATCH` | `/v1/brands/{id}` | Sem mudança |
 | `DELETE` | `/v1/brands/{id}` | Sem mudança |
 | `POST` | `/v1/brands/{id}/scan` | Sem mudança |
@@ -662,13 +674,13 @@ Cada card com indicador de severidade no header (verde/amarelo/vermelho).
 | `suspicious_page` | ✓ | ✓ | ✓ | ✓ |
 | `email_security` | ✓ | ✓ | ✓ | ✓ |
 | `ip_geolocation` | - | ✓ | ✓ | ✓ |
-| `blacklist_check` | ✓ | ✓ | futuro | ✓ |
+| `blacklist_check` | ✓ | ✓ | ✓ | ✓ |
 | `safe_browsing` | ✓ | ✓ | ✓ | ✓ |
 | `urlhaus` | ✓ | ✓ | ✓ | ✓ |
 | `phishtank` | ✓ | ✓ | ✓ | ✓ |
 | `domain_similarity` | - | - (gerador) | - | - |
 | `website_clone` | - | condicional | ✓ (escalação) | ✓ |
-| `subdomain_takeover` | ✓ | - | - | - |
+| `subdomain_takeover` | ✓ | - | - (informacional — defensiva) | - |
 | `reverse_ip` | - | futuro | futuro | - |
 | LLM Assessment | - | pós-enrichment | - (separado) | - (consumidor) |
 
