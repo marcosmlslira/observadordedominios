@@ -298,6 +298,13 @@ def _apply_page_adjustments(tool_data: dict | None, score: float, signals: list[
     if "infrastructure_masking" in categories:
         score += 0.08
         signals.append(_signal("shielded_infrastructure", "medium", "Site is fronted by shielding infrastructure often seen in abuse cases."))
+    if "phishing_kit_infrastructure" in categories:
+        score += 0.15
+        signals.append(_signal(
+            "phishing_kit_indicator",
+            "high",
+            "Page exhibits patterns consistent with PhaaS/phishing kit infrastructure.",
+        ))
 
     return score, signals
 
@@ -637,6 +644,7 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "page_disposition": result.get("page_disposition"),
             "has_login_form": result.get("has_login_form"),
             "has_credential_inputs": result.get("has_credential_inputs"),
+            "has_phishing_kit_indicators": result.get("has_phishing_kit_indicators", False),
             "data_quality": result.get("data_quality"),
         }
     if tool_type == "email_security":

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import urlparse
 
 import httpx
 try:
@@ -65,6 +66,33 @@ CHALLENGE_PATTERNS = (
     "service unavailable",
 )
 
+# PhaaS / phishing kit infrastructure patterns
+PHAAS_PATH_PATTERNS: tuple[str, ...] = (
+    "/__utm.gif",
+    "/__open.gif",
+    "/track/open",
+    "/track/click",
+    "/panel/login",
+    "/admin/login.php",
+    "/admin/index.php",
+    "/cp/login",
+    "/api/collect",
+    "/api/submit",
+    "/api/capture",
+    "/submit.php",
+    "/gate.php",
+)
+
+PHAAS_BODY_PATTERNS: tuple[str, ...] = (
+    "evilginx",
+    "modlishka",
+    "robin banks",
+    "darcula",
+    "collectdata(",
+    "sendtogate(",
+    "exfil(",
+)
+
 
 class SuspiciousPageService(BaseToolService):
     tool_type = "suspicious_page"
@@ -86,6 +114,7 @@ class SuspiciousPageService(BaseToolService):
                 "page_disposition": "unreachable",
                 "has_login_form": False,
                 "has_credential_inputs": False,
+                "has_phishing_kit_indicators": False,
                 "external_resource_count": 0,
                 "confidence": 0.0,
                 "data_quality": "inconclusive",
@@ -195,8 +224,35 @@ class SuspiciousPageService(BaseToolService):
                     })
                     break
 
+        # Check PhaaS / phishing kit patterns
+        has_phishing_kit_indicators = False
+        try:
+            url_path = urlparse(final_url).path.lower()
+        except Exception:
+            url_path = ""
+
+        for pattern in PHAAS_PATH_PATTERNS:
+            if pattern in url_path:
+                has_phishing_kit_indicators = True
+                signals.append({
+                    "category": "phishing_kit_infrastructure",
+                    "description": f"URL path matches PhaaS pattern: {pattern}",
+                    "severity": "high",
+                })
+                break
+
+        if not has_phishing_kit_indicators:
+            for pattern in PHAAS_BODY_PATTERNS:
+                if pattern in text_content:
+                    has_phishing_kit_indicators = True
+                    signals.append({
+                        "category": "phishing_kit_infrastructure",
+                        "description": f"Page content matches PhaaS pattern: {pattern}",
+                        "severity": "high",
+                    })
+                    break
+
         # Check external resources
-        external_count = 0
         for tag in soup.find_all(["script", "link", "img"]):
             src = tag.get("src") or tag.get("href") or ""
             if src.startswith("http") and target not in src:
@@ -238,6 +294,7 @@ class SuspiciousPageService(BaseToolService):
             "page_disposition": page_disposition,
             "has_login_form": has_login_form,
             "has_credential_inputs": has_credential_inputs,
+            "has_phishing_kit_indicators": has_phishing_kit_indicators,
             "external_resource_count": external_count,
             "confidence": 0.45 if page_disposition == "challenge" else 0.85,
             "data_quality": data_quality,
