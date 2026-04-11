@@ -23,6 +23,7 @@ ToolType = Literal[
     "ip_geolocation",
     "domain_similarity",
     "website_clone",
+    "subdomain_takeover_check",
 ]
 
 ToolStatus = Literal["running", "completed", "failed", "timeout"]
