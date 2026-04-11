@@ -72,6 +72,7 @@ def enrich_similarity_match(
         dns_tool_data=tool_results.get("dns_lookup"),
     )
     score, signals = _apply_geo_adjustments(tool_results.get("ip_geolocation"), score, signals)
+    score, signals = _apply_safe_browsing_adjustments(tool_results.get("safe_browsing"), score, signals)
 
     ownership_classification, self_owned = _derive_ownership(brand, match, tool_results)
 
@@ -151,6 +152,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
     from app.services.use_cases.tools.screenshot_capture import ScreenshotCaptureService
     from app.services.use_cases.tools.ssl_check import SslCheckService
     from app.services.use_cases.tools.suspicious_page import SuspiciousPageService
+    from app.services.use_cases.tools.safe_browsing_check import SafeBrowsingCheckService
     from app.services.use_cases.tools.whois_lookup import WhoisLookupService
 
     services = {
@@ -162,6 +164,7 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
         "ip_geolocation": IpGeolocationService(),
         "ssl_check": SslCheckService(),
         "screenshot": ScreenshotCaptureService(),
+        "safe_browsing": SafeBrowsingCheckService(),
     }
 
     results: dict[str, dict] = {}
@@ -366,6 +369,28 @@ def _apply_geo_adjustments(tool_data: dict | None, score: float, signals: list[d
         score += 0.08
         signals.append(_signal("shielded_hosting_provider", "medium", "Infrastructure is associated with DDoS-Guard."))
 
+    return score, signals
+
+
+def _apply_safe_browsing_adjustments(
+    tool_data: dict | None,
+    score: float,
+    signals: list[dict[str, object]],
+) -> tuple[float, list[dict[str, object]]]:
+    if not tool_data or tool_data.get("status") != "completed":
+        return score, signals
+    result = tool_data.get("result") or {}
+    if result.get("skipped"):
+        return score, signals
+    if result.get("is_listed"):
+        score += 0.30
+        threat_types = result.get("threat_types") or []
+        description = (
+            f"Domain is listed in Google Safe Browsing ({', '.join(threat_types)})."
+            if threat_types
+            else "Domain is listed in Google Safe Browsing."
+        )
+        signals.append(_signal("safe_browsing_hit", "critical", description))
     return score, signals
 
 
@@ -668,6 +693,12 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "country_code": result.get("country_code"),
             "org": result.get("org"),
             "asn": result.get("asn"),
+        }
+    if tool_type == "safe_browsing":
+        return {
+            "is_listed": result.get("is_listed"),
+            "threat_types": result.get("threat_types") or [],
+            "skipped": result.get("skipped", False),
         }
     return result
 

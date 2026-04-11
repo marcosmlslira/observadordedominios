@@ -16,6 +16,7 @@ from app.services.use_cases.tools.suspicious_page import SuspiciousPageService
 from app.services.use_cases.tools.subdomain_takeover_check import SubdomainTakeoverCheckService
 from app.services.use_cases.tools.website_clone import WebsiteCloneService
 from app.services.use_cases.tools.whois_lookup import WhoisLookupService
+from app.services.use_cases.tools.safe_browsing_check import SafeBrowsingCheckService
 
 
 def register_all_tools() -> None:
@@ -35,3 +36,4 @@ def register_all_tools() -> None:
     register_tool(DomainSimilarityService())
     register_tool(WebsiteCloneService())
     register_tool(SubdomainTakeoverCheckService())
+    register_tool(SafeBrowsingCheckService())

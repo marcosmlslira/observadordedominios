@@ -179,6 +179,13 @@ def subdomain_takeover_check(body: ToolRequest, force: bool = Query(False), db: 
     return result
 
 
+@router.post("/safe-browsing-check", response_model=ToolResponse, summary="Google Safe Browsing Check")
+def safe_browsing_check(body: ToolRequest, force: bool = Query(False), db: Session = Depends(get_db)):
+    result = _run_tool("safe_browsing_check", body, db, force)
+    db.commit()
+    return result
+
+
 @public_router.get("/screenshots/{object_path:path}", include_in_schema=False)
 def get_screenshot(object_path: str):
     object_key = f"tools/screenshots/{object_path.lstrip('/')}"
