@@ -6,6 +6,7 @@ import logging
 import re
 
 import dns.resolver
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,64 @@ def _spoofing_risk_score(spf: dict, dmarc: dict, dkim: dict) -> dict:
     return {"score": score, "level": level}
 
 
+def _check_mta_sts(domain: str) -> dict:
+    """Check MTA-STS policy.
+
+    MTA-STS requer:
+    1. TXT record em _mta-sts.<domain> com formato "v=STSv1; id=<policy_id>"
+    2. Policy file em https://mta-sts.<domain>/.well-known/mta-sts.txt
+
+    Returns:
+        {
+            "has_record": bool,
+            "has_policy_file": bool,
+            "mode": str | None,       # "enforce" | "testing" | "none"
+            "policy_id": str | None,
+        }
+    """
+    # 1. TXT record
+    has_record = False
+    policy_id = None
+    txt_name = f"_mta-sts.{domain}"
+    try:
+        answers = dns.resolver.resolve(txt_name, "TXT", lifetime=5)
+        for rdata in answers:
+            for s in rdata.strings:
+                decoded = s.decode("utf-8", errors="replace")
+                if decoded.startswith("v=STSv1"):
+                    has_record = True
+                    for part in decoded.split(";"):
+                        part = part.strip()
+                        if part.startswith("id="):
+                            policy_id = part[3:].strip()
+                    break
+    except Exception:
+        pass
+
+    # 2. Policy file
+    has_policy_file = False
+    mode = None
+    policy_url = f"https://mta-sts.{domain}/.well-known/mta-sts.txt"
+    try:
+        resp = httpx.get(policy_url, timeout=5, follow_redirects=False)
+        if resp.status_code == 200:
+            has_policy_file = True
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if line.startswith("mode:"):
+                    mode = line.split(":", 1)[1].strip().lower()
+                    break
+    except Exception:
+        pass
+
+    return {
+        "has_record": has_record,
+        "has_policy_file": has_policy_file,
+        "mode": mode,
+        "policy_id": policy_id,
+    }
+
+
 def check_email_security(domain: str) -> dict:
     """Run SPF, DMARC, and DKIM checks for a domain."""
     spf = _parse_spf(domain)
@@ -197,10 +256,13 @@ def check_email_security(domain: str) -> dict:
     dkim = _check_dkim(domain)
     spoofing_risk = _spoofing_risk_score(spf, dmarc, dkim)
 
+    mta_sts = _check_mta_sts(domain)
+
     return {
         "domain": domain,
         "spf": spf,
         "dmarc": dmarc,
         "dkim": dkim,
         "spoofing_risk": spoofing_risk,
+        "mta_sts": mta_sts,
     }

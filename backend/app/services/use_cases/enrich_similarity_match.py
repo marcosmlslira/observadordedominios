@@ -640,7 +640,7 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "data_quality": result.get("data_quality"),
         }
     if tool_type == "email_security":
-        return {"spoofing_risk": result.get("spoofing_risk")}
+        return {"spoofing_risk": result.get("spoofing_risk"), "mta_sts_mode": (result.get("mta_sts") or {}).get("mode")}
     if tool_type == "ssl_check":
         cert = result.get("certificate") or {}
         return {
