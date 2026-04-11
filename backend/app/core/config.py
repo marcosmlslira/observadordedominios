@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     TOOLS_CACHE_IP_GEOLOCATION: int = 86400
     TOOLS_CACHE_DOMAIN_SIMILARITY: int = 86400
     TOOLS_CACHE_WEBSITE_CLONE: int = 3600
+    TOOLS_CACHE_SUBDOMAIN_TAKEOVER: int = 21600  # 6 horas
 
     # Rate limits (per hour per org)
     TOOLS_RATE_PER_TOOL: int = 30

@@ -13,6 +13,7 @@ from app.services.use_cases.tools.reverse_ip import ReverseIpService
 from app.services.use_cases.tools.screenshot_capture import ScreenshotCaptureService
 from app.services.use_cases.tools.ssl_check import SslCheckService
 from app.services.use_cases.tools.suspicious_page import SuspiciousPageService
+from app.services.use_cases.tools.subdomain_takeover_check import SubdomainTakeoverCheckService
 from app.services.use_cases.tools.website_clone import WebsiteCloneService
 from app.services.use_cases.tools.whois_lookup import WhoisLookupService
 
@@ -33,3 +34,4 @@ def register_all_tools() -> None:
     register_tool(IpGeolocationService())
     register_tool(DomainSimilarityService())
     register_tool(WebsiteCloneService())
+    register_tool(SubdomainTakeoverCheckService())

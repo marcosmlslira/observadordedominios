@@ -27,6 +27,7 @@ class MonitoredBrandDomain(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
+    takeover_status = Column(String(16), nullable=True)
 
     brand = relationship("MonitoredBrand", back_populates="domains")
 
