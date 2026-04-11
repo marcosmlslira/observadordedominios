@@ -64,9 +64,21 @@ def _build_priority_cases(tlds: list[str], priority: int) -> str:
 
 
 def upgrade() -> None:
-    op.add_column(
-        "ingestion_tld_policy",
-        sa.Column("priority", sa.Integer(), nullable=True),
+    # Use IF NOT EXISTS so this migration is safe to re-run if the column
+    # was added manually before the image was rebuilt.
+    conn = op.get_bind()
+    conn.execute(
+        sa.text(
+            "ALTER TABLE ingestion_tld_policy "
+            "ADD COLUMN IF NOT EXISTS priority INTEGER;"
+        )
+    )
+
+    # Index — drop and recreate to be idempotent
+    conn.execute(
+        sa.text(
+            "DROP INDEX IF EXISTS ix_ingestion_tld_policy_priority;"
+        )
     )
     op.create_index(
         "ix_ingestion_tld_policy_priority",
@@ -75,10 +87,8 @@ def upgrade() -> None:
     )
 
     # Seed priorities for openintel TLDs
-    conn = op.get_bind()
     conn.execute(sa.text(_build_priority_cases(_P1_OPENINTEL, 1)))
     conn.execute(sa.text(_build_priority_cases(_P2_OPENINTEL, 2)))
-    # IDN TLDs get priority 3
     conn.execute(
         sa.text(
             "UPDATE ingestion_tld_policy SET priority = 3 "
@@ -96,5 +106,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_ingestion_tld_policy_priority", table_name="ingestion_tld_policy")
-    op.drop_column("ingestion_tld_policy", "priority")
+    op.execute("DROP INDEX IF EXISTS ix_ingestion_tld_policy_priority")
+    op.execute("ALTER TABLE ingestion_tld_policy DROP COLUMN IF EXISTS priority")
