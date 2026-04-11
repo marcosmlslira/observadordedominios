@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     TOOLS_PLACEHOLDER_ORG_ID: str = "00000000-0000-0000-0000-000000000001"
     GOOGLE_SAFE_BROWSING_API_KEY: str = ""
     PHISHTANK_APP_KEY: str = ""
+    URLHAUS_AUTH_TOKEN: str = ""
 
     # Cache TTLs (seconds)
     TOOLS_CACHE_DNS_LOOKUP: int = 300

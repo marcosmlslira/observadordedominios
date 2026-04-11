@@ -413,7 +413,7 @@ def _apply_threat_feed_adjustments(
     # URLhaus
     if urlhaus_data and urlhaus_data.get("status") == "completed":
         result = urlhaus_data.get("result") or {}
-        if result.get("is_listed"):
+        if not result.get("skipped") and result.get("is_listed"):
             count = result.get("urls_count") or 0
             score += 0.20
             signals.append(_signal(
@@ -432,7 +432,8 @@ def _apply_threat_feed_adjustments(
                 "critical",
                 "Domain has a verified and active phishing URL in PhishTank.",
             ))
-        elif result.get("in_database"):
+        elif result.get("in_database") and not result.get("verified"):
+            # In database but community has not verified yet — emerging threat
             score += 0.12
             signals.append(_signal(
                 "phishtank_in_database",
@@ -754,6 +755,7 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "is_listed": result.get("is_listed"),
             "urls_count": result.get("urls_count"),
             "query_status": result.get("query_status"),
+            "skipped": result.get("skipped", False),
         }
     if tool_type == "phishtank":
         return {
