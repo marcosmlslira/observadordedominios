@@ -25,6 +25,8 @@ ToolType = Literal[
     "website_clone",
     "subdomain_takeover_check",
     "safe_browsing_check",
+    "urlhaus_check",
+    "phishtank_check",
 ]
 
 ToolStatus = Literal["running", "completed", "failed", "timeout"]

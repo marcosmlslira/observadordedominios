@@ -186,6 +186,20 @@ def safe_browsing_check(body: ToolRequest, force: bool = Query(False), db: Sessi
     return result
 
 
+@router.post("/urlhaus-check", response_model=ToolResponse, summary="URLhaus Malware Feed Check")
+def urlhaus_check(body: ToolRequest, force: bool = Query(False), db: Session = Depends(get_db)):
+    result = _run_tool("urlhaus_check", body, db, force)
+    db.commit()
+    return result
+
+
+@router.post("/phishtank-check", response_model=ToolResponse, summary="PhishTank Phishing Check")
+def phishtank_check(body: ToolRequest, force: bool = Query(False), db: Session = Depends(get_db)):
+    result = _run_tool("phishtank_check", body, db, force)
+    db.commit()
+    return result
+
+
 @public_router.get("/screenshots/{object_path:path}", include_in_schema=False)
 def get_screenshot(object_path: str):
     object_key = f"tools/screenshots/{object_path.lstrip('/')}"

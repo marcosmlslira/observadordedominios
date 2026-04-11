@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     TOOLS_SCREENSHOT_TIMEOUT_SECONDS: int = 45
     TOOLS_PLACEHOLDER_ORG_ID: str = "00000000-0000-0000-0000-000000000001"
     GOOGLE_SAFE_BROWSING_API_KEY: str = ""
+    PHISHTANK_APP_KEY: str = ""
 
     # Cache TTLs (seconds)
     TOOLS_CACHE_DNS_LOOKUP: int = 300
@@ -111,6 +112,8 @@ class Settings(BaseSettings):
     TOOLS_CACHE_WEBSITE_CLONE: int = 3600
     TOOLS_CACHE_SUBDOMAIN_TAKEOVER: int = 21600  # 6 horas
     TOOLS_CACHE_SAFE_BROWSING_CHECK: int = 3600
+    TOOLS_CACHE_URLHAUS_CHECK: int = 3600
+    TOOLS_CACHE_PHISHTANK_CHECK: int = 3600
 
     # Rate limits (per hour per org)
     TOOLS_RATE_PER_TOOL: int = 30

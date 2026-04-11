@@ -17,6 +17,8 @@ from app.services.use_cases.tools.subdomain_takeover_check import SubdomainTakeo
 from app.services.use_cases.tools.website_clone import WebsiteCloneService
 from app.services.use_cases.tools.whois_lookup import WhoisLookupService
 from app.services.use_cases.tools.safe_browsing_check import SafeBrowsingCheckService
+from app.services.use_cases.tools.urlhaus_check import UrlhausCheckService
+from app.services.use_cases.tools.phishtank_check import PhishTankCheckService
 
 
 def register_all_tools() -> None:
@@ -37,3 +39,5 @@ def register_all_tools() -> None:
     register_tool(WebsiteCloneService())
     register_tool(SubdomainTakeoverCheckService())
     register_tool(SafeBrowsingCheckService())
+    register_tool(UrlhausCheckService())
+    register_tool(PhishTankCheckService())

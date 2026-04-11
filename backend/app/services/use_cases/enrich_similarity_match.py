@@ -73,6 +73,12 @@ def enrich_similarity_match(
     )
     score, signals = _apply_geo_adjustments(tool_results.get("ip_geolocation"), score, signals)
     score, signals = _apply_safe_browsing_adjustments(tool_results.get("safe_browsing"), score, signals)
+    score, signals = _apply_threat_feed_adjustments(
+        tool_results.get("urlhaus"),
+        tool_results.get("phishtank"),
+        score,
+        signals,
+    )
 
     ownership_classification, self_owned = _derive_ownership(brand, match, tool_results)
 
@@ -153,6 +159,8 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
     from app.services.use_cases.tools.ssl_check import SslCheckService
     from app.services.use_cases.tools.suspicious_page import SuspiciousPageService
     from app.services.use_cases.tools.safe_browsing_check import SafeBrowsingCheckService
+    from app.services.use_cases.tools.urlhaus_check import UrlhausCheckService
+    from app.services.use_cases.tools.phishtank_check import PhishTankCheckService
     from app.services.use_cases.tools.whois_lookup import WhoisLookupService
 
     services = {
@@ -165,6 +173,8 @@ def _run_enrichment_tools(db: Session, domain: str) -> dict[str, dict]:
         "ssl_check": SslCheckService(),
         "screenshot": ScreenshotCaptureService(),
         "safe_browsing": SafeBrowsingCheckService(),
+        "urlhaus": UrlhausCheckService(),
+        "phishtank": PhishTankCheckService(),
     }
 
     results: dict[str, dict] = {}
@@ -391,6 +401,45 @@ def _apply_safe_browsing_adjustments(
             else "Domain is listed in Google Safe Browsing."
         )
         signals.append(_signal("safe_browsing_hit", "critical", description))
+    return score, signals
+
+
+def _apply_threat_feed_adjustments(
+    urlhaus_data: dict | None,
+    phishtank_data: dict | None,
+    score: float,
+    signals: list[dict[str, object]],
+) -> tuple[float, list[dict[str, object]]]:
+    # URLhaus
+    if urlhaus_data and urlhaus_data.get("status") == "completed":
+        result = urlhaus_data.get("result") or {}
+        if result.get("is_listed"):
+            count = result.get("urls_count") or 0
+            score += 0.20
+            signals.append(_signal(
+                "urlhaus_malware_listed",
+                "high",
+                f"Domain is listed in URLhaus with {count} associated malware URL(s).",
+            ))
+
+    # PhishTank
+    if phishtank_data and phishtank_data.get("status") == "completed":
+        result = phishtank_data.get("result") or {}
+        if result.get("verified") and result.get("valid"):
+            score += 0.28
+            signals.append(_signal(
+                "phishtank_verified_phish",
+                "critical",
+                "Domain has a verified and active phishing URL in PhishTank.",
+            ))
+        elif result.get("in_database"):
+            score += 0.12
+            signals.append(_signal(
+                "phishtank_in_database",
+                "high",
+                "Domain appears in PhishTank database (not yet community-verified).",
+            ))
+
     return score, signals
 
 
@@ -699,6 +748,18 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "is_listed": result.get("is_listed"),
             "threat_types": result.get("threat_types") or [],
             "skipped": result.get("skipped", False),
+        }
+    if tool_type == "urlhaus":
+        return {
+            "is_listed": result.get("is_listed"),
+            "urls_count": result.get("urls_count"),
+            "query_status": result.get("query_status"),
+        }
+    if tool_type == "phishtank":
+        return {
+            "in_database": result.get("in_database"),
+            "verified": result.get("verified"),
+            "valid": result.get("valid"),
         }
     return result
 
