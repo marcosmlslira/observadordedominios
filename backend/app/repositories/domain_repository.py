@@ -15,10 +15,13 @@ logger = logging.getLogger(__name__)
 def ensure_partition(db: Session, tld: str) -> None:
     """Create a partition for the TLD if it doesn't exist yet.
 
-    Uses lock_timeout='0' (non-blocking) so the DDL never queues an
+    Uses lock_timeout=1ms (non-blocking) so the DDL never queues an
     ACCESS EXCLUSIVE lock that would cascade-block concurrent INSERTs.
     If the lock is unavailable, rolls back cleanly and re-raises so the
     caller can skip this TLD and retry on the next cycle.
+
+    NOTE: lock_timeout=0 would DISABLE the timeout (wait forever), which is
+    the PostgreSQL default. We use lock_timeout=1 (1ms) to fail immediately.
 
     Handles multi-level TLDs: dots and hyphens are replaced with underscores
     in the partition name, but the actual TLD value is preserved in FOR VALUES IN.
@@ -37,9 +40,10 @@ def ensure_partition(db: Session, tld: str) -> None:
 
     if not exists:
         try:
-            # lock_timeout='0' means fail immediately if ACCESS EXCLUSIVE is unavailable
+            # lock_timeout=1 (1ms) means fail immediately if ACCESS EXCLUSIVE is unavailable
             # instead of queueing — prevents cascading stalls of concurrent INSERTs.
-            db.execute(text("SET LOCAL lock_timeout = '0'"))
+            # IMPORTANT: '0' would disable the timeout (PostgreSQL default), not enable it!
+            db.execute(text("SET LOCAL lock_timeout = 1"))
             db.execute(text(
                 f"CREATE TABLE {partition_name} PARTITION OF domain "
                 f"FOR VALUES IN ('{tld}')"
