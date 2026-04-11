@@ -54,7 +54,10 @@ class IngestionConfigRepository:
         return (
             self.db.query(IngestionTldPolicy)
             .filter(IngestionTldPolicy.source == source)
-            .order_by(IngestionTldPolicy.tld)
+            .order_by(
+                IngestionTldPolicy.priority.nulls_last(),
+                IngestionTldPolicy.tld,
+            )
             .all()
         )
 

@@ -183,7 +183,7 @@ services:
       - OPENINTEL_S3_PREFIX=fdns/basis=zonefile/
       - OPENINTEL_S3_QNAME_COLUMN=query_name
       - OPENINTEL_MAX_LOOKBACK_DAYS=1
-      - OPENINTEL_SYNC_CRON=0 2 * * *
+      - OPENINTEL_SYNC_CRON=0 13 * * *
     command: ["python", "-m", "app.worker.openintel_ingestor"]
     networks:
       - app-network

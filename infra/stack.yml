@@ -110,7 +110,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - OPENINTEL_ENABLED_TLDS=br,uk,de,fr,au,ca,nl,eu
-      - OPENINTEL_SYNC_CRON=0 2 * * *
+      - OPENINTEL_SYNC_CRON=0 13 * * *
     networks:
       - app-network
     depends_on:
