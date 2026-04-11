@@ -123,13 +123,25 @@ def check_ssl(domain: str, port: int = DEFAULT_PORT) -> dict:
 
 
 def _check_ocsp(cert_der: bytes) -> str:
-    """Check certificate revocation via OCSP. Returns: "good"|"revoked"|"unknown"|"unavailable"."""
+    """Check certificate revocation. Tries OCSP first, falls back to CRL.
+
+    Returns: "good"|"revoked"|"unknown"|"unavailable".
+    """
     try:
         cert = x509.load_der_x509_certificate(cert_der)
     except Exception as exc:
         logger.debug("Failed to parse DER certificate: %s", exc)
         return "unavailable"
 
+    result = _check_ocsp_protocol(cert)
+    if result != "unavailable":
+        return result
+
+    return _check_crl(cert)
+
+
+def _check_ocsp_protocol(cert: x509.Certificate) -> str:
+    """Check revocation via OCSP protocol."""
     ocsp_url = _extract_ocsp_url(cert)
     if not ocsp_url:
         return "unavailable"
@@ -156,17 +168,40 @@ def _check_ocsp(cert_der: bytes) -> str:
         )
         resp.raise_for_status()
         ocsp_response = x509_ocsp.load_der_ocsp_response(resp.content)
+        if ocsp_response.response_status != x509_ocsp.OCSPResponseStatus.SUCCESSFUL:
+            logger.debug("OCSP response_status not SUCCESSFUL: %s", ocsp_response.response_status)
+            return "unavailable"
+        status = ocsp_response.certificate_status
     except Exception as exc:
         logger.debug("OCSP request failed for %s: %s", ocsp_url, exc)
         return "unavailable"
 
-    status = ocsp_response.certificate_status
     if status == x509_ocsp.OCSPCertStatus.GOOD:
         return "good"
     elif status == x509_ocsp.OCSPCertStatus.REVOKED:
         return "revoked"
-    else:
-        return "unknown"
+    return "unknown"
+
+
+def _check_crl(cert: x509.Certificate) -> str:
+    """Check revocation via CRL Distribution Points (fallback when OCSP unavailable)."""
+    try:
+        ext = cert.extensions.get_extension_for_oid(ExtensionOID.CRL_DISTRIBUTION_POINTS)
+        for dp in ext.value:
+            for gn in (dp.full_name or []):
+                crl_url = gn.value
+                resp = httpx.get(crl_url, timeout=OCSP_TIMEOUT)
+                resp.raise_for_status()
+                crl = x509.load_der_x509_crl(resp.content)
+                revoked = crl.get_revoked_certificate_by_serial_number(cert.serial_number)
+                if revoked is not None:
+                    return "revoked"
+                return "good"
+    except x509.ExtensionNotFound:
+        pass
+    except Exception as exc:
+        logger.debug("CRL check failed: %s", exc)
+    return "unavailable"
 
 
 def _extract_ocsp_url(cert: x509.Certificate) -> str | None:
