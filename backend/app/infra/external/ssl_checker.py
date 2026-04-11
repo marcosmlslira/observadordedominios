@@ -7,10 +7,18 @@ import socket
 import ssl
 from datetime import datetime, timezone
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.x509 import ocsp as x509_ocsp
+from cryptography.x509.oid import ExtensionOID
+
+import httpx
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_PORT = 443
 CONNECT_TIMEOUT = 10
+OCSP_TIMEOUT = 5
 
 
 def check_ssl(domain: str, port: int = DEFAULT_PORT) -> dict:
@@ -31,6 +39,7 @@ def check_ssl(domain: str, port: int = DEFAULT_PORT) -> dict:
         with socket.create_connection((domain, port), timeout=CONNECT_TIMEOUT) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                 cert = ssock.getpeercert()
+                cert_der = ssock.getpeercert(binary_form=True)
                 if not cert:
                     issues.append("No certificate returned")
                     return {
@@ -86,6 +95,7 @@ def check_ssl(domain: str, port: int = DEFAULT_PORT) -> dict:
                     "san": san_list,
                     "signature_algorithm": None,
                     "version": cert.get("version"),
+                    "ocsp_status": _check_ocsp(cert_der) if cert_der else "unavailable",
                 }
 
                 # Chain length from peercert chain (approximation)
@@ -110,3 +120,81 @@ def check_ssl(domain: str, port: int = DEFAULT_PORT) -> dict:
         "cipher_suite": cipher_suite,
         "issues": issues,
     }
+
+
+def _check_ocsp(cert_der: bytes) -> str:
+    """Check certificate revocation via OCSP. Returns: "good"|"revoked"|"unknown"|"unavailable"."""
+    try:
+        cert = x509.load_der_x509_certificate(cert_der)
+    except Exception as exc:
+        logger.debug("Failed to parse DER certificate: %s", exc)
+        return "unavailable"
+
+    ocsp_url = _extract_ocsp_url(cert)
+    if not ocsp_url:
+        return "unavailable"
+
+    issuer_cert = _fetch_issuer_cert(cert)
+    if not issuer_cert:
+        return "unavailable"
+
+    try:
+        builder = x509_ocsp.OCSPRequestBuilder()
+        builder = builder.add_certificate(cert, issuer_cert, hashes.SHA1())
+        ocsp_request = builder.build()
+        request_data = ocsp_request.public_bytes(serialization.Encoding.DER)
+    except Exception as exc:
+        logger.debug("Failed to build OCSP request: %s", exc)
+        return "unavailable"
+
+    try:
+        resp = httpx.post(
+            ocsp_url,
+            content=request_data,
+            headers={"Content-Type": "application/ocsp-request"},
+            timeout=OCSP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        ocsp_response = x509_ocsp.load_der_ocsp_response(resp.content)
+    except Exception as exc:
+        logger.debug("OCSP request failed for %s: %s", ocsp_url, exc)
+        return "unavailable"
+
+    status = ocsp_response.certificate_status
+    if status == x509_ocsp.OCSPCertStatus.GOOD:
+        return "good"
+    elif status == x509_ocsp.OCSPCertStatus.REVOKED:
+        return "revoked"
+    else:
+        return "unknown"
+
+
+def _extract_ocsp_url(cert: x509.Certificate) -> str | None:
+    """Extract OCSP responder URL from authorityInfoAccess extension."""
+    try:
+        aia = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_INFORMATION_ACCESS)
+        for access_desc in aia.value:
+            if access_desc.access_method == x509.AuthorityInformationAccessOID.OCSP:
+                return access_desc.access_location.value
+    except x509.ExtensionNotFound:
+        pass
+    except Exception as exc:
+        logger.debug("Failed to extract OCSP URL: %s", exc)
+    return None
+
+
+def _fetch_issuer_cert(cert: x509.Certificate) -> x509.Certificate | None:
+    """Fetch issuer certificate via caIssuers AIA extension."""
+    try:
+        aia = cert.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_INFORMATION_ACCESS)
+        for access_desc in aia.value:
+            if access_desc.access_method == x509.AuthorityInformationAccessOID.CA_ISSUERS:
+                issuer_url = access_desc.access_location.value
+                resp = httpx.get(issuer_url, timeout=OCSP_TIMEOUT)
+                resp.raise_for_status()
+                return x509.load_der_x509_certificate(resp.content)
+    except x509.ExtensionNotFound:
+        pass
+    except Exception as exc:
+        logger.debug("Failed to fetch issuer cert: %s", exc)
+    return None

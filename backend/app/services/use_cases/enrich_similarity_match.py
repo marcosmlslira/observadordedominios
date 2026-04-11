@@ -72,6 +72,7 @@ def enrich_similarity_match(
         dns_tool_data=tool_results.get("dns_lookup"),
     )
     score, signals = _apply_geo_adjustments(tool_results.get("ip_geolocation"), score, signals)
+    score, signals = _apply_ssl_adjustments(tool_results.get("ssl_check"), score, signals)
     score, signals = _apply_safe_browsing_adjustments(tool_results.get("safe_browsing"), score, signals)
     score, signals = _apply_threat_feed_adjustments(
         tool_results.get("urlhaus"),
@@ -378,6 +379,28 @@ def _apply_geo_adjustments(tool_data: dict | None, score: float, signals: list[d
     if "ddos-guard" in org.lower() or "ddos-guard" in asn.lower():
         score += 0.08
         signals.append(_signal("shielded_hosting_provider", "medium", "Infrastructure is associated with DDoS-Guard."))
+
+    return score, signals
+
+
+def _apply_ssl_adjustments(
+    tool_data: dict | None,
+    score: float,
+    signals: list[dict[str, object]],
+) -> tuple[float, list[dict[str, object]]]:
+    if not tool_data or tool_data.get("status") != "completed":
+        return score, signals
+    result = tool_data.get("result") or {}
+    cert = result.get("certificate") or {}
+    ocsp_status = cert.get("ocsp_status")
+
+    if ocsp_status == "revoked":
+        score += 0.25
+        signals.append(_signal(
+            "certificate_revoked",
+            "critical",
+            "SSL certificate has been revoked by the issuing CA.",
+        ))
 
     return score, signals
 
@@ -731,6 +754,7 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "issuer": cert.get("issuer"),
             "days_remaining": cert.get("days_remaining"),
             "san_count": len(cert.get("san") or []),
+            "ocsp_status": cert.get("ocsp_status"),
         }
     if tool_type == "screenshot":
         return {
