@@ -622,6 +622,7 @@ def _compact_summary(tool_type: str, result: dict) -> dict:
             "record_types": types_found,
             "has_mx": "MX" in types_found,
             "has_a": "A" in types_found or "AAAA" in types_found,
+            "has_caa": "CAA" in types_found,
             "nameservers": result.get("nameservers") or [],
         }
     if tool_type == "http_headers":

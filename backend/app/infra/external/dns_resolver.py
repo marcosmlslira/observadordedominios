@@ -11,7 +11,7 @@ import dns.rdatatype
 logger = logging.getLogger(__name__)
 
 # Record types to query by default
-DEFAULT_RECORD_TYPES = ["A", "AAAA", "MX", "NS", "TXT", "CNAME", "SOA"]
+DEFAULT_RECORD_TYPES = ["A", "AAAA", "MX", "NS", "TXT", "CNAME", "SOA", "CAA"]
 
 
 def resolve_domain(domain: str, record_types: list[str] | None = None) -> dict:
