@@ -38,6 +38,21 @@ STOP_EVENT = threading.Event()
 _active_cron: str = settings.CZDS_SYNC_CRON
 _scheduler_ref = None  # set to BlockingScheduler in main()
 
+
+def _shutdown(signum, frame) -> None:
+    """SIGTERM/SIGINT handler — stops after the current TLD finishes.
+
+    Registered at the very start of main() so Docker stop_grace_period works
+    even during the initial multi-hour catchup cycle.
+    """
+    logger.info(
+        "Received signal %s. Finishing current TLD before stopping.",
+        signum,
+    )
+    STOP_EVENT.set()
+    if _scheduler_ref is not None and _scheduler_ref.running:
+        _scheduler_ref.shutdown(wait=False)
+
 _SIZE_THRESHOLD = 1_000_000  # TLDs abaixo deste valor rodam em paralelo
 _PARALLEL_WORKERS = 4
 
@@ -304,6 +319,11 @@ def run_catchup_cycle() -> None:
 
 
 def main() -> None:
+    # Register signal handlers BEFORE the initial sync so Docker stop_grace_period
+    # works even if the container receives SIGTERM during the multi-hour catchup cycle.
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
     logger.info("CZDS Ingestor Worker starting…")
     logger.info("Cron schedule: %s", settings.CZDS_SYNC_CRON)
 
@@ -335,19 +355,6 @@ def main() -> None:
         max_instances=1,
         coalesce=True,
     )
-
-    # Graceful shutdown
-    def _shutdown(signum, frame):
-        logger.info(
-            "Received signal %s. Finishing the current TLD before stopping the worker.",
-            signum,
-        )
-        STOP_EVENT.set()
-        if scheduler.running:
-            scheduler.shutdown(wait=False)
-
-    signal.signal(signal.SIGTERM, _shutdown)
-    signal.signal(signal.SIGINT, _shutdown)
 
     logger.info("Scheduler started. Waiting for next trigger…")
     try:
