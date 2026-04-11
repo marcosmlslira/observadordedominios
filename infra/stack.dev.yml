@@ -118,7 +118,7 @@ services:
       - CZDS_USERNAME=marcosmlslira@gmail.com
       - CZDS_PASSWORD=mls1509TI@,,2099
       - CZDS_ENABLED_TLDS=com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
-      - CZDS_SYNC_CRON=0 7 * * *
+      - CZDS_SYNC_CRON=0 17 * * *
       - CZDS_FORCE_COOLDOWN_HOURS=24
       - CZDS_RUNNING_STALE_MINUTES=480
     command: ["python", "-m", "app.worker.czds_ingestor"]
