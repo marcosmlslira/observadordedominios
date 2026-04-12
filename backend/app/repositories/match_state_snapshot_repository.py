@@ -125,6 +125,25 @@ class MatchStateSnapshotRepository:
         )
         return {bucket: count for bucket, count in rows}
 
+    def count_by_bucket_active(self, brand_id: UUID) -> dict[str, int]:
+        """Return counts per bucket, excluding auto-dismissed matches."""
+        from sqlalchemy import func
+        from app.models.similarity_match import SimilarityMatch
+        rows = (
+            self.db.query(
+                MatchStateSnapshot.derived_bucket,
+                func.count(MatchStateSnapshot.id),
+            )
+            .join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id)
+            .filter(
+                MatchStateSnapshot.brand_id == brand_id,
+                SimilarityMatch.auto_disposition.is_(None),
+            )
+            .group_by(MatchStateSnapshot.derived_bucket)
+            .all()
+        )
+        return {bucket: count for bucket, count in rows}
+
     def needs_llm_assessment(
         self,
         *,
