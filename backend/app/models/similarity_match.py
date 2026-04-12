@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from app.models.base import Base
@@ -64,6 +64,15 @@ class SimilarityMatch(Base):
     matched_seed_type = Column(String(32), nullable=True)
     matched_rule = Column(String(32), nullable=True)
     source_stream = Column(String(32), nullable=True)
+
+    # ── Event-sourced monitoring fields ───────────────────────────
+    state_fingerprint = Column(String(64), nullable=True)
+    last_fingerprint_at = Column(DateTime(timezone=True), nullable=True)
+    auto_disposition = Column(String(32), nullable=True)
+    # "auto_dismissed" | "auto_escalated" | NULL
+    auto_disposition_reason = Column(Text, nullable=True)
+    enrichment_budget_rank = Column(Integer, nullable=True)
+    # Position in per-cycle enrichment priority queue. NULL = not in budget this cycle.
 
     __table_args__ = (
         Index("uq_match_brand_domain", "brand_id", "domain_name", unique=True),
