@@ -10,9 +10,6 @@ import signal
 import sys
 from datetime import datetime, timezone
 
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -139,6 +136,10 @@ def emit_heartbeat() -> None:
 
 
 def main() -> None:
+    from apscheduler.schedulers.blocking import BlockingScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
+
     logger.info("Health Worker starting. Cron: %s", HEALTH_CRON)
     run_health_cycle()
 

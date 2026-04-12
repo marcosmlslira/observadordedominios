@@ -160,3 +160,37 @@ def test_compute_enrichment_budget_rank_top_50(db_session):
         SimilarityMatch.enrichment_budget_rank == 1,
     ).one()
     assert top.attention_bucket == "immediate_attention"
+
+
+def test_scan_worker_creates_cycle_and_ranks(db_session):
+    """scan_worker run_scan_cycle creates monitoring_cycle and calls rank after scan."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.worker.scan_worker import run_scan_cycle
+    from unittest.mock import patch, MagicMock
+    from uuid import uuid4
+    from datetime import date
+
+    org_id = uuid4()
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="ScanCo", primary_brand_name="ScanCo", brand_label="scanco",
+        is_active=True,
+    )
+    db_session.add(brand)
+    db_session.commit()
+
+    with patch("app.worker.scan_worker.run_similarity_scan_all", return_value={}), \
+         patch("app.worker.scan_worker.SimilarityRepository") as mock_repo_cls:
+        mock_repo = MagicMock()
+        mock_repo.compute_enrichment_budget_rank.return_value = 0
+        mock_repo_cls.return_value = mock_repo
+        run_scan_cycle(db_session)
+
+    from app.models.monitoring_cycle import MonitoringCycle
+    cycle = db_session.query(MonitoringCycle).filter(
+        MonitoringCycle.brand_id == brand.id,
+        MonitoringCycle.cycle_date == date.today(),
+    ).first()
+    assert cycle is not None
+    assert cycle.scan_status == "completed"
+    mock_repo.compute_enrichment_budget_rank.assert_any_call(brand.id, limit=50)
