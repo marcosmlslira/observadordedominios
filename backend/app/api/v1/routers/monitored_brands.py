@@ -23,8 +23,16 @@ from app.schemas.monitored_brand import (
     CreateBrandRequest,
     UpdateBrandRequest,
 )
+from app.repositories.brand_domain_health_repository import BrandDomainHealthRepository
+from app.repositories.monitoring_cycle_repository import MonitoringCycleRepository
+from app.models.monitoring_cycle import MonitoringCycle
 from app.schemas.monitoring import (
+    BrandHealthResponse,
+    CycleListResponse,
+    CycleResponse,
     CycleSummarySchema,
+    DomainCheckDetailSchema,
+    DomainHealthCheckSchema,
     ThreatCountsSchema,
     MonitoringSummarySchema,
 )
@@ -207,6 +215,94 @@ def delete_brand(
         raise HTTPException(status_code=404, detail="Brand not found")
     repo.delete(brand)
     db.commit()
+
+
+@router.get(
+    "/{brand_id}/health",
+    response_model=BrandHealthResponse,
+    summary="Get health check results for all official domains of a brand",
+)
+def get_brand_health(
+    brand_id: UUID,
+    db: Session = Depends(get_db),
+):
+    repo = MonitoredBrandRepository(db)
+    brand = repo.get(brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    health_repo = BrandDomainHealthRepository(db)
+    domains_with_health = []
+    for dom in brand.domains:
+        if not dom.is_active:
+            continue
+        health = health_repo.get_by_domain(dom.id)
+        domains_with_health.append(_build_domain_health_schema(dom, health))
+
+    return BrandHealthResponse(domains=domains_with_health)
+
+
+def _build_domain_health_schema(domain, health) -> DomainHealthCheckSchema:
+    if health is None:
+        return DomainHealthCheckSchema(
+            domain_id=domain.id,
+            domain_name=domain.domain_name,
+            is_primary=domain.is_primary,
+            overall_status="unknown",
+        )
+    return DomainHealthCheckSchema(
+        domain_id=domain.id,
+        domain_name=domain.domain_name,
+        is_primary=domain.is_primary,
+        overall_status=health.overall_status,
+        dns=DomainCheckDetailSchema(ok=health.dns_ok) if health.dns_ok is not None else None,
+        ssl=DomainCheckDetailSchema(
+            ok=health.ssl_ok,
+            details={"days_remaining": health.ssl_days_remaining} if health.ssl_days_remaining is not None else None,
+        ) if health.ssl_ok is not None else None,
+        email_security=DomainCheckDetailSchema(
+            ok=health.email_security_ok,
+            details={"spoofing_risk": health.spoofing_risk} if health.spoofing_risk else None,
+        ) if health.email_security_ok is not None else None,
+        headers=DomainCheckDetailSchema(
+            ok=health.headers_score == "good",
+            details={"score": health.headers_score} if health.headers_score else None,
+        ) if health.headers_score is not None else None,
+        takeover=DomainCheckDetailSchema(ok=not health.takeover_risk) if health.takeover_risk is not None else None,
+        blacklist=DomainCheckDetailSchema(ok=not health.blacklisted) if health.blacklisted is not None else None,
+        safe_browsing=DomainCheckDetailSchema(ok=not health.safe_browsing_hit) if health.safe_browsing_hit is not None else None,
+        urlhaus=DomainCheckDetailSchema(ok=not health.urlhaus_hit) if health.urlhaus_hit is not None else None,
+        phishtank=DomainCheckDetailSchema(ok=not health.phishtank_hit) if health.phishtank_hit is not None else None,
+        suspicious_page=DomainCheckDetailSchema(ok=not health.suspicious_content) if health.suspicious_content is not None else None,
+        last_check_at=health.last_check_at,
+    )
+
+
+@router.get(
+    "/{brand_id}/cycles",
+    response_model=CycleListResponse,
+    summary="Get monitoring cycle history for a brand",
+)
+def get_brand_cycles(
+    brand_id: UUID,
+    limit: int = Query(30, ge=1, le=90),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    repo = MonitoredBrandRepository(db)
+    brand = repo.get(brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    cycle_repo = MonitoringCycleRepository(db)
+    cycles = cycle_repo.list_for_brand(brand_id, limit=limit, offset=offset)
+    total = db.query(MonitoringCycle).filter(
+        MonitoringCycle.brand_id == brand_id
+    ).count()
+    return CycleListResponse(
+        items=[CycleResponse.model_validate(c) for c in cycles],
+        total=total,
+    )
 
 
 @router.get(

@@ -261,3 +261,84 @@ def test_get_brand_includes_monitoring_summary(client, db_session):
     assert "overall_health" in ms
     assert ms["overall_health"] == "unknown"
     assert ms["threat_counts"]["immediate_attention"] == 0
+
+
+def test_get_brand_health_returns_domain_checks(client, db_session):
+    """GET /v1/brands/{id}/health returns domains array with per-tool checks."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.monitored_brand_domain import MonitoredBrandDomain
+    from app.models.brand_domain_health import BrandDomainHealth
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="HealthBrand", primary_brand_name="HealthBrand",
+        brand_label="healthbrand", is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    domain = MonitoredBrandDomain(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="healthbrand.com", registrable_domain="healthbrand.com",
+        registrable_label="healthbrand", public_suffix="com",
+        is_active=True, created_at=now, updated_at=now,
+    )
+    db_session.add(domain)
+    db_session.flush()
+
+    health = BrandDomainHealth(
+        id=uuid4(), brand_domain_id=domain.id, brand_id=brand.id,
+        organization_id=org_id, overall_status="healthy",
+        dns_ok=True, ssl_ok=True, ssl_days_remaining=245,
+        email_security_ok=True, safe_browsing_hit=False,
+    )
+    db_session.add(health)
+    db_session.commit()
+
+    resp = client.get(f"/v1/brands/{brand.id}/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "domains" in data
+    assert len(data["domains"]) == 1
+    dom = data["domains"][0]
+    assert dom["overall_status"] == "healthy"
+    assert dom["dns"]["ok"] is True
+    assert dom["ssl"]["details"]["days_remaining"] == 245
+
+
+def test_get_brand_cycles_returns_history(client, db_session):
+    """GET /v1/brands/{id}/cycles returns paginated cycle history ordered newest first."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.monitoring_cycle import MonitoringCycle
+    from uuid import uuid4
+    from datetime import date, timedelta
+
+    org_id = uuid4()
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="CycleBrand", primary_brand_name="CycleBrand",
+        brand_label="cyclebrand", is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    today = date.today()
+    for i in range(3):
+        db_session.add(MonitoringCycle(
+            id=uuid4(), brand_id=brand.id, organization_id=org_id,
+            cycle_date=today - timedelta(days=i),
+            health_status="completed", scan_status="completed",
+            enrichment_status="completed",
+        ))
+    db_session.commit()
+
+    resp = client.get(f"/v1/brands/{brand.id}/cycles")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 3
+    assert len(data["items"]) == 3
+    assert data["items"][0]["cycle_date"] == str(today)
