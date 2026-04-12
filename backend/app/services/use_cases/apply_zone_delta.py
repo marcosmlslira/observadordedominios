@@ -49,17 +49,24 @@ def _batch_size_for_tld(tld: str) -> int:
 
 
 def _get_tld_domain_count(tld: str) -> int | None:
-    """Return the current domain count for a TLD from the materialized view, or None."""
+    """Return estimated domain count for a TLD from pg_class.reltuples.
+
+    Uses pg_class.reltuples which is updated by ANALYZE/autovacuum — no table
+    scan, no locks, always instant.  Accuracy is sufficient for the staging
+    threshold decision (we only need to know if count > LARGE_TLD_THRESHOLD).
+    """
     from app.infra.db.session import SessionLocal
+
+    table = f"domain_{tld.replace('-', '_').replace('.', '_')}"
     db = SessionLocal()
     try:
-        db.execute(text("SET LOCAL lock_timeout = '2s'"))
-        return db.execute(
-            text('SELECT "count" FROM tld_domain_count_mv WHERE tld = :tld'),
-            {"tld": tld},
+        count = db.execute(
+            text("SELECT reltuples::bigint FROM pg_class WHERE relname = :t"),
+            {"t": table},
         ).scalar()
+        return int(count) if count and count > 0 else None
     except Exception:
-        logger.debug("Could not read domain count for TLD=%s from MV", tld)
+        logger.debug("Could not read domain count for TLD=%s", tld)
         return None
     finally:
         db.close()
