@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 50_000
 _STAGING_BATCH_SIZE = 100_000      # Larger batches are safe: staging has no GIN index
-_LARGE_TLD_THRESHOLD = 50_000_000  # Domains; TLDs above this use the staging path
+_LARGE_TLD_THRESHOLD = 10_000_000  # Domains; TLDs above this use the staging path
 
 
 def _batch_size_for_tld(tld: str) -> int:
