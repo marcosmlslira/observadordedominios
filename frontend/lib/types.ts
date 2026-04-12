@@ -12,6 +12,25 @@ export interface TokenResponse {
 
 // ── Monitored Brands ────────────────────────────────────
 
+export interface CycleSummary {
+  id: string
+  status: string
+  finished_at: string | null
+  scan_job_id: string | null
+}
+
+export interface ThreatCounts {
+  immediate_attention: number
+  defensive_gap: number
+  watchlist: number
+}
+
+export interface MonitoringSummary {
+  latest_cycle: CycleSummary | null
+  threat_counts: ThreatCounts
+  overall_health: "healthy" | "warning" | "critical" | "unknown"
+}
+
 export interface Brand {
   id: string
   organization_id: string
@@ -28,6 +47,7 @@ export interface Brand {
   is_active: boolean
   created_at: string
   updated_at: string
+  monitoring_summary?: MonitoringSummary
 }
 
 export interface BrandDomain {
@@ -511,4 +531,111 @@ export interface TldRunMetricItem {
 export interface TldRunMetrics {
   tld: string
   runs: TldRunMetricItem[]
+}
+
+// ── Monitoring Pipeline ─────────────────────────────
+
+export interface DomainCheckDetail {
+  ok: boolean
+  details?: Record<string, unknown>
+}
+
+export interface DomainHealthCheck {
+  domain_id: string
+  domain_name: string
+  is_primary: boolean
+  overall_status: string
+  dns?: DomainCheckDetail
+  ssl?: DomainCheckDetail
+  email_security?: DomainCheckDetail
+  headers?: DomainCheckDetail
+  takeover?: DomainCheckDetail
+  blacklist?: DomainCheckDetail
+  safe_browsing?: DomainCheckDetail
+  urlhaus?: DomainCheckDetail
+  phishtank?: DomainCheckDetail
+  suspicious_page?: DomainCheckDetail
+  last_check_at: string | null
+}
+
+export interface BrandHealthResponse {
+  domains: DomainHealthCheck[]
+}
+
+export interface MonitoringCycleResponse {
+  id: string
+  brand_id: string
+  cycle_date: string
+  status: string
+  domains_checked: number | null
+  threats_found: number | null
+  finished_at: string | null
+  scan_job_id: string | null
+  created_at: string
+}
+
+export interface CycleListResponse {
+  items: MonitoringCycleResponse[]
+  total: number
+}
+
+export interface SignalSchema {
+  code: string
+  severity: string
+  label: string
+  description: string
+  data: Record<string, unknown> | null
+}
+
+export interface MatchSnapshot {
+  id: string
+  brand_id: string
+  domain_name: string
+  tld: string
+  label: string
+  score_final: number
+  attention_bucket: string | null
+  matched_rule: string | null
+  auto_disposition: string | null
+  auto_disposition_reason: string | null
+  first_detected_at: string
+  domain_first_seen: string
+  derived_score: number | null
+  derived_bucket: string | null
+  derived_risk: string | null
+  derived_disposition: string | null
+  active_signals: SignalSchema[]
+  signal_codes: string[]
+  llm_assessment: {
+    risco_score: number
+    categoria: string
+    parecer_resumido: string
+    principais_motivos: string[]
+    recomendacao_acao: string
+    confianca: number
+  } | null
+  state_fingerprint: string | null
+  last_derived_at: string | null
+}
+
+export interface MatchSnapshotListResponse {
+  items: MatchSnapshot[]
+  total: number
+}
+
+export interface MonitoringEvent {
+  id: string
+  match_id: string
+  event_type: string
+  severity: string
+  summary: string
+  detail: Record<string, unknown> | null
+  tool_name: string | null
+  signal_code: string | null
+  created_at: string
+}
+
+export interface EventListResponse {
+  items: MonitoringEvent[]
+  total: number
 }
