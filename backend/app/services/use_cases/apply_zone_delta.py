@@ -20,6 +20,11 @@ _BATCH_SIZE = 50_000
 _STAGING_BATCH_SIZE = 100_000      # Larger batches are safe: staging has no GIN index
 _LARGE_TLD_THRESHOLD = 10_000_000  # Domains; TLDs above this use the staging path
 
+# TLDs empirically known to exceed _LARGE_TLD_THRESHOLD.  These always use the
+# staging path even when pg_class.reltuples is temporarily unavailable (e.g. on
+# first boot, connection-pool exhaustion, or a transient autovacuum reset).
+_ALWAYS_STAGE_TLDS: frozenset[str] = frozenset({"com", "net", "org", "top"})
+
 
 def _batch_size_for_tld(tld: str) -> int:
     """Return an adaptive batch size based on TLD domain count from materialized view.
@@ -41,8 +46,8 @@ def _batch_size_for_tld(tld: str) -> int:
             return 50_000
         if count and count > 1_000_000:
             return 75_000
-    except Exception:
-        logger.debug("Could not read domain count for TLD=%s, using default batch size", tld)
+    except Exception as exc:
+        logger.warning("Could not read tld_domain_count_mv for TLD=%s: %s", tld, exc)
     finally:
         db.close()
     return _BATCH_SIZE
@@ -65,8 +70,8 @@ def _get_tld_domain_count(tld: str) -> int | None:
             {"t": table},
         ).scalar()
         return int(count) if count and count > 0 else None
-    except Exception:
-        logger.debug("Could not read domain count for TLD=%s", tld)
+    except Exception as exc:
+        logger.warning("Could not read domain count for TLD=%s: %s", tld, exc)
         return None
     finally:
         db.close()
@@ -81,8 +86,22 @@ def _should_use_staging(tld: str) -> bool:
     After the first successful run the MV is refreshed and subsequent daily
     runs use staging, completing in ~30-45 min instead of ~74h for .com.
     """
+    if tld in _ALWAYS_STAGE_TLDS:
+        logger.info("Staging path: forced for known-large TLD=%s", tld)
+        return True
     count = _get_tld_domain_count(tld)
-    return count is not None and count >= _LARGE_TLD_THRESHOLD
+    result = count is not None and count >= _LARGE_TLD_THRESHOLD
+    if count is None:
+        logger.warning(
+            "Staging path: cannot determine domain count for TLD=%s — defaulting to direct upsert",
+            tld,
+        )
+    else:
+        logger.info(
+            "Staging path for TLD=%s: count=%d threshold=%d → %s",
+            tld, count, _LARGE_TLD_THRESHOLD, result,
+        )
+    return result
 
 
 def _parse_zone_stream(path: Path, tld: str):
