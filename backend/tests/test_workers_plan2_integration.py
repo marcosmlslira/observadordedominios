@@ -112,3 +112,51 @@ def test_health_worker_run_cycle_updates_cycle_status(db_session):
     ).first()
     assert cycle is not None
     assert cycle.health_status == "completed"
+
+
+def test_compute_enrichment_budget_rank_top_50(db_session):
+    """compute_enrichment_budget_rank assigns rank 1..N to top-50 matches."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.similarity_match import SimilarityMatch
+    from app.repositories.similarity_repository import SimilarityRepository
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="RankCo", primary_brand_name="RankCo", brand_label="rankco",
+        is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    for i, bucket in enumerate(["immediate_attention", "defensive_gap", "watchlist",
+                                 "defensive_gap", "watchlist"]):
+        m = SimilarityMatch(
+            id=uuid4(), brand_id=brand.id,
+            domain_name=f"rank{i}-brand.com", tld="com", label=f"rank{i}",
+            score_final=0.7 - i * 0.05,
+            attention_bucket=bucket,
+            actionability_score=0.7 - i * 0.05,
+            reasons=[],
+            attention_reasons=[],
+            recommended_action="monitor",
+            risk_level="medium",
+            first_detected_at=now,
+            domain_first_seen=now,
+        )
+        db_session.add(m)
+    db_session.commit()
+
+    repo = SimilarityRepository(db_session)
+    count = repo.compute_enrichment_budget_rank(brand.id, limit=50)
+
+    assert count == 5
+
+    top = db_session.query(SimilarityMatch).filter(
+        SimilarityMatch.brand_id == brand.id,
+        SimilarityMatch.enrichment_budget_rank == 1,
+    ).one()
+    assert top.attention_bucket == "immediate_attention"

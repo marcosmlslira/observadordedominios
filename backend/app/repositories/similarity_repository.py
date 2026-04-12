@@ -843,3 +843,73 @@ class SimilarityRepository:
             {"brand_id": brand_id, "since": since},
         ).fetchall()
         return [dict(r._mapping) for r in rows]
+
+    def compute_enrichment_budget_rank(
+        self,
+        brand_id: "UUID",
+        *,
+        limit: int = 50,
+    ) -> int:
+        """Rank top-N matches for enrichment priority and store as enrichment_budget_rank.
+
+        Priority tiers (lower = higher priority):
+          0 — immediate_attention
+          1 — new today
+          2 — defensive_gap
+          3 — watchlist with score_final > 0.55
+          4 — stale enrichment (> 7 days or never enriched)
+
+        Resets existing ranks for the brand first.
+        Returns the number of matches ranked.
+        """
+        # Step 1: Reset all ranks for this brand
+        self.db.execute(
+            text(
+                "UPDATE similarity_match"
+                " SET enrichment_budget_rank = NULL"
+                " WHERE brand_id = :brand_id"
+            ),
+            {"brand_id": brand_id},
+        )
+
+        # Step 2: Rank top-N by priority tier
+        self.db.execute(
+            text("""
+            WITH ranked AS (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           ORDER BY
+                             CASE
+                               WHEN attention_bucket = 'immediate_attention' THEN 0
+                               WHEN first_detected_at::date = CURRENT_DATE THEN 1
+                               WHEN attention_bucket = 'defensive_gap' THEN 2
+                               WHEN attention_bucket = 'watchlist'
+                                    AND score_final > 0.55 THEN 3
+                               WHEN last_enriched_at IS NULL
+                                    OR last_enriched_at < NOW() - INTERVAL '7 days' THEN 4
+                               ELSE 5
+                             END ASC,
+                             actionability_score DESC NULLS LAST,
+                             score_final DESC
+                       ) AS r
+                FROM similarity_match
+                WHERE brand_id = :brand_id
+                  AND (auto_disposition IS NULL OR auto_disposition = '')
+                  AND (disposition IS NULL OR disposition NOT IN ('dismissed'))
+            )
+            UPDATE similarity_match sm
+            SET enrichment_budget_rank = ranked.r
+            FROM ranked
+            WHERE sm.id = ranked.id AND ranked.r <= :limit
+            """),
+            {"brand_id": brand_id, "limit": limit},
+        )
+
+        result = self.db.execute(
+            text(
+                "SELECT COUNT(*) FROM similarity_match"
+                " WHERE brand_id = :brand_id AND enrichment_budget_rank IS NOT NULL"
+            ),
+            {"brand_id": brand_id},
+        ).scalar()
+        return int(result or 0)
