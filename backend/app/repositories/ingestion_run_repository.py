@@ -205,14 +205,19 @@ class IngestionRunRepository:
         *,
         stale_after_minutes: int,
     ) -> list[IngestionRun]:
-        """Mark ALL orphaned running runs for a source as failed (no TLD filter)."""
+        """Mark runs with no progress for stale_after_minutes as failed.
+
+        Uses updated_at (last heartbeat / progress update) as the staleness
+        criterion so that large-but-active runs (e.g. .com) are never killed
+        while genuinely stuck runs (no writes for N minutes) are recovered.
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_after_minutes)
         stale_runs = (
             self.db.query(IngestionRun)
             .filter(
                 IngestionRun.source == source,
                 IngestionRun.status == "running",
-                IngestionRun.started_at < cutoff,
+                IngestionRun.updated_at < cutoff,
             )
             .all()
         )
@@ -220,13 +225,13 @@ class IngestionRunRepository:
             return []
         now = datetime.now(timezone.utc)
         for run in stale_runs:
+            no_progress_minutes = int((now - run.updated_at).total_seconds() // 60)
             run.status = "failed"
             run.finished_at = now
             run.updated_at = now
-            age_minutes = int((now - run.started_at).total_seconds() // 60)
             run.error_message = (
-                f"Automatically marked failed after {age_minutes}m "
-                f"(stale threshold: {stale_after_minutes}m, likely caused by worker restart)"
+                f"Automatically marked failed: no progress for {no_progress_minutes}m "
+                f"(threshold: {stale_after_minutes}m)"
             )
         self.db.flush()
         return stale_runs

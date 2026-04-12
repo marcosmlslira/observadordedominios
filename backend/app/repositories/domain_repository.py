@@ -97,10 +97,65 @@ def list_partition_tlds(db: Session) -> list[str]:
 
 
 class DomainRepository:
-    """Bulk upsert of domains. No staging table, no soft-delete."""
+    """Bulk operations on domains — direct upsert and staging-table merge."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    # ── Staging helpers (large-TLD incremental path) ─────────────────────
+
+    def clear_staging(self, tld: str) -> None:
+        """Remove all staging rows for a TLD before starting a new load."""
+        self.db.execute(text("DELETE FROM domain_stage WHERE tld = :tld"), {"tld": tld})
+
+    def bulk_insert_to_staging(
+        self, domain_names: list[str], tld: str, now: datetime
+    ) -> int:
+        """Bulk-insert a batch into the staging table.
+
+        Uses ON CONFLICT DO NOTHING to silently deduplicate entries that appear
+        multiple times in the zone file without raising an error.
+        Returns the number of unique names in the batch.
+        """
+        if not domain_names:
+            return 0
+
+        unique_names = list(set(domain_names))
+        labels = [n[:-(len(tld) + 1)] for n in unique_names]
+
+        self.db.execute(
+            text("""
+                INSERT INTO domain_stage (name, tld, label, loaded_at)
+                SELECT unnest(:names), :tld, unnest(:labels), :ts
+                ON CONFLICT (name, tld) DO NOTHING
+            """),
+            {"names": unique_names, "labels": labels, "tld": tld, "ts": now},
+        )
+        return len(unique_names)
+
+    def merge_from_staging(self, tld: str, now: datetime) -> int:
+        """Insert into domain all rows from staging that don't already exist.
+
+        Skips existing domains entirely (skip_update policy for large TLDs).
+        GIN trigram index is only updated for net-new rows (~1-2% of zone daily).
+        Returns the count of newly inserted rows.
+        """
+        result = self.db.execute(
+            text("""
+                INSERT INTO domain (name, tld, label, first_seen_at, last_seen_at)
+                SELECT s.name, s.tld, s.label, :now, :now
+                FROM domain_stage s
+                WHERE s.tld = :tld
+                  AND NOT EXISTS (
+                      SELECT 1 FROM domain d
+                      WHERE d.name = s.name AND d.tld = s.tld
+                  )
+            """),
+            {"tld": tld, "now": now},
+        )
+        return result.rowcount
+
+    # ── Direct upsert (standard path for small/medium TLDs) ──────────────
 
     def bulk_upsert(self, domain_names: list[str], tld: str, now: datetime) -> int:
         """Upsert a batch into the domain table with label computation.
