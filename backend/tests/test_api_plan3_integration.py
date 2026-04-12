@@ -342,3 +342,104 @@ def test_get_brand_cycles_returns_history(client, db_session):
     assert data["total"] == 3
     assert len(data["items"]) == 3
     assert data["items"][0]["cycle_date"] == str(today)
+
+
+def test_list_matches_with_llm_returns_snapshot_data(client, db_session):
+    """GET /v1/brands/{id}/matches?include_llm=true returns derived fields from snapshot."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.similarity_match import SimilarityMatch
+    from app.models.match_state_snapshot import MatchStateSnapshot
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="MatchBrand", primary_brand_name="MatchBrand",
+        brand_label="matchbrand", is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    match = SimilarityMatch(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="matchbrand-fake.com", tld="com", label="matchbrand-fake",
+        score_final=0.8, attention_bucket="immediate_attention",
+        actionability_score=0.8, reasons=[], attention_reasons=[],
+        recommended_action="block", risk_level="high",
+        first_detected_at=now, domain_first_seen=now,
+    )
+    db_session.add(match)
+    db_session.flush()
+
+    snapshot = MatchStateSnapshot(
+        id=uuid4(), match_id=match.id, brand_id=brand.id,
+        organization_id=org_id,
+        derived_score=0.87, derived_bucket="immediate_attention",
+        derived_risk="critical",
+        active_signals=[{"code": "safe_browsing_hit", "severity": "critical"}],
+        signal_codes=["safe_browsing_hit"],
+        state_fingerprint="fp_match", last_derived_at=now,
+        llm_assessment={"parecer_resumido": "Suspicious domain."},
+    )
+    db_session.add(snapshot)
+    db_session.commit()
+
+    resp = client.get(f"/v1/brands/{brand.id}/matches?include_llm=true")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    item = next(i for i in data["items"] if i["id"] == str(match.id))
+    assert abs(item["derived_score"] - 0.87) < 0.01
+    assert item["derived_risk"] == "critical"
+    assert item["llm_assessment"]["parecer_resumido"] == "Suspicious domain."
+    assert "safe_browsing_hit" in item["signal_codes"]
+
+
+def test_get_match_events_timeline(client, db_session):
+    """GET /v1/matches/{id}/events returns all events ordered newest first."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.similarity_match import SimilarityMatch
+    from app.models.monitoring_event import MonitoringEvent
+    from uuid import uuid4
+    from datetime import datetime, timezone, timedelta
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="EventsBrand", primary_brand_name="EventsBrand",
+        brand_label="eventsbrand", is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    match = SimilarityMatch(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="eventsbrand-fake.com", tld="com", label="eventsbrand-fake",
+        score_final=0.75, attention_bucket="defensive_gap",
+        actionability_score=0.75, reasons=[], attention_reasons=[],
+        recommended_action="monitor", risk_level="medium",
+        first_detected_at=now, domain_first_seen=now,
+    )
+    db_session.add(match)
+    db_session.flush()
+
+    for i, tool in enumerate(["dns_lookup", "whois", "ssl_check"]):
+        db_session.add(MonitoringEvent(
+            id=uuid4(), organization_id=org_id, brand_id=brand.id,
+            match_id=match.id,
+            event_type="tool_execution", event_source="enrichment",
+            tool_name=tool,
+            result_data={"tool": tool, "ok": True},
+            created_at=now + timedelta(seconds=i),
+        ))
+    db_session.commit()
+
+    resp = client.get(f"/v1/matches/{match.id}/events")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 3
+    assert len(data["items"]) == 3
+    assert data["items"][0]["tool_name"] == "ssl_check"  # newest first
