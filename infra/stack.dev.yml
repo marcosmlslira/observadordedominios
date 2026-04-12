@@ -194,7 +194,27 @@ services:
       restart_policy:
         condition: on-failure
 
-  similarity_worker:
+  health_worker:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - HEALTH_CHECK_CRON=0 6 * * *
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    command: ["python", "-m", "app.worker.health_worker"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  scan_worker:
     image: observadordedominios-backend:dev
     volumes:
       - c:\PROJETOS\observadordedominios\backend:/app
@@ -204,7 +224,46 @@ services:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - SIMILARITY_SCAN_CRON=0 9 * * *
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-    command: ["sh", "-c", "alembic upgrade head && python -m app.worker.similarity_worker"]
+    command: ["python", "-m", "app.worker.scan_worker"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  enrichment_worker:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - ENRICHMENT_CRON=0 12 * * *
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    command: ["python", "-m", "app.worker.enrichment_worker"]
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  assessment_worker:
+    image: observadordedominios-backend:dev
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    command: ["python", "-m", "app.worker.assessment_worker"]
     networks:
       - app-network
     depends_on:
