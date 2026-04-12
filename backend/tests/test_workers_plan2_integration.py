@@ -307,3 +307,59 @@ def test_enrichment_worker_processes_ranked_matches(db_session):
     ).first()
     assert cycle is not None
     assert cycle.enrichment_status == "completed"
+
+
+def test_assessment_worker_processes_snapshots_needing_llm(db_session):
+    """assessment_worker finds snapshots needing LLM and calls generate_llm_assessment."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.similarity_match import SimilarityMatch
+    from app.models.match_state_snapshot import MatchStateSnapshot
+    from app.worker.assessment_worker import run_assessment_cycle
+    from unittest.mock import patch
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="AssessCo", primary_brand_name="AssessCo", brand_label="assessco",
+        is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    match = SimilarityMatch(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="assessco-bad.com", tld="com", label="assessco-bad",
+        score_final=0.75, attention_bucket="immediate_attention",
+        actionability_score=0.75,
+        reasons=[], attention_reasons=[], recommended_action="block",
+        risk_level="high", first_detected_at=now, domain_first_seen=now,
+    )
+    db_session.add(match)
+    db_session.flush()
+
+    snapshot = MatchStateSnapshot(
+        id=uuid4(), match_id=match.id, brand_id=brand.id,
+        organization_id=org_id,
+        derived_score=0.75, derived_bucket="immediate_attention",
+        derived_risk="high", active_signals=[], signal_codes=[],
+        state_fingerprint="fp_new",
+        llm_source_fingerprint=None,
+        last_derived_at=datetime.now(timezone.utc),
+    )
+    db_session.add(snapshot)
+    db_session.commit()
+
+    fake_llm_result = {"parecer_resumido": "Domain suspicious.", "risco_score": 85}
+
+    with patch(
+        "app.worker.assessment_worker.generate_llm_assessment",
+        return_value=fake_llm_result,
+    ):
+        run_assessment_cycle(db_session)
+
+    db_session.refresh(snapshot)
+    assert snapshot.llm_assessment == fake_llm_result
+    assert snapshot.llm_source_fingerprint == "fp_new"
