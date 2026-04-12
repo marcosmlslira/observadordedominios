@@ -256,3 +256,54 @@ def test_run_enrichment_cycle_match_creates_events_and_snapshot(db_session):
     ).first()
     assert snapshot is not None
     assert snapshot.derived_score is not None
+
+
+def test_enrichment_worker_processes_ranked_matches(db_session):
+    """enrichment_worker processes matches with enrichment_budget_rank set."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.similarity_match import SimilarityMatch
+    from app.worker.enrichment_worker import run_enrichment_cycle
+    from unittest.mock import patch, MagicMock
+    from uuid import uuid4
+    from datetime import date, datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="EnrichWorkerCo", primary_brand_name="EnrichWorkerCo",
+        brand_label="enrichworkerco", is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    match = SimilarityMatch(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="enrichworkerco-fake.com", tld="com", label="fake",
+        score_final=0.7, attention_bucket="defensive_gap",
+        actionability_score=0.7, enrichment_budget_rank=1,
+        reasons=[], attention_reasons=[], recommended_action="monitor",
+        risk_level="medium", first_detected_at=now, domain_first_seen=now,
+    )
+    db_session.add(match)
+    db_session.commit()
+
+    enrich_result = {
+        "tools_run": 12, "tools_failed": 0,
+        "auto_dismissed": False, "dismiss_rule": None, "derived_bucket": "defensive_gap",
+    }
+
+    with patch(
+        "app.worker.enrichment_worker.run_enrichment_cycle_match",
+        return_value=enrich_result,
+    ) as mock_enrich:
+        run_enrichment_cycle(db_session)
+
+    mock_enrich.assert_called_once()
+    from app.models.monitoring_cycle import MonitoringCycle
+    cycle = db_session.query(MonitoringCycle).filter(
+        MonitoringCycle.brand_id == brand.id,
+        MonitoringCycle.cycle_date == date.today(),
+    ).first()
+    assert cycle is not None
+    assert cycle.enrichment_status == "completed"
