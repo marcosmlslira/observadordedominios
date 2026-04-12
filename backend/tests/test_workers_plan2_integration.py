@@ -64,3 +64,51 @@ def test_run_health_check_domain_creates_events(db_session):
         MonitoringEvent.brand_domain_id == domain.id
     ).all()
     assert len(events) == 10
+
+
+def test_health_worker_run_cycle_updates_cycle_status(db_session):
+    """health_worker run_health_cycle updates monitoring_cycle.health_status."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.monitored_brand_domain import MonitoredBrandDomain
+    from app.worker.health_worker import run_health_cycle
+    from unittest.mock import patch
+    from uuid import uuid4
+    from datetime import datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="HealthCo", primary_brand_name="HealthCo", brand_label="healthco",
+        is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    domain = MonitoredBrandDomain(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="healthco.com",
+        registrable_domain="healthco.com",
+        registrable_label="healthco",
+        public_suffix="com",
+        is_active=True,
+        created_at=now, updated_at=now,
+    )
+    db_session.add(domain)
+    db_session.commit()
+
+    with patch(
+        "app.worker.health_worker.run_health_check_domain",
+        return_value={"tools_run": 10, "tools_failed": 0, "overall_status": "healthy"},
+    ):
+        run_health_cycle(db_session)
+
+    from app.models.monitoring_cycle import MonitoringCycle
+    from datetime import date
+    cycle = db_session.query(MonitoringCycle).filter(
+        MonitoringCycle.brand_id == brand.id,
+        MonitoringCycle.cycle_date == date.today(),
+    ).first()
+    assert cycle is not None
+    assert cycle.health_status == "completed"
