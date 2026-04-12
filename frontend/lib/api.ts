@@ -184,3 +184,39 @@ export function triggerTldIngestion(source: string, tld: string, force = false) 
     { force }
   )
 }
+
+// ── Monitoring API ──────────────────────────────────
+
+export const monitoringApi = {
+  getBrandHealth: (brandId: string) =>
+    api.get<import("./types").BrandHealthResponse>(`/v1/brands/${brandId}/health`),
+
+  getCycles: (brandId: string, limit = 30, offset = 0) =>
+    api.get<import("./types").CycleListResponse>(
+      `/v1/brands/${brandId}/cycles?limit=${limit}&offset=${offset}`
+    ),
+
+  getMatchSnapshots: (
+    brandId: string,
+    params?: { bucket?: string; limit?: number; offset?: number }
+  ) => {
+    const qs = new URLSearchParams({ include_llm: "true" })
+    if (params?.bucket) qs.set("bucket", params.bucket)
+    if (params?.limit != null) qs.set("limit", String(params.limit))
+    if (params?.offset != null) qs.set("offset", String(params.offset))
+    return api.get<import("./types").MatchSnapshotListResponse>(
+      `/v1/brands/${brandId}/matches?${qs}`
+    )
+  },
+
+  getMatchEvents: (matchId: string, limit = 50) =>
+    api.get<import("./types").EventListResponse>(
+      `/v1/matches/${matchId}/events?limit=${limit}`
+    ),
+
+  updateMatchStatus: (matchId: string, status: string, notes?: string) =>
+    api.patch<import("./types").SimilarityMatch>(`/v1/matches/${matchId}`, {
+      status,
+      notes: notes ?? null,
+    }),
+}
