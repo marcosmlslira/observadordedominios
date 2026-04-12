@@ -194,3 +194,65 @@ def test_scan_worker_creates_cycle_and_ranks(db_session):
     assert cycle is not None
     assert cycle.scan_status == "completed"
     mock_repo.compute_enrichment_budget_rank.assert_any_call(brand.id, limit=50)
+
+
+def test_run_enrichment_cycle_match_creates_events_and_snapshot(db_session):
+    """Enrichment creates tool events and upserts match_state_snapshot."""
+    from app.models.monitored_brand import MonitoredBrand
+    from app.models.similarity_match import SimilarityMatch
+    from app.models.monitoring_cycle import MonitoringCycle
+    from app.services.use_cases.run_enrichment_cycle_match import run_enrichment_cycle_match
+    from unittest.mock import patch
+    from uuid import uuid4
+    from datetime import date, datetime, timezone
+
+    org_id = uuid4()
+    now = datetime.now(timezone.utc)
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="EnrichCo", primary_brand_name="EnrichCo", brand_label="enrichco",
+        is_active=True,
+    )
+    db_session.add(brand)
+    db_session.flush()
+
+    match = SimilarityMatch(
+        id=uuid4(), brand_id=brand.id,
+        domain_name="enrichco-fake.com", tld="com", label="enrichco-fake",
+        score_final=0.65, attention_bucket="defensive_gap", actionability_score=0.65,
+        matched_rule="typo_candidate",
+        reasons=[], attention_reasons=[], recommended_action="monitor",
+        risk_level="medium", first_detected_at=now, domain_first_seen=now,
+    )
+    db_session.add(match)
+
+    cycle = MonitoringCycle(
+        id=uuid4(), brand_id=brand.id,
+        organization_id=org_id,
+        cycle_date=date.today(),
+    )
+    db_session.add(cycle)
+    db_session.commit()
+
+    fake_dns = {"records": [{"type": "A", "value": "1.2.3.4"}]}
+
+    with patch(
+        "app.services.use_cases.run_enrichment_cycle_match._run_tool",
+        return_value=fake_dns,
+    ):
+        result = run_enrichment_cycle_match(
+            db_session,
+            match,
+            brand=brand,
+            cycle_id=cycle.id,
+        )
+
+    assert result["auto_dismissed"] is False
+    assert result["tools_run"] > 0
+
+    from app.models.match_state_snapshot import MatchStateSnapshot
+    snapshot = db_session.query(MatchStateSnapshot).filter(
+        MatchStateSnapshot.match_id == match.id
+    ).first()
+    assert snapshot is not None
+    assert snapshot.derived_score is not None
