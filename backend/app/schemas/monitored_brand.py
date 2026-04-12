@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.monitoring import MonitoringSummarySchema
+
 AliasType = Literal["brand_alias", "brand_phrase", "support_keyword"]
 NoiseMode = Literal["conservative", "standard", "broad"]
 
@@ -99,6 +101,7 @@ class BrandResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    monitoring_summary: MonitoringSummarySchema | None = None
 
     model_config = {"from_attributes": True}
 

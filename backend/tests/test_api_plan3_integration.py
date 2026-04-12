@@ -236,3 +236,28 @@ def test_monitoring_query_service_with_cycle_and_health(db_session):
     assert summary["threat_counts"]["immediate_attention"] == 1
     assert summary["threat_counts"]["defensive_gap"] == 0  # dismissed excluded
     assert summary["overall_health"] == "healthy"
+
+
+def test_get_brand_includes_monitoring_summary(client, db_session):
+    """GET /v1/brands/{id} response includes monitoring_summary with defaults."""
+    from app.models.monitored_brand import MonitoredBrand
+    from uuid import uuid4
+
+    org_id = uuid4()
+    brand = MonitoredBrand(
+        id=uuid4(), organization_id=org_id,
+        brand_name="SummaryBrand", primary_brand_name="SummaryBrand",
+        brand_label="summarybrand", is_active=True,
+    )
+    db_session.add(brand)
+    db_session.commit()
+
+    resp = client.get(f"/v1/brands/{brand.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "monitoring_summary" in data
+    ms = data["monitoring_summary"]
+    assert "threat_counts" in ms
+    assert "overall_health" in ms
+    assert ms["overall_health"] == "unknown"
+    assert ms["threat_counts"]["immediate_attention"] == 0

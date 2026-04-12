@@ -23,7 +23,13 @@ from app.schemas.monitored_brand import (
     CreateBrandRequest,
     UpdateBrandRequest,
 )
+from app.schemas.monitoring import (
+    CycleSummarySchema,
+    ThreatCountsSchema,
+    MonitoringSummarySchema,
+)
 from app.schemas.similarity import ScanResultResponse, ScanSummaryResponse
+from app.services.monitoring_query_service import MonitoringQueryService
 from app.services.similarity_scan_jobs import resolve_effective_scan_tlds, serialize_scan_job
 from app.services.use_cases.sync_monitoring_profile import (
     create_monitoring_profile,
@@ -43,7 +49,7 @@ router = APIRouter(
 PLACEHOLDER_ORG_ID = UUID("00000000-0000-0000-0000-000000000001")
 
 
-def _to_brand_response(brand) -> BrandResponse:
+def _to_brand_response(brand, monitoring_summary: MonitoringSummarySchema | None = None) -> BrandResponse:
     return BrandResponse(
         id=brand.id,
         organization_id=brand.organization_id,
@@ -60,6 +66,18 @@ def _to_brand_response(brand) -> BrandResponse:
         is_active=brand.is_active,
         created_at=brand.created_at,
         updated_at=brand.updated_at,
+        monitoring_summary=monitoring_summary,
+    )
+
+
+def _build_monitoring_summary(raw: dict) -> MonitoringSummarySchema:
+    latest_cycle = None
+    if raw["latest_cycle"]:
+        latest_cycle = CycleSummarySchema(**raw["latest_cycle"])
+    return MonitoringSummarySchema(
+        latest_cycle=latest_cycle,
+        threat_counts=ThreatCountsSchema(**raw["threat_counts"]),
+        overall_health=raw["overall_health"],
     )
 
 
@@ -110,10 +128,13 @@ def list_brands(
 ):
     repo = MonitoredBrandRepository(db)
     brands = repo.list_by_org(PLACEHOLDER_ORG_ID, active_only=active_only)
+    svc = MonitoringQueryService(db)
     hydrated = []
     for brand in brands:
         ensure_monitoring_profile_integrity(repo, brand)
-        hydrated.append(_to_brand_response(brand))
+        raw = svc.get_monitoring_summary(brand.id)
+        summary = _build_monitoring_summary(raw)
+        hydrated.append(_to_brand_response(brand, summary))
     db.commit()
     return BrandListResponse(items=hydrated, total=len(hydrated))
 
@@ -133,7 +154,10 @@ def get_brand(
         raise HTTPException(status_code=404, detail="Brand not found")
     ensure_monitoring_profile_integrity(repo, brand)
     db.commit()
-    return _to_brand_response(brand)
+    svc = MonitoringQueryService(db)
+    raw = svc.get_monitoring_summary(brand.id)
+    summary = _build_monitoring_summary(raw)
+    return _to_brand_response(brand, summary)
 
 
 @router.patch(
