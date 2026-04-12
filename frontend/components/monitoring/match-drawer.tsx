@@ -164,22 +164,28 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                         className="rounded-md border bg-background p-2.5"
                       >
                         <div className="flex items-center gap-2">
-                          <Badge
-                            variant={severityVariant(signal.severity)}
-                            className="text-[10px]"
-                          >
-                            {signal.severity}
-                          </Badge>
+                          {signal.severity && (
+                            <Badge
+                              variant={severityVariant(signal.severity)}
+                              className="text-[10px]"
+                            >
+                              {signal.severity}
+                            </Badge>
+                          )}
                           <span className="text-xs font-mono font-medium">
                             {signal.code}
                           </span>
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {signal.label}
-                          </span>
+                          {signal.source_tool && (
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {signal.source_tool}
+                            </span>
+                          )}
                         </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {signal.description}
-                        </p>
+                        {signal.description && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {signal.description}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -243,16 +249,13 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                           {new Date(ev.created_at).toLocaleDateString()}
                         </span>
                         <div>
-                          <Badge
-                            variant={severityVariant(ev.severity)}
-                            className="text-[10px] mr-1"
-                          >
-                            {ev.severity}
+                          <Badge variant="outline" className="text-[10px] mr-1">
+                            {ev.event_source}
                           </Badge>
                           <span className="font-medium">{ev.event_type}</span>
-                          {ev.summary && (
+                          {ev.tool_name && (
                             <span className="text-muted-foreground ml-1">
-                              — {ev.summary}
+                              — {ev.tool_name}
                             </span>
                           )}
                         </div>

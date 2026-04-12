@@ -13,10 +13,13 @@ export interface TokenResponse {
 // ── Monitored Brands ────────────────────────────────────
 
 export interface CycleSummary {
-  id: string
-  status: string
-  finished_at: string | null
-  scan_job_id: string | null
+  cycle_date: string
+  health_status: string
+  scan_status: string
+  enrichment_status: string
+  new_matches_count: number
+  threats_detected: number
+  dismissed_count: number
 }
 
 export interface ThreatCounts {
@@ -565,13 +568,27 @@ export interface BrandHealthResponse {
 export interface MonitoringCycleResponse {
   id: string
   brand_id: string
+  organization_id: string
   cycle_date: string
-  status: string
-  domains_checked: number | null
-  threats_found: number | null
-  finished_at: string | null
+  cycle_type: string
+  health_status: string
+  health_started_at: string | null
+  health_finished_at: string | null
+  scan_status: string
+  scan_started_at: string | null
+  scan_finished_at: string | null
   scan_job_id: string | null
+  enrichment_status: string
+  enrichment_started_at: string | null
+  enrichment_finished_at: string | null
+  enrichment_budget: number
+  enrichment_total: number
+  new_matches_count: number
+  escalated_count: number
+  dismissed_count: number
+  threats_detected: number
   created_at: string
+  updated_at: string
 }
 
 export interface CycleListResponse {
@@ -581,10 +598,10 @@ export interface CycleListResponse {
 
 export interface SignalSchema {
   code: string
-  severity: string
-  label: string
-  description: string
-  data: Record<string, unknown> | null
+  severity: string | null
+  score_adjustment: number | null
+  description: string | null
+  source_tool: string | null
 }
 
 export interface MatchSnapshot {
@@ -625,13 +642,14 @@ export interface MatchSnapshotListResponse {
 
 export interface MonitoringEvent {
   id: string
-  match_id: string
   event_type: string
-  severity: string
-  summary: string
-  detail: Record<string, unknown> | null
+  event_source: string
   tool_name: string | null
-  signal_code: string | null
+  tool_version: string | null
+  result_data: Record<string, unknown>
+  signals: Record<string, unknown>[] | null
+  score_snapshot: Record<string, unknown> | null
+  cycle_id: string | null
   created_at: string
 }
 

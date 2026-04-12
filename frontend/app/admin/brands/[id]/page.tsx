@@ -259,22 +259,35 @@ export default function BrandDetailPage() {
           <CardContent>
             <div className="flex flex-wrap gap-4 text-sm">
               <div>
-                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="text-xs text-muted-foreground">Date</p>
+                <p className="text-xs mt-0.5">{latestCycle.cycle_date}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Health</p>
                 <Badge
-                  variant={latestCycle.status === "completed" ? "outline" : "secondary"}
+                  variant={latestCycle.health_status === "completed" ? "outline" : "secondary"}
                   className="mt-0.5"
                 >
-                  {latestCycle.status}
+                  {latestCycle.health_status}
                 </Badge>
               </div>
-              {latestCycle.finished_at && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Finished</p>
-                  <p className="text-xs mt-0.5">
-                    {new Date(latestCycle.finished_at).toLocaleString()}
-                  </p>
-                </div>
-              )}
+              <div>
+                <p className="text-xs text-muted-foreground">Scan</p>
+                <Badge
+                  variant={latestCycle.scan_status === "completed" ? "outline" : "secondary"}
+                  className="mt-0.5"
+                >
+                  {latestCycle.scan_status}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Threats</p>
+                <p className="text-xs mt-0.5 font-semibold">{latestCycle.threats_detected}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">New Matches</p>
+                <p className="text-xs mt-0.5">{latestCycle.new_matches_count}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -561,10 +574,11 @@ export default function BrandDetailPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Domains Checked</TableHead>
-                <TableHead>Threats Found</TableHead>
-                <TableHead>Finished</TableHead>
+                <TableHead>Health</TableHead>
+                <TableHead>Scan</TableHead>
+                <TableHead>Enrichment</TableHead>
+                <TableHead>Threats</TableHead>
+                <TableHead>New Matches</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -573,19 +587,30 @@ export default function BrandDetailPage() {
                   <TableCell className="text-xs">{c.cycle_date}</TableCell>
                   <TableCell>
                     <Badge
-                      variant={c.status === "completed" ? "outline" : "secondary"}
+                      variant={c.health_status === "completed" ? "outline" : "secondary"}
                       className="text-[11px]"
                     >
-                      {c.status}
+                      {c.health_status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm">{c.domains_checked ?? "—"}</TableCell>
-                  <TableCell className="text-sm">{c.threats_found ?? "—"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {c.finished_at
-                      ? new Date(c.finished_at).toLocaleString()
-                      : "—"}
+                  <TableCell>
+                    <Badge
+                      variant={c.scan_status === "completed" ? "outline" : "secondary"}
+                      className="text-[11px]"
+                    >
+                      {c.scan_status}
+                    </Badge>
                   </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={c.enrichment_status === "completed" ? "outline" : "secondary"}
+                      className="text-[11px]"
+                    >
+                      {c.enrichment_status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm font-medium">{c.threats_detected}</TableCell>
+                  <TableCell className="text-sm">{c.new_matches_count}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
