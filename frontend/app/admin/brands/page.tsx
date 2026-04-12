@@ -1,17 +1,17 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import Link from "next/link"
 import { api } from "@/lib/api"
 import type {
   Brand,
   BrandAliasRequest,
   BrandListResponse,
-  CreateBrandRequest,
   ScanSummaryResponse,
 } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -22,16 +22,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { Plus, Search, Trash2, RefreshCw } from "lucide-react"
+import { Plus, Search, Trash2, RefreshCw, ArrowRight } from "lucide-react"
 
 const DEFAULT_TLD_SCOPE =
   "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun," +
@@ -46,20 +37,32 @@ const DEFAULT_TLD_SCOPE =
   "consulting,partners,ventures,holdings,international"
 
 function splitCsv(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
+  return value.split(",").map((item) => item.trim()).filter(Boolean)
 }
 
-function buildAliasRequests(
-  aliases: string,
-  phrases: string,
-): BrandAliasRequest[] {
+function buildAliasRequests(aliases: string, phrases: string): BrandAliasRequest[] {
   return [
     ...splitCsv(aliases).map((value) => ({ value, type: "brand_alias" as const })),
     ...splitCsv(phrases).map((value) => ({ value, type: "brand_phrase" as const })),
   ]
+}
+
+function healthVariant(health: string | undefined) {
+  switch (health) {
+    case "critical": return "destructive" as const
+    case "warning": return "secondary" as const
+    case "healthy": return "outline" as const
+    default: return "outline" as const
+  }
+}
+
+function healthLabel(health: string | undefined) {
+  switch (health) {
+    case "critical": return "Critical"
+    case "warning": return "Warning"
+    case "healthy": return "Healthy"
+    default: return "Unknown"
+  }
 }
 
 export default function BrandsPage() {
@@ -97,15 +100,14 @@ export default function BrandsPage() {
     setCreating(true)
     setCreateError("")
     try {
-      const body: CreateBrandRequest = {
+      await api.post("/v1/brands", {
         brand_name: newName.trim(),
         primary_brand_name: newPrimaryBrand.trim() || undefined,
         official_domains: splitCsv(newOfficialDomains),
         aliases: buildAliasRequests(newAliases, newPhrases),
         keywords: splitCsv(newKeywords),
         tld_scope: splitCsv(newTlds),
-      }
-      await api.post("/v1/brands", body)
+      })
       setCreateOpen(false)
       setNewName("")
       setNewPrimaryBrand("")
@@ -119,17 +121,6 @@ export default function BrandsPage() {
       setCreateError(err instanceof Error ? err.message : "Create failed")
     } finally {
       setCreating(false)
-    }
-  }
-
-  async function handleToggleActive(brand: Brand) {
-    try {
-      await api.patch(`/v1/brands/${brand.id}`, {
-        is_active: !brand.is_active,
-      })
-      await fetchBrands()
-    } catch {
-      // ignore
     }
   }
 
@@ -147,7 +138,8 @@ export default function BrandsPage() {
     }
   }
 
-  async function handleScan(brandId: string) {
+  async function handleScan(e: React.MouseEvent, brandId: string) {
+    e.preventDefault()
     try {
       await api.post<ScanSummaryResponse>(`/v1/brands/${brandId}/scan`)
     } catch {
@@ -159,7 +151,9 @@ export default function BrandsPage() {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Monitoring Profiles</h1>
-        <Skeleton className="h-96 rounded-xl" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48 rounded-xl" />)}
+        </div>
       </div>
     )
   }
@@ -250,7 +244,7 @@ export default function BrandsPage() {
                   />
                 </div>
                 {createError && (
-                  <p className="text-sm text-error md:col-span-2">{createError}</p>
+                  <p className="text-sm text-destructive md:col-span-2">{createError}</p>
                 )}
                 <Button
                   onClick={handleCreate}
@@ -265,142 +259,115 @@ export default function BrandsPage() {
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Profile</TableHead>
-                <TableHead>Official Domains</TableHead>
-                <TableHead>Aliases</TableHead>
-                <TableHead>Support Keywords</TableHead>
-                <TableHead>Seeds</TableHead>
-                <TableHead>TLD Scope</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {brands.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={9}
-                    className="py-8 text-center text-muted-foreground"
-                  >
-                    No monitoring profiles found. Create the first profile to start
-                    scanning.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                brands.map((brand) => (
-                  <TableRow key={brand.id}>
-                    <TableCell className="align-top">
-                      <div className="space-y-1">
-                        <div className="font-medium">{brand.brand_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Primary: {brand.primary_brand_name}
-                        </div>
-                        <div className="font-mono text-[11px] text-muted-foreground">
-                          {brand.brand_label}
-                        </div>
+      {brands.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No monitoring profiles yet. Create the first one to start scanning.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {brands.map((brand) => {
+            const summary = brand.monitoring_summary
+            const threats = summary?.threat_counts
+            const health = summary?.overall_health
+            return (
+              <Link key={brand.id} href={`/admin/brands/${brand.id}`} className="group block">
+                <Card className="h-full transition-shadow hover:shadow-md">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold leading-tight truncate">{brand.brand_name}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground mt-0.5">{brand.brand_label}</p>
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="flex max-w-56 flex-wrap gap-1">
-                        {brand.official_domains.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">None</span>
-                        ) : (
-                          brand.official_domains.map((domain) => (
-                            <Badge
-                              key={domain.id}
-                              variant={domain.is_primary ? "default" : "outline"}
-                              className="text-[11px]"
-                            >
-                              {domain.domain_name}
-                            </Badge>
-                          ))
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!brand.is_active && (
+                          <Badge variant="outline" className="text-[10px]">inactive</Badge>
                         )}
+                        <Badge variant={healthVariant(health)} className="text-[11px]">
+                          {healthLabel(health)}
+                        </Badge>
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="flex max-w-56 flex-wrap gap-1">
-                        {brand.aliases
-                          .filter((alias) => alias.alias_type !== "support_keyword")
-                          .map((alias) => (
-                            <Badge key={alias.id} variant="secondary" className="text-[11px]">
-                              {alias.alias_value}
-                            </Badge>
-                          ))}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {/* Threat counters */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-md bg-destructive/10 px-2 py-1.5">
+                        <p className="text-lg font-bold text-destructive leading-none">
+                          {threats?.immediate_attention ?? 0}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Immediate</p>
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="flex max-w-48 flex-wrap gap-1">
-                        {brand.keywords.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">None</span>
-                        ) : (
-                          brand.keywords.map((keyword) => (
-                            <Badge key={keyword} variant="outline" className="text-[11px]">
-                              {keyword}
-                            </Badge>
-                          ))
-                        )}
+                      <div className="rounded-md bg-secondary/50 px-2 py-1.5">
+                        <p className="text-lg font-bold leading-none">
+                          {threats?.defensive_gap ?? 0}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Defensive</p>
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="space-y-1 text-xs">
-                        <div>{brand.seeds.length} total</div>
-                        <div className="text-muted-foreground">
-                          {brand.seeds.filter((seed) => seed.channel_scope === "registrable_domain" || seed.channel_scope === "both").length} scan seeds
-                        </div>
+                      <div className="rounded-md bg-muted px-2 py-1.5">
+                        <p className="text-lg font-bold leading-none">
+                          {threats?.watchlist ?? 0}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Watchlist</p>
                       </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <div className="flex max-w-56 flex-wrap gap-1">
-                        {brand.tld_scope.map((tld) => (
-                          <Badge key={tld} variant="outline" className="font-mono text-[11px]">
-                            .{tld}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="align-top">
-                      <Switch
-                        checked={brand.is_active}
-                        onCheckedChange={() => handleToggleActive(brand)}
-                      />
-                    </TableCell>
-                    <TableCell className="align-top text-xs">
-                      {new Date(brand.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="align-top text-right">
-                      <div className="flex justify-end gap-1">
+                    </div>
+
+                    {/* Official domains */}
+                    <div className="flex flex-wrap gap-1">
+                      {brand.official_domains.slice(0, 3).map((d) => (
+                        <Badge
+                          key={d.id}
+                          variant={d.is_primary ? "default" : "outline"}
+                          className="text-[11px] font-mono"
+                        >
+                          {d.domain_name}
+                        </Badge>
+                      ))}
+                      {brand.official_domains.length > 3 && (
+                        <Badge variant="outline" className="text-[11px]">
+                          +{brand.official_domains.length - 3}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Footer row */}
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="flex gap-1">
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleScan(brand.id)}
+                          className="h-7 text-[11px]"
+                          onClick={(e) => handleScan(e, brand.id)}
                           title="Trigger scan"
                         >
-                          <Search className="h-3 w-3" />
+                          <Search className="h-3 w-3 mr-1" />
+                          Scan
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setDeleteTarget(brand)}
+                          className="h-7 text-[11px] text-destructive"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setDeleteTarget(brand)
+                          }}
                           title="Delete"
-                          className="text-error"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                      <span className="text-xs text-muted-foreground group-hover:text-foreground flex items-center gap-1 transition-colors">
+                        View <ArrowRight className="h-3 w-3" />
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )
+          })}
+        </div>
+      )}
 
       <Dialog
         open={!!deleteTarget}
