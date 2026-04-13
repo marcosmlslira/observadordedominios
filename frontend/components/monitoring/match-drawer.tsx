@@ -123,6 +123,18 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
             </DialogHeader>
 
             <div className="space-y-5">
+              {/* Self-owned domain banner */}
+              {match.auto_disposition === "self_owned" && (
+                <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-800">
+                  <span className="mt-0.5 shrink-0">🏢</span>
+                  <div>
+                    <p className="font-medium">Domínio da empresa</p>
+                    {match.auto_disposition_reason && (
+                      <p className="text-xs text-green-700 mt-0.5">{match.auto_disposition_reason}</p>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Scores */}
               <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
                 <div>

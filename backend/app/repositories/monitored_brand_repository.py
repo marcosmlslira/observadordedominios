@@ -118,6 +118,7 @@ class MonitoredBrandRepository:
         noise_mode: str | None = None,
         notes: str | None = None,
         is_active: bool | None = None,
+        trusted_registrants: dict | None = None,
     ) -> MonitoredBrand:
         if brand_name is not None:
             brand.brand_name = brand_name
@@ -135,6 +136,8 @@ class MonitoredBrandRepository:
             brand.notes = notes
         if is_active is not None:
             brand.is_active = is_active
+        if trusted_registrants is not None:
+            brand.trusted_registrants = trusted_registrants
         brand.updated_at = datetime.now(timezone.utc)
         self.db.flush()
         return brand

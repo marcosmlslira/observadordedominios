@@ -72,6 +72,7 @@ def update_monitoring_profile(
     noise_mode: str | None = None,
     notes: str | None = None,
     is_active: bool | None = None,
+    trusted_registrants: dict | None = None,
 ) -> MonitoredBrand:
     effective_display_name = display_name if display_name is not None else brand.brand_name
     effective_domains = official_domains if official_domains is not None else [item.domain_name for item in brand.domains]
@@ -109,6 +110,7 @@ def update_monitoring_profile(
         noise_mode=prepared["noise_mode"],
         notes=notes,
         is_active=is_active,
+        trusted_registrants=trusted_registrants,
     )
     _apply_profile_components(repo, brand, prepared)
     return brand

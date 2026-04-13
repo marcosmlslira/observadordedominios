@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -16,6 +17,11 @@ from app.services.registrable_domain import InvalidDomainError, parse_registrabl
 PLACEHOLDER_ORG_ID = uuid.UUID(settings.TOOLS_PLACEHOLDER_ORG_ID)
 HIGH_RISK_COUNTRY_CODES = {"RU", "BY", "KP", "IR"}
 AUTO_ENRICH_LIMIT_PER_SCAN = 8
+
+
+def _normalize_registrant_id(value: str) -> str:
+    """Strip punctuation from CNPJ/CPF/tax IDs for comparison."""
+    return re.sub(r"[.\-/\s]", "", value).strip()
 
 
 def should_auto_enrich_match(match: dict) -> bool:
@@ -88,7 +94,7 @@ def enrich_similarity_match(
     clone_result: dict | None = None
     if (
         match.get("attention_bucket") == "immediate_attention"
-        and ownership_classification not in {"official", "self_owned_related"}
+        and ownership_classification not in {"official", "self_owned_related", "self_owned_registrant"}
         and brand.domains
     ):
         reference_domain = next(
@@ -123,12 +129,16 @@ def enrich_similarity_match(
     confidence = _derive_confidence(tool_results, score, signal_codes)
 
     from app.services.use_cases.generate_llm_assessment import generate_llm_assessment
-    llm_result = generate_llm_assessment(
-        match={**match, "risk_level": match.get("risk_level"), "attention_bucket": bucket},
-        brand_name=str(brand.brand_name or ""),
-        tool_results=tool_results,
-        signals=signals,
-    )
+    # Skip LLM assessment for self-owned domains to avoid wasting quota
+    if self_owned:
+        llm_result = None
+    else:
+        llm_result = generate_llm_assessment(
+            match={**match, "risk_level": match.get("risk_level"), "attention_bucket": bucket},
+            brand_name=str(brand.brand_name or ""),
+            tool_results=tool_results,
+            signals=signals,
+        )
 
     return {
         "actionability_score": round(score, 4),
@@ -481,7 +491,7 @@ def _bucket_after_enrichment(
     domain = str(match.get("domain_name") or "")
     label = brand.brand_label or brand.brand_name or "the brand"
 
-    if ownership_classification in {"official", "self_owned_related"}:
+    if ownership_classification in {"official", "self_owned_related", "self_owned_registrant"}:
         return (
             "watchlist",
             f"{domain} appears to be an official or self-owned asset of {label}. Suppressed from frontline triage.",
@@ -540,7 +550,9 @@ def _derive_ownership(
     }
     brand_tokens = {token for token in brand_tokens if token and len(token) >= 4}
 
-    whois_result = (tool_results.get("whois") or {}).get("result") or {}
+    _whois_raw = tool_results.get("whois") or {}
+    # Handle both nested {result: {...}} (debug scripts) and flat dict (production _execute())
+    whois_result = _whois_raw.get("result") or _whois_raw
     registrant_candidates = [
         whois_result.get("registrant_organization"),
         whois_result.get("registrant_name"),
@@ -549,6 +561,51 @@ def _derive_ownership(
         normalized = normalize_brand_text(str(value or ""))
         if normalized and any(token in normalized or normalized in token for token in brand_tokens):
             return "self_owned_related", True
+
+    # ── Trusted registrant identifiers (CNPJ / org name / email domain) ──────
+    # Allows brand admins to register known CNPJ/CPF codes, org name variants,
+    # and contact email domains so that subsidiary/related domains are not
+    # misclassified as threats when WHOIS reveals the same owner.
+    trusted = (getattr(brand, "trusted_registrants", None) or {}) or {}
+    if trusted:
+        trusted_cnpjs = [
+            _normalize_registrant_id(c)
+            for c in (trusted.get("cnpjs") or [])
+            if c
+        ]
+        trusted_org_names = [
+            normalize_brand_text(o)
+            for o in (trusted.get("org_names") or [])
+            if o
+        ]
+        trusted_email_domains = [
+            d.lstrip("@").lower()
+            for d in (trusted.get("email_domains") or [])
+            if d
+        ]
+
+        registrant_id = str(whois_result.get("registrant_id") or "").strip()
+        if registrant_id and trusted_cnpjs:
+            normalized_id = _normalize_registrant_id(registrant_id)
+            if normalized_id and normalized_id in trusted_cnpjs:
+                return "self_owned_registrant", True
+
+        registrant_org = str(whois_result.get("registrant_organization") or "").strip()
+        if registrant_org and trusted_org_names:
+            normalized_org = normalize_brand_text(registrant_org)
+            if normalized_org and any(
+                to in normalized_org or normalized_org in to
+                for to in trusted_org_names
+            ):
+                return "self_owned_registrant", True
+
+        registrant_email = str(whois_result.get("registrant_email") or "").strip()
+        if registrant_email and "@" in registrant_email:
+            email_domain = registrant_email.split("@")[-1].lower()
+            if (trusted_email_domains and email_domain in trusted_email_domains) or (
+                email_domain and email_domain in official_domains
+            ):
+                return "self_owned_registrant", True
 
     http_result = (tool_results.get("http_headers") or {}).get("result") or {}
     final_url = str(http_result.get("final_url") or "")
@@ -597,8 +654,8 @@ def _derive_disposition(
     page_disposition = page_result.get("page_disposition")
     if ownership_classification == "official":
         return "official"
-    if ownership_classification == "self_owned_related":
-        return "self_owned_related"
+    if ownership_classification in {"self_owned_related", "self_owned_registrant"}:
+        return "safe"
     if ownership_classification == "third_party_legitimate":
         return "third_party_legitimate"
     if {"credential_collection_surface", "brand_impersonation_content", "clone_detected"} & signal_set:

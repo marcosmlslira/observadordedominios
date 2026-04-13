@@ -193,6 +193,43 @@ class MatchStateSnapshotRepository:
             )
         return q.count()
 
+    def list_self_owned_for_brand(
+        self,
+        brand_id: UUID,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[MatchStateSnapshot]:
+        """Return snapshots for matches detected as company-owned (self_owned)."""
+        from app.models.similarity_match import SimilarityMatch
+
+        return (
+            self.db.query(MatchStateSnapshot)
+            .join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id)
+            .filter(
+                MatchStateSnapshot.brand_id == brand_id,
+                SimilarityMatch.auto_disposition == "self_owned",
+            )
+            .order_by(MatchStateSnapshot.derived_score.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    def count_self_owned_for_brand(self, brand_id: UUID) -> int:
+        """Count matches detected as company-owned for a brand."""
+        from app.models.similarity_match import SimilarityMatch
+
+        return (
+            self.db.query(MatchStateSnapshot)
+            .join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id)
+            .filter(
+                MatchStateSnapshot.brand_id == brand_id,
+                SimilarityMatch.auto_disposition == "self_owned",
+            )
+            .count()
+        )
+
     def needs_llm_assessment(
         self,
         *,
@@ -207,15 +244,19 @@ class MatchStateSnapshotRepository:
         """
         from datetime import timedelta
         from sqlalchemy import func, or_
+        from app.models.similarity_match import SimilarityMatch
         LLM_TTL_DAYS = 7
         TTL_TRIGGER = or_(
             MatchStateSnapshot.llm_assessment.is_(None),
             MatchStateSnapshot.llm_source_fingerprint != MatchStateSnapshot.state_fingerprint,
             MatchStateSnapshot.last_derived_at < func.now() - timedelta(days=LLM_TTL_DAYS),
         )
-        q = self.db.query(MatchStateSnapshot).filter(
+        q = self.db.query(MatchStateSnapshot).join(
+            SimilarityMatch, SimilarityMatch.id == MatchStateSnapshot.match_id
+        ).filter(
             MatchStateSnapshot.derived_bucket.in_(["immediate_attention", "defensive_gap"]),
             TTL_TRIGGER,
+            SimilarityMatch.auto_disposition.is_(None),
         )
         if brand_id:
             q = q.filter(MatchStateSnapshot.brand_id == brand_id)

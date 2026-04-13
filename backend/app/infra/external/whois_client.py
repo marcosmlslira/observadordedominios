@@ -47,6 +47,52 @@ def _to_str_list(value) -> list[str]:
     return [str(value)]
 
 
+def _parse_cctld_whois_fields(raw_text: str, result: dict) -> dict:
+    """Augment WHOIS result with fields from ccTLD proprietary formats.
+
+    Handles registro.br (and similar) formats where python-whois cannot parse
+    the proprietary field names (owner/ownerid/responsible/created/expires).
+    Only fills fields that python-whois left empty.
+    """
+    if not raw_text:
+        return result
+
+    if not result.get("registrant_organization"):
+        m = re.search(r"^owner:\s+(.+)$", raw_text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            result["registrant_organization"] = m.group(1).strip()
+
+    if not result.get("registrant_name"):
+        m = re.search(r"^responsible:\s+(.+)$", raw_text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            result["registrant_name"] = m.group(1).strip()
+
+    # ownerid carries CNPJ/CPF (Brazilian registry IDs)
+    if not result.get("registrant_id"):
+        m = re.search(r"^ownerid:\s+(.+)$", raw_text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            result["registrant_id"] = m.group(1).strip()
+
+    # creation date in YYYYMMDD format used by registro.br
+    if not result.get("creation_date"):
+        m = re.search(r"^created:\s+(\d{8})\s*$", raw_text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            result["creation_date"] = m.group(1).strip()
+
+    if not result.get("expiration_date"):
+        m = re.search(r"^expires:\s+(\d{8})\s*$", raw_text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            result["expiration_date"] = m.group(1).strip()
+
+    # first e-mail: field (may appear in nic-hdl blocks — use the first occurrence)
+    if not result.get("registrant_email"):
+        m = re.search(r"^e-mail:\s+(.+)$", raw_text, re.MULTILINE | re.IGNORECASE)
+        if m:
+            result["registrant_email"] = m.group(1).strip()
+
+    return result
+
+
 def lookup_whois(domain: str) -> dict:
     """Query WHOIS for a domain. Returns a normalized dict."""
     if whois is None:
@@ -61,6 +107,8 @@ def lookup_whois(domain: str) -> dict:
             "registrant_name": None,
             "registrant_organization": None,
             "registrant_country": None,
+            "registrant_id": None,
+            "registrant_email": None,
             "dnssec": None,
             "raw_text": "python-whois is not installed",
             "lookup_status": "technical_error",
@@ -94,6 +142,8 @@ def lookup_whois(domain: str) -> dict:
             "registrant_name": None,
             "registrant_organization": None,
             "registrant_country": None,
+            "registrant_id": None,
+            "registrant_email": None,
             "dnssec": None,
             "raw_text": message,
             "lookup_status": lookup_status,
@@ -139,7 +189,7 @@ def lookup_whois(domain: str) -> dict:
         confidence = 0.0
         data_quality = "inconclusive"
 
-    return {
+    result = {
         "domain_name": _to_str(w.domain_name),
         "registrar": _to_str(w.registrar),
         "creation_date": _to_str(w.creation_date),
@@ -150,6 +200,8 @@ def lookup_whois(domain: str) -> dict:
         "registrant_name": _to_str(getattr(w, "name", None)),
         "registrant_organization": _to_str(getattr(w, "org", None)),
         "registrant_country": _to_str(getattr(w, "country", None)),
+        "registrant_id": None,
+        "registrant_email": None,
         "dnssec": _to_str(getattr(w, "dnssec", None)),
         "raw_text": raw_text,
         "lookup_status": lookup_status,
@@ -157,3 +209,4 @@ def lookup_whois(domain: str) -> dict:
         "confidence": confidence,
         "data_quality": data_quality,
     }
+    return _parse_cctld_whois_fields(raw_text or "", result)

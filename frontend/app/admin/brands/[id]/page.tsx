@@ -32,6 +32,7 @@ import {
   Minus,
   ChevronDown,
   ChevronUp,
+  Building2,
 } from "lucide-react"
 
 const BUCKETS = [
@@ -73,6 +74,29 @@ function CheckIcon({ ok }: { ok: boolean | undefined }) {
   return <XCircle className="h-3 w-3 text-destructive" />
 }
 
+function SelfOwnedSecurityBadge({ signalCodes }: { signalCodes: string[] }) {
+  if (signalCodes.length === 0) {
+    return (
+      <Badge variant="outline" className="text-[11px] text-green-600 border-green-200 bg-green-50">
+        ✓ Sem alertas
+      </Badge>
+    )
+  }
+  const hasCritical = signalCodes.some(
+    (c) => c.includes("safe_browsing") || c.includes("phishtank") || c.includes("blacklist")
+  )
+  const hasWarning = signalCodes.some((c) => c.includes("ssl") || c.includes("dns"))
+  return (
+    <Badge
+      variant={hasCritical ? "destructive" : "secondary"}
+      className="text-[11px]"
+    >
+      {hasCritical ? "⚠ " : hasWarning ? "⚡ " : ""}
+      {signalCodes.length} sinal{signalCodes.length !== 1 ? "is" : ""}
+    </Badge>
+  )
+}
+
 function CollapsibleSection({
   title,
   defaultOpen = false,
@@ -111,6 +135,7 @@ export default function BrandDetailPage() {
   const [health, setHealth] = useState<BrandHealthResponse | null>(null)
   const [cycles, setCycles] = useState<CycleListResponse | null>(null)
   const [snapshots, setSnapshots] = useState<MatchSnapshotListResponse | null>(null)
+  const [selfOwned, setSelfOwned] = useState<MatchSnapshotListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [snapshotsLoading, setSnapshotsLoading] = useState(false)
 
@@ -122,14 +147,16 @@ export default function BrandDetailPage() {
   const [scanning, setScanning] = useState(false)
 
   const fetchBrand = useCallback(async () => {
-    const [b, h, c] = await Promise.all([
+    const [b, h, c, so] = await Promise.all([
       api.get<Brand>(`/v1/brands/${id}`),
       monitoringApi.getBrandHealth(id),
       monitoringApi.getCycles(id, 30, 0),
+      monitoringApi.getSelfOwnedMatches(id),
     ])
     setBrand(b)
     setHealth(h)
     setCycles(c)
+    setSelfOwned(so)
   }, [id])
 
   const fetchSnapshots = useCallback(async () => {
@@ -364,6 +391,52 @@ export default function BrandDetailPage() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {/* Company-owned domains detected */}
+      {selfOwned && selfOwned.total > 0 && (
+        <CollapsibleSection
+          title={`Domínios da Empresa (${selfOwned.total})`}
+          defaultOpen={true}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground">
+              Estes domínios foram detectados como pertencentes à própria empresa e excluídos dos
+              alertas de ameaça. Verifique os sinais de segurança para garantir que estejam saudáveis.
+            </p>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Domínio</TableHead>
+                <TableHead>Detectado</TableHead>
+                <TableHead>Segurança</TableHead>
+                <TableHead>Motivo</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {selfOwned.items.map((snap) => (
+                <TableRow
+                  key={snap.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => setSelectedMatch(snap)}
+                >
+                  <TableCell className="font-mono text-sm">{snap.domain_name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {new Date(snap.first_detected_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <SelfOwnedSecurityBadge signalCodes={snap.signal_codes} />
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                    {snap.auto_disposition_reason ?? "Proprietário identificado"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CollapsibleSection>
       )}
 
       {/* Threats / Match Snapshots */}

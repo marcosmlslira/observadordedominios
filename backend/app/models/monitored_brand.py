@@ -3,7 +3,7 @@
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Index, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.models.base import Base, TimestampMixin
@@ -23,6 +23,11 @@ class MonitoredBrand(Base, TimestampMixin):
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     alert_webhook_url = Column(Text, nullable=True)
+    # Trusted registrant identifiers: CNPJs, org name variants, contact email domains.
+    # When a suspected domain's WHOIS data matches any entry here, it is classified
+    # as self_owned_registrant and excluded from the threat list.
+    # Structure: {"cnpjs": [...], "org_names": [...], "email_domains": [...]}
+    trusted_registrants = Column(JSONB, nullable=True)
 
     domains = relationship(
         "MonitoredBrandDomain",

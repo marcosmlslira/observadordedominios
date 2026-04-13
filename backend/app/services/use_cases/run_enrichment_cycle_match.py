@@ -192,6 +192,56 @@ def run_enrichment_cycle_match(
     from app.repositories.match_state_snapshot_repository import MatchStateSnapshotRepository
     snapshot = MatchStateSnapshotRepository(db).get_by_match(match.id)
 
+    # ── Ownership detection — suppress self-owned domains before LLM / threat counts ──
+    from sqlalchemy import text as _text
+    from app.services.use_cases.enrich_similarity_match import _derive_ownership
+
+    match_dict = {
+        "domain_name": match.domain_name,
+        "tld": match.tld,
+        "attention_bucket": getattr(match, "attention_bucket", ""),
+    }
+    ownership_class, self_owned = _derive_ownership(brand, match_dict, tool_results)
+    if self_owned:
+        db.execute(
+            _text(
+                "UPDATE similarity_match"
+                " SET auto_disposition = 'self_owned',"
+                "     auto_disposition_reason = 'same_registrant_detected',"
+                "     self_owned = TRUE,"
+                "     ownership_classification = :ownership"
+                " WHERE id = :match_id"
+            ),
+            {"ownership": ownership_class, "match_id": match.id},
+        )
+        event_repo.create(
+            organization_id=organization_id,
+            brand_id=match.brand_id,
+            match_id=match.id,
+            cycle_id=cycle_id,
+            event_type="auto_disposition",
+            event_source="enrichment",
+            tool_name=None,
+            result_data={
+                "ownership_classification": ownership_class,
+                "auto_disposition": "self_owned",
+                "self_owned": True,
+            },
+        )
+        db.commit()
+        logger.info(
+            "Self-owned match=%s ownership=%s domain=%s",
+            match.id, ownership_class, match.domain_name,
+        )
+        return {
+            "tools_run": tools_run,
+            "tools_failed": tools_failed,
+            "auto_dismissed": False,
+            "dismiss_rule": None,
+            "derived_bucket": snapshot.derived_bucket if snapshot else "watchlist",
+        }
+    # ── End ownership detection ──────────────────────────────────────────────────
+
     auto_dismissed = False
     dismiss_rule = None
 

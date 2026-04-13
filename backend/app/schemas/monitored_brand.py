@@ -10,6 +10,17 @@ from pydantic import BaseModel, Field
 
 from app.schemas.monitoring import MonitoringSummarySchema
 
+
+class TrustedRegistrantsSchema(BaseModel):
+    """Trusted registrant identifiers for a brand.
+
+    Any suspected domain whose WHOIS data matches one of these identifiers
+    will be classified as self_owned_registrant and excluded from threats.
+    """
+    cnpjs: list[str] = Field(default_factory=list, description="CNPJ/CPF numbers (any format — punctuation stripped on compare)")
+    org_names: list[str] = Field(default_factory=list, description="Organisation name variants (case-insensitive partial match)")
+    email_domains: list[str] = Field(default_factory=list, description="Contact email domains, e.g. 'bb.com.br'")
+
 AliasType = Literal["brand_alias", "brand_phrase", "support_keyword"]
 NoiseMode = Literal["conservative", "standard", "broad"]
 
@@ -83,6 +94,7 @@ class UpdateBrandRequest(BaseModel):
     noise_mode: NoiseMode | None = None
     notes: str | None = None
     is_active: bool | None = None
+    trusted_registrants: TrustedRegistrantsSchema | None = None
 
 
 class BrandResponse(BaseModel):
@@ -95,6 +107,7 @@ class BrandResponse(BaseModel):
     tld_scope: list[str]
     noise_mode: str
     notes: str | None = None
+    trusted_registrants: TrustedRegistrantsSchema | None = None
     official_domains: list[BrandDomainResponse] = Field(default_factory=list)
     aliases: list[BrandAliasResponse] = Field(default_factory=list)
     seeds: list[BrandSeedResponse] = Field(default_factory=list)

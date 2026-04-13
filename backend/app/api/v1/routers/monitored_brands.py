@@ -195,6 +195,7 @@ def update_brand(
         noise_mode=body.noise_mode,
         notes=body.notes,
         is_active=body.is_active,
+        trusted_registrants=body.trusted_registrants.model_dump() if body.trusted_registrants is not None else None,
     )
     db.commit()
     return _to_brand_response(brand)

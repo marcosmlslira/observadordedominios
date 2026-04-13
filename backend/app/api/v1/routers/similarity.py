@@ -187,6 +187,58 @@ def list_matches(
 
 
 @router.get(
+    "/brands/{brand_id}/self-owned-matches",
+    response_model=MatchSnapshotListResponse,
+    summary="List company-owned matches detected for a brand",
+)
+def list_self_owned_matches(
+    brand_id: UUID,
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    snapshot_repo = MatchStateSnapshotRepository(db)
+    snapshots = snapshot_repo.list_self_owned_for_brand(brand_id, limit=limit, offset=offset)
+    match_ids = [s.match_id for s in snapshots]
+    matches_by_id: dict = {}
+    if match_ids:
+        rows = db.query(SimilarityMatchModel).filter(SimilarityMatchModel.id.in_(match_ids)).all()
+        matches_by_id = {m.id: m for m in rows}
+
+    items = []
+    for snap in snapshots:
+        m = matches_by_id.get(snap.match_id)
+        if m is None:
+            continue
+        items.append(MatchSnapshotResponse(
+            id=m.id,
+            brand_id=m.brand_id,
+            domain_name=m.domain_name,
+            tld=m.tld,
+            label=m.label,
+            score_final=m.score_final,
+            attention_bucket=m.attention_bucket,
+            matched_rule=m.matched_rule,
+            auto_disposition=m.auto_disposition,
+            auto_disposition_reason=m.auto_disposition_reason,
+            first_detected_at=m.first_detected_at,
+            domain_first_seen=m.domain_first_seen,
+            derived_score=snap.derived_score,
+            derived_bucket=snap.derived_bucket,
+            derived_risk=snap.derived_risk,
+            derived_disposition=snap.derived_disposition,
+            active_signals=[SignalSchema(**s) for s in (snap.active_signals or [])],
+            signal_codes=list(snap.signal_codes or []),
+            llm_assessment=snap.llm_assessment,
+            state_fingerprint=snap.state_fingerprint,
+            last_derived_at=snap.last_derived_at,
+        ))
+
+    total = snapshot_repo.count_self_owned_for_brand(brand_id)
+    return MatchSnapshotListResponse(items=items, total=total)
+
+
+@router.get(
     "/matches/{match_id}/events",
     response_model=EventListResponse,
     summary="Get monitoring event timeline for a match",
