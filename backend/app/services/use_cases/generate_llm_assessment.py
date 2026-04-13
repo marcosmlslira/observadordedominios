@@ -140,6 +140,8 @@ def generate_llm_assessment(
     if not should_generate_assessment(match, settings.OPENROUTER_API_KEY):
         return None
 
+    from app.infra.external.openrouter_client import DailyQuotaExhaustedError
+
     try:
         summary = build_domain_summary(match, brand_name, tool_results, signals)
         summary_json = json.dumps(summary, ensure_ascii=False, indent=2)
@@ -164,6 +166,9 @@ def generate_llm_assessment(
             )
         return parsed
 
+    except DailyQuotaExhaustedError:
+        # Re-raise so callers can skip the rest of the batch for today
+        raise
     except Exception as exc:
         logger.warning("LLM assessment failed for match %s: %s", match.get("domain_name"), exc)
         return None

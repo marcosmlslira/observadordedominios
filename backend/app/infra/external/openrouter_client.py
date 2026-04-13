@@ -11,19 +11,34 @@ logger = logging.getLogger(__name__)
 OPENROUTER_MODELS = [
     "nvidia/nemotron-3-super-120b-a12b:free",
     "google/gemma-3-27b-it:free",
-    "arcee-ai/trinity-mini:free",
+    "google/gemma-2-9b-it:free",
+    "mistralai/mistral-7b-instruct:free",
     "meta-llama/llama-3.2-3b-instruct:free",
+    "qwen/qwen-2-7b-instruct:free",
 ]
 
 _SITE_URL = "https://observadordedominios.com.br"
 _APP_TITLE = "Observador de Dominios"
+
+# Error substrings that indicate the account-level daily quota is exhausted.
+# When detected, we stop the fallback chain immediately since all free models
+# share the same quota — retrying other models just wastes the remaining budget.
+_DAILY_QUOTA_MARKERS = [
+    "free-models-per-day",
+    "Add 10 credits to unlock",
+]
+
+
+class DailyQuotaExhaustedError(RuntimeError):
+    """Raised when the OpenRouter account-level free daily quota is exhausted."""
 
 
 class OpenRouterClient:
     """Thin wrapper around the OpenAI SDK pointed at OpenRouter.
 
     Tries each free model in sequence and returns the first successful response.
-    Raises RuntimeError if all models fail.
+    Raises DailyQuotaExhaustedError when the daily free quota is exhausted.
+    Raises RuntimeError if all models fail for other reasons.
     """
 
     def __init__(self, api_key: str, base_url: str, timeout: float = 20.0) -> None:
@@ -42,7 +57,8 @@ class OpenRouterClient:
             The assistant message content string.
 
         Raises:
-            RuntimeError: If all models fail.
+            DailyQuotaExhaustedError: If the account free daily quota is exhausted.
+            RuntimeError: If all models fail for other reasons.
         """
         from openai import OpenAI
 
@@ -74,6 +90,11 @@ class OpenRouterClient:
                     return content
                 logger.warning("OpenRouter model=%s returned empty content, trying next", model)
             except Exception as exc:
+                error_str = str(exc)
+                if any(marker in error_str for marker in _DAILY_QUOTA_MARKERS):
+                    raise DailyQuotaExhaustedError(
+                        f"OpenRouter free daily quota exhausted. Add credits to continue. ({exc})"
+                    ) from exc
                 logger.warning("OpenRouter model=%s failed: %s", model, exc)
                 last_error = exc
 

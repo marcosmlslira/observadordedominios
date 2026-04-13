@@ -81,6 +81,8 @@ def run_assessment_cycle(db: Session | None = None) -> None:
         logger.info("assessment_worker: processing %d snapshots", len(snapshots))
         assessed = 0
 
+        from app.infra.external.openrouter_client import DailyQuotaExhaustedError
+
         for snapshot in snapshots:
             try:
                 match_dict: dict = {
@@ -152,6 +154,13 @@ def run_assessment_cycle(db: Session | None = None) -> None:
                     snapshot.id, snapshot.derived_bucket,
                 )
 
+            except DailyQuotaExhaustedError as exc:
+                db.rollback()
+                logger.warning(
+                    "assessment_worker: OpenRouter daily quota exhausted — skipping remaining batch. %s",
+                    exc,
+                )
+                break
             except Exception:
                 db.rollback()
                 logger.exception("LLM assessment failed for snapshot=%s", snapshot.id)
