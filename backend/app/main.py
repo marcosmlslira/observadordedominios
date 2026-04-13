@@ -90,3 +90,4 @@ app.include_router(tools.public_router)
 
 # Register free tool services
 register_all_tools()
+
