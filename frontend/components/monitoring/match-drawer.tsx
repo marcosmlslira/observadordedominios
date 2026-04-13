@@ -103,7 +103,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
           <>
             <DialogHeader>
               <DialogTitle className="font-mono text-base">
-                {match.domain_name}.{match.tld}
+                {match.domain_name}
               </DialogTitle>
               <div className="flex flex-wrap gap-2 pt-1">
                 <Badge variant={bucketVariant(match.derived_bucket)}>

@@ -416,7 +416,7 @@ export default function BrandDetailPage() {
                     onClick={() => setSelectedMatch(snap)}
                   >
                     <TableCell className="font-mono text-sm">
-                      {snap.domain_name}.{snap.tld}
+                      {snap.domain_name}
                     </TableCell>
                     <TableCell>
                       <Badge
