@@ -33,11 +33,15 @@ _HEALTH_TOOLS: list[tuple[str, str]] = [
 
 
 def _run_tool(tool_class_path: str, domain: str) -> dict:
-    """Import and instantiate a tool service, then call run(domain)."""
+    """Import and instantiate a tool service, then execute it directly.
+
+    Calls _execute() bypassing cache/rate-limit — health worker runs as an
+    internal system job, not a user-facing API call.
+    """
     module_path, class_name = tool_class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)
     service = getattr(module, class_name)()
-    result = service.run(domain)
+    result = service._execute(domain)
     if hasattr(result, "model_dump"):
         return result.model_dump()
     if hasattr(result, "dict"):
