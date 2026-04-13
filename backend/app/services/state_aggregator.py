@@ -274,7 +274,7 @@ def _derive_health_fields(results: dict[str, dict]) -> dict:
     # SSL
     ssl = results.get("ssl_check", {})
     if ssl:
-        cert = ssl.get("certificate", {})
+        cert = ssl.get("certificate") or {}
         days = cert.get("days_remaining")
         ocsp = cert.get("ocsp_status", "unknown")
         fields["ssl_ok"] = ssl.get("is_valid", False) and ocsp != "revoked"
