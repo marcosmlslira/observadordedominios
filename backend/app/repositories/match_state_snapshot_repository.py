@@ -144,6 +144,55 @@ class MatchStateSnapshotRepository:
         )
         return {bucket: count for bucket, count in rows}
 
+    def list_global(
+        self,
+        *,
+        bucket: str | None = None,
+        brand_id: UUID | None = None,
+        exclude_auto_dismissed: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[MatchStateSnapshot]:
+        """List snapshots across all brands, optionally filtered by bucket/brand."""
+        from app.models.similarity_match import SimilarityMatch
+
+        q = self.db.query(MatchStateSnapshot)
+        if brand_id:
+            q = q.filter(MatchStateSnapshot.brand_id == brand_id)
+        if bucket:
+            q = q.filter(MatchStateSnapshot.derived_bucket == bucket)
+        if exclude_auto_dismissed:
+            q = q.join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id).filter(
+                SimilarityMatch.auto_disposition.is_(None)
+            )
+        return (
+            q.order_by(MatchStateSnapshot.derived_score.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+
+    def count_global(
+        self,
+        *,
+        bucket: str | None = None,
+        brand_id: UUID | None = None,
+        exclude_auto_dismissed: bool = True,
+    ) -> int:
+        """Count snapshots across all brands."""
+        from app.models.similarity_match import SimilarityMatch
+
+        q = self.db.query(MatchStateSnapshot)
+        if brand_id:
+            q = q.filter(MatchStateSnapshot.brand_id == brand_id)
+        if bucket:
+            q = q.filter(MatchStateSnapshot.derived_bucket == bucket)
+        if exclude_auto_dismissed:
+            q = q.join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id).filter(
+                SimilarityMatch.auto_disposition.is_(None)
+            )
+        return q.count()
+
     def needs_llm_assessment(
         self,
         *,

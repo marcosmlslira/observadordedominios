@@ -219,4 +219,21 @@ export const monitoringApi = {
       status,
       notes: notes ?? null,
     }),
+
+  listAllMatches: (params?: {
+    bucket?: string
+    brandId?: string
+    limit?: number
+    offset?: number
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.bucket) qs.set("bucket", params.bucket)
+    if (params?.brandId) qs.set("brand_id", params.brandId)
+    if (params?.limit != null) qs.set("limit", String(params.limit))
+    if (params?.offset != null) qs.set("offset", String(params.offset))
+    const q = qs.toString()
+    return api.get<import("./types").MatchSnapshotListResponse>(
+      `/v1/matches${q ? `?${q}` : ""}`
+    )
+  },
 }

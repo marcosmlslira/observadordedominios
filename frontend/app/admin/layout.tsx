@@ -12,12 +12,14 @@ import {
   Shield,
   Wrench,
   LogOut,
+  AlertTriangle,
 } from "lucide-react"
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/ingestion", label: "Ingestion Runs", icon: Download },
   { href: "/admin/brands", label: "Monitored Brands", icon: Shield },
+  { href: "/admin/matches", label: "Threats", icon: AlertTriangle },
   { href: "/admin/tools", label: "Free Tools", icon: Wrench },
 ]
 

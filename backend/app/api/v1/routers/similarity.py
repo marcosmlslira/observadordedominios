@@ -215,6 +215,72 @@ def get_match_events(
 
 
 @router.get(
+    "/matches",
+    response_model=MatchSnapshotListResponse,
+    summary="List all match snapshots across brands (global threat view)",
+)
+def list_all_matches(
+    bucket: str | None = Query(None, description="Filter by derived_bucket"),
+    brand_id: UUID | None = Query(None, description="Filter by brand"),
+    exclude_auto_dismissed: bool = Query(True, description="Exclude auto-dismissed matches"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    snapshot_repo = MatchStateSnapshotRepository(db)
+    snapshots = snapshot_repo.list_global(
+        bucket=bucket,
+        brand_id=brand_id,
+        exclude_auto_dismissed=exclude_auto_dismissed,
+        limit=limit,
+        offset=offset,
+    )
+    total = snapshot_repo.count_global(
+        bucket=bucket,
+        brand_id=brand_id,
+        exclude_auto_dismissed=exclude_auto_dismissed,
+    )
+    match_ids = [s.match_id for s in snapshots]
+    matches_by_id: dict = {}
+    if match_ids:
+        rows = db.query(SimilarityMatchModel).filter(
+            SimilarityMatchModel.id.in_(match_ids)
+        ).all()
+        matches_by_id = {m.id: m for m in rows}
+
+    items = []
+    for snap in snapshots:
+        m = matches_by_id.get(snap.match_id)
+        if m is None:
+            continue
+        items.append(MatchSnapshotResponse(
+            id=m.id,
+            brand_id=m.brand_id,
+            domain_name=m.domain_name,
+            tld=m.tld,
+            label=m.label,
+            score_final=m.score_final,
+            attention_bucket=m.attention_bucket,
+            matched_rule=m.matched_rule,
+            auto_disposition=m.auto_disposition,
+            auto_disposition_reason=m.auto_disposition_reason,
+            first_detected_at=m.first_detected_at,
+            domain_first_seen=m.domain_first_seen,
+            derived_score=snap.derived_score,
+            derived_bucket=snap.derived_bucket,
+            derived_risk=snap.derived_risk,
+            derived_disposition=snap.derived_disposition,
+            active_signals=[SignalSchema(**s) for s in (snap.active_signals or [])],
+            signal_codes=list(snap.signal_codes or []),
+            llm_assessment=snap.llm_assessment,
+            state_fingerprint=snap.state_fingerprint,
+            last_derived_at=snap.last_derived_at,
+        ))
+
+    return MatchSnapshotListResponse(items=items, total=total)
+
+
+@router.get(
     "/matches/{match_id}",
     response_model=MatchResponse,
     summary="Get a specific similarity match",
