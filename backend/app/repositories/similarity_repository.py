@@ -850,10 +850,12 @@ class SimilarityRepository:
         *,
         limit: int = 50,
     ) -> int:
-        """Rank top-N matches for enrichment priority and store as enrichment_budget_rank.
+        """Rank matches for enrichment priority and store as enrichment_budget_rank.
 
-        Priority tiers (lower = higher priority):
-          0 — immediate_attention
+        ALL immediate_attention matches are always ranked (no cap).
+        Remaining budget slots (up to `limit`) are filled with lower-priority matches.
+
+        Priority tiers for lower-priority fill:
           1 — new today
           2 — defensive_gap
           3 — watchlist with score_final > 0.55
@@ -872,15 +874,34 @@ class SimilarityRepository:
             {"brand_id": brand_id},
         )
 
-        # Step 2: Rank top-N by priority tier
+        # Step 2: Rank ALL immediate_attention matches first (no budget cap),
+        # then fill remaining slots up to `limit` with lower-priority matches.
         self.db.execute(
             text("""
-            WITH ranked AS (
+            WITH active AS (
+                SELECT id, attention_bucket, first_detected_at,
+                       score_final, actionability_score, last_enriched_at
+                FROM similarity_match
+                WHERE brand_id = :brand_id
+                  AND (auto_disposition IS NULL OR auto_disposition = '')
+                  AND (disposition IS NULL OR disposition NOT IN ('dismissed'))
+            ),
+            immediate AS (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           ORDER BY actionability_score DESC NULLS LAST, score_final DESC
+                       ) AS r
+                FROM active
+                WHERE attention_bucket = 'immediate_attention'
+            ),
+            immediate_count AS (
+                SELECT COUNT(*) AS n FROM immediate
+            ),
+            other AS (
                 SELECT id,
                        ROW_NUMBER() OVER (
                            ORDER BY
                              CASE
-                               WHEN attention_bucket = 'immediate_attention' THEN 0
                                WHEN first_detected_at::date = CURRENT_DATE THEN 1
                                WHEN attention_bucket = 'defensive_gap' THEN 2
                                WHEN attention_bucket = 'watchlist'
@@ -892,15 +913,19 @@ class SimilarityRepository:
                              actionability_score DESC NULLS LAST,
                              score_final DESC
                        ) AS r
-                FROM similarity_match
-                WHERE brand_id = :brand_id
-                  AND (auto_disposition IS NULL OR auto_disposition = '')
-                  AND (disposition IS NULL OR disposition NOT IN ('dismissed'))
+                FROM active
+                WHERE attention_bucket != 'immediate_attention'
+            ),
+            combined AS (
+                SELECT id, r FROM immediate
+                UNION ALL
+                SELECT o.id, (ic.n + o.r)
+                FROM other o, immediate_count ic
+                WHERE o.r <= GREATEST(:limit - ic.n, 0)
             )
             UPDATE similarity_match sm
-            SET enrichment_budget_rank = ranked.r
-            FROM ranked
-            WHERE sm.id = ranked.id AND ranked.r <= :limit
+            SET enrichment_budget_rank = combined.r
+            FROM combined WHERE sm.id = combined.id
             """),
             {"brand_id": brand_id, "limit": limit},
         )

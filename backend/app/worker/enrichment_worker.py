@@ -31,7 +31,7 @@ _consecutive_cycle_failures = 0
 _last_cycle_completed_at: datetime | None = None
 
 
-def _fetch_ranked_matches(db: Session, brand_id, *, limit: int = 50):
+def _fetch_ranked_matches(db: Session, brand_id, *, limit: int = 500):
     from sqlalchemy import text
     from app.models.similarity_match import SimilarityMatch
 
@@ -97,7 +97,7 @@ def run_enrichment_cycle(db: Session | None = None) -> None:
                 svc.begin_stage(cycle.id, stage="enrichment")
                 db.commit()
 
-                matches = _fetch_ranked_matches(db, brand.id, limit=50)
+                matches = _fetch_ranked_matches(db, brand.id, limit=500)
                 logger.info("Enriching %d matches for brand=%s", len(matches), brand.brand_name)
 
                 for match in matches:
