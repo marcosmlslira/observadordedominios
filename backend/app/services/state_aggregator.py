@@ -286,8 +286,10 @@ def _derive_health_fields(results: dict[str, dict]) -> dict:
     # Email security
     email = results.get("email_security", {})
     if email:
-        fields["email_security_ok"] = email.get("spoofing_risk") in ("none", "low")
-        fields["spoofing_risk"] = email.get("spoofing_risk")
+        raw_sr = email.get("spoofing_risk")
+        sr_level = raw_sr.get("level") if isinstance(raw_sr, dict) else raw_sr
+        fields["email_security_ok"] = sr_level in ("none", "low")
+        fields["spoofing_risk"] = sr_level
     else:
         fields["email_security_ok"] = None
         fields["spoofing_risk"] = None
