@@ -1,5 +1,6 @@
 # Makefile para OBS Domínios
 STACK_FILE ?= infra/stack.dev.yml
+STACK_LOCAL_FILE ?= infra/stack.local.yml
 STACK_NAME ?= obs
 
 .PHONY: help
@@ -8,7 +9,9 @@ help:
 	@echo "======================================"
 	@echo ""
 	@echo "🚀 Deploy e Build:"
-	@echo "  make deploy          - Build e deploy da stack completa"
+	@echo "  make deploy          - Build e deploy da stack completa (com workers)"
+	@echo "  make local           - Build e deploy SEM workers (seguro para dev local)"
+	@echo "  make deploy-local    - Alias para 'make local'"
 	@echo "  make build           - Build de todas as imagens"
 	@echo "  make build-frontend  - Build apenas frontend"
 	@echo "  make build-backend   - Build apenas backend"
@@ -42,6 +45,10 @@ help:
 	@echo ""
 	@echo "🧪 Testes:"
 	@echo "  make test-backend    - Executa testes do backend"
+	@echo ""
+	@echo "🌱 Seed de dados (ambiente local):"
+	@echo "  make seed            - Popula banco local com dados de exemplo"
+	@echo "  make seed-clear      - Limpa e re-popula dados de exemplo"
 	@echo ""
 	@echo "🗄️  Database:"
 	@echo "  make migrate         - Executa migrações Alembic"
@@ -96,15 +103,28 @@ build-clean:
 # DEPLOY - Deploy da stack
 # ============================================================================
 
-.PHONY: deploy deploy-prod init-swarm
+.PHONY: deploy deploy-local local deploy-prod init-swarm
 deploy: build
-	@echo "🚀 Deploying stack '$(STACK_NAME)'..."
+	@echo "🚀 Deploying stack '$(STACK_NAME)' (com workers)..."
 	@$(MAKE) init-swarm
 	docker stack deploy -c $(STACK_FILE) $(STACK_NAME)
 	@echo "✅ Stack deployed successfully!"
 	@echo "⏳ Aguarde alguns segundos para os serviços iniciarem..."
 	-@timeout /t 3 >nul 2>&1 || true
 	@$(MAKE) status
+
+local: build
+	@echo "🚀 Deploying stack local '$(STACK_NAME)' (SEM workers de ingestão)..."
+	@$(MAKE) init-swarm
+	docker stack deploy -c $(STACK_LOCAL_FILE) $(STACK_NAME)
+	@echo "✅ Stack local deployada!"
+	@echo "⏳ Aguarde alguns segundos para os serviços iniciarem..."
+	-@timeout /t 3 >nul 2>&1 || true
+	@$(MAKE) status
+	@echo ""
+	@echo "💡 Dica: execute 'make seed' para popular com dados de exemplo"
+
+deploy-local: local
 
 deploy-prod: build-prod
 	@echo "🚀 Deploying production stack '$(STACK_NAME)'..."
@@ -317,6 +337,23 @@ test-backend-docker:
 test-frontend:
 	@echo "🧪 Executando testes do frontend..."
 	cd frontend && npm test
+
+# ============================================================================
+# SEED - Dados de exemplo para ambiente local
+# ============================================================================
+
+.PHONY: seed seed-clear
+seed:
+	@echo "🌱 Populando banco local com dados de exemplo..."
+	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_backend | head -n1); \
+	if [ -z "$$container_id" ]; then echo "❌ Container backend não encontrado. Execute 'make local' primeiro."; exit 1; fi; \
+	docker exec $$container_id python app/debug_scripts/seed_sample_data.py
+
+seed-clear:
+	@echo "🌱 Limpando e re-populando dados de exemplo..."
+	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_backend | head -n1); \
+	if [ -z "$$container_id" ]; then echo "❌ Container backend não encontrado. Execute 'make local' primeiro."; exit 1; fi; \
+	docker exec $$container_id python app/debug_scripts/seed_sample_data.py --clear
 
 # ============================================================================
 # DATABASE - Migrações Alembic

@@ -90,6 +90,8 @@ class DomainHealthCheckSchema(BaseModel):
     suspicious_page: DomainCheckDetailSchema | None = None
     last_check_at: datetime | None = None
 
+    model_config = {"from_attributes": True}
+
 
 class BrandHealthResponse(BaseModel):
     domains: list[DomainHealthCheckSchema]
