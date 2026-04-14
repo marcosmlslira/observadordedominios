@@ -29,6 +29,15 @@ class MonitoringQueryService:
           threat_counts: dict
           overall_health: str
         """
+        # Threat counts from snapshots (source of truth)
+        bucket_counts = self.snapshot_repo.count_by_bucket_active(brand_id)
+        threat_counts = {
+            "immediate_attention": bucket_counts.get("immediate_attention", 0),
+            "defensive_gap": bucket_counts.get("defensive_gap", 0),
+            "watchlist": bucket_counts.get("watchlist", 0),
+        }
+        active_threat_total = sum(threat_counts.values())
+
         # Latest cycle
         cycle = self.cycle_repo.get_latest_for_brand(brand_id)
         latest_cycle = None
@@ -39,17 +48,10 @@ class MonitoringQueryService:
                 "scan_status": cycle.scan_status,
                 "enrichment_status": cycle.enrichment_status,
                 "new_matches_count": cycle.new_matches_count or 0,
-                "threats_detected": cycle.threats_detected or 0,
+                # Use active snapshot count when cycle counter is stale (e.g. after backfill)
+                "threats_detected": max(cycle.threats_detected or 0, active_threat_total),
                 "dismissed_count": cycle.dismissed_count or 0,
             }
-
-        # Threat counts excluding auto-dismissed matches
-        bucket_counts = self.snapshot_repo.count_by_bucket_active(brand_id)
-        threat_counts = {
-            "immediate_attention": bucket_counts.get("immediate_attention", 0),
-            "defensive_gap": bucket_counts.get("defensive_gap", 0),
-            "watchlist": bucket_counts.get("watchlist", 0),
-        }
 
         # Overall health from domain health records (worst-case across all domains)
         health_records = self.health_repo.list_for_brand(brand_id)
