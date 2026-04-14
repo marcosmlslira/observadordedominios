@@ -28,7 +28,7 @@ from app.schemas.czds_ingestion import (
     TldRunMetricsResponse,
     TldRunMetricItem,
 )
-from app.services.tld_coverage import resolve_tld_coverages
+from app.services.tld_coverage import get_authorized_czds_tlds, resolve_tld_coverages
 
 router = APIRouter(
     prefix="/v1/ingestion",
@@ -329,7 +329,9 @@ def get_cycle_status(
 def list_tld_coverage(
     db: Session = Depends(get_db),
 ):
+    authorized_czds_tlds = get_authorized_czds_tlds()
     run_repo = IngestionRunRepository(db)
+    policy_repo = CzdsPolicyRepository(db)
     certstream_summary = next(
         (row for row in run_repo.get_source_summary() if row["source"] == "certstream"),
         None,
@@ -339,7 +341,12 @@ def list_tld_coverage(
         certstream_seen_at = certstream_summary.get("last_run_at") or certstream_summary.get("last_success_at")
 
     checkpoints = {(cp.source, cp.tld): cp for cp in run_repo.list_checkpoints()}
-    resolved = resolve_tld_coverages(db)
+    policies = {item.tld: item for item in policy_repo.list_all()}
+    resolved = resolve_tld_coverages(
+        db,
+        authorized_czds_tlds=authorized_czds_tlds,
+        policies=policies,
+    )
     coverage_rows = []
     for item in resolved:
         crtsh_cp = checkpoints.get(("crtsh", item.tld))

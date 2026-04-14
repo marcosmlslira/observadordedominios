@@ -74,3 +74,27 @@ def test_target_tlds_expose_explicit_brazilian_second_level_domains(monkeypatch)
     monkeypatch.setattr(settings, "TARGET_TLDS", "com,com.br,net.br,org.br,br")
 
     assert tld_coverage.get_target_tlds() == ["com", "com.br", "net.br", "org.br", "br"]
+
+
+def test_get_authorized_czds_tlds_uses_short_lived_cache(monkeypatch) -> None:
+    tld_coverage.clear_authorized_czds_tlds_cache()
+    monkeypatch.setattr(settings, "CZDS_USERNAME", "user")
+    monkeypatch.setattr(settings, "CZDS_PASSWORD", "pass")
+
+    calls = {"count": 0}
+
+    class DummyClient:
+        def list_authorized_tlds(self):
+            calls["count"] += 1
+            return {"br", "com"}
+
+    monkeypatch.setattr(tld_coverage, "CZDSClient", DummyClient)
+
+    first = tld_coverage.get_authorized_czds_tlds()
+    second = tld_coverage.get_authorized_czds_tlds()
+
+    assert first == {"br", "com"}
+    assert second == {"br", "com"}
+    assert calls["count"] == 1
+
+    tld_coverage.clear_authorized_czds_tlds_cache()

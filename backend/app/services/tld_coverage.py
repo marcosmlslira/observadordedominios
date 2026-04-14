@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -9,6 +11,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.infra.external.czds_client import CZDSClient
 from app.repositories.czds_policy_repository import CzdsPolicyRepository
+
+_AUTHORIZED_TLDS_CACHE_TTL_SECONDS = 300
+_authorized_tlds_cache: set[str] | None = None
+_authorized_tlds_cache_expires_at = 0.0
+_authorized_tlds_cache_lock = threading.Lock()
 
 
 def _parse_tld_csv(raw: str) -> list[str]:
@@ -69,34 +76,58 @@ def expand_ct_query_tlds(tlds: list[str]) -> list[str]:
 
 
 def get_authorized_czds_tlds(czds_client: CZDSClient | None = None) -> set[str]:
+    global _authorized_tlds_cache, _authorized_tlds_cache_expires_at
     if not settings.CZDS_USERNAME or not settings.CZDS_PASSWORD:
         return set()
-    client = czds_client or CZDSClient()
-    try:
-        return client.list_authorized_tlds()
-    except Exception:
-        return set()
+    now = time.monotonic()
+    if czds_client is None and _authorized_tlds_cache is not None and now < _authorized_tlds_cache_expires_at:
+        return set(_authorized_tlds_cache)
+
+    with _authorized_tlds_cache_lock:
+        now = time.monotonic()
+        if czds_client is None and _authorized_tlds_cache is not None and now < _authorized_tlds_cache_expires_at:
+            return set(_authorized_tlds_cache)
+
+        client = czds_client or CZDSClient()
+        try:
+            authorized = client.list_authorized_tlds()
+        except Exception:
+            return set()
+
+        if czds_client is None:
+            _authorized_tlds_cache = set(authorized)
+            _authorized_tlds_cache_expires_at = now + _AUTHORIZED_TLDS_CACHE_TTL_SECONDS
+        return set(authorized)
+
+
+def clear_authorized_czds_tlds_cache() -> None:
+    global _authorized_tlds_cache, _authorized_tlds_cache_expires_at
+    with _authorized_tlds_cache_lock:
+        _authorized_tlds_cache = None
+        _authorized_tlds_cache_expires_at = 0.0
 
 
 def resolve_tld_coverages(
     db: Session,
     *,
     czds_client: CZDSClient | None = None,
+    authorized_czds_tlds: set[str] | None = None,
+    policies: dict[str, object] | None = None,
 ) -> list[TldCoverage]:
     target_tlds = get_target_tlds()
     priority_tlds = set(get_ct_priority_tlds())
-    authorized_czds_tlds = get_authorized_czds_tlds(czds_client)
-    policies = {item.tld: item for item in CzdsPolicyRepository(db).list_all()}
+    authorized_tlds = authorized_czds_tlds if authorized_czds_tlds is not None else get_authorized_czds_tlds(czds_client)
+    policy_index = policies if policies is not None else {item.tld: item for item in CzdsPolicyRepository(db).list_all()}
     coverages: list[TldCoverage] = []
 
     for tld in target_tlds:
-        policy = policies.get(tld)
+        policy = policy_index.get(tld)
         is_quarantined = bool(
             policy
             and policy.last_error_code in {403, 404}
             and policy.suspended_until is not None
         )
-        czds_available = tld in authorized_czds_tlds and not is_quarantined
+        czds_available = tld in authorized_tlds and not is_quarantined
         if settings.CT_FALLBACK_INCLUDE_NON_CZDS and not czds_available:
             effective_source = "ct_fallback"
             fallback_reason = "czds_unavailable"

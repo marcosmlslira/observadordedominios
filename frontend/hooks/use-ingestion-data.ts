@@ -78,21 +78,18 @@ export function useIngestionData(): IngestionData {
   const [bulkError, setBulkError] = useState("")
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const selectedBulkJobIdRef = useRef(selectedBulkJobId)
-  selectedBulkJobIdRef.current = selectedBulkJobId
 
   const fetchData = useCallback(async () => {
     try {
       const sourceParam = activeSource === "all" ? "" : `&source=${activeSource}`
       const emptyCzdsPolicy: CzdsPolicyResponse = { source: "env", tlds: [], items: [] }
-      const [runsData, allRunsData, summaryData, policyData, coverageData, bulkJobsData, countsData, cycleData] =
+      const [runsData, allRunsData, summaryData, policyData, coverageData, countsData, cycleData] =
         await Promise.all([
           api.get<IngestionRun[]>(`/v1/ingestion/runs?limit=50${sourceParam}`),
           api.get<IngestionRun[]>("/v1/ingestion/runs?limit=200"),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
           api.get<CzdsPolicyResponse>("/v1/czds/policy").catch(() => emptyCzdsPolicy),
           ingestionApi.getCoverage().catch(() => [] as TldCoverage[]),
-          ingestionApi.listBulkJobs().catch(() => [] as CtBulkJob[]),
           api.get<TldDomainCount[]>("/v1/ingestion/domain-counts").catch(() => [] as TldDomainCount[]),
           ingestionApi.getCycleStatus().catch(() => null),
         ])
@@ -103,20 +100,10 @@ export function useIngestionData(): IngestionData {
       setPolicyTlds(policyData.tlds)
       setPolicySource(policyData.source)
       setCoverage(coverageData)
-      setBulkJobs(bulkJobsData)
+      setBulkJobs([])
+      setBulkChunks([])
       setDomainCounts(countsData)
       setCycleStatus(cycleData)
-
-      const currentJobId = selectedBulkJobIdRef.current || bulkJobsData[0]?.job_id || ""
-      if (!selectedBulkJobIdRef.current && bulkJobsData[0]) {
-        setSelectedBulkJobId(bulkJobsData[0].job_id)
-      }
-      if (currentJobId) {
-        const chunkData = await ingestionApi.getBulkChunks(currentJobId)
-        setBulkChunks(chunkData)
-      } else {
-        setBulkChunks([])
-      }
     } catch {
       // ignore
     }
