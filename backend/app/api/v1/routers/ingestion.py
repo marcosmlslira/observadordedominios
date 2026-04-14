@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.dependencies import get_current_admin
-from app.infra.db.session import get_db
+from app.infra.db.session import SessionLocal, get_db
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.czds_policy_repository import CzdsPolicyRepository
 from app.schemas.czds_ingestion import (
@@ -327,29 +327,32 @@ def get_cycle_status(
     summary="Effective ingestion source per target TLD",
 )
 def list_tld_coverage(
-    db: Session = Depends(get_db),
 ):
     authorized_czds_tlds = get_authorized_czds_tlds()
-    run_repo = IngestionRunRepository(db)
-    policy_repo = CzdsPolicyRepository(db)
-    certstream_summary = next(
-        (row for row in run_repo.get_source_summary() if row["source"] == "certstream"),
-        None,
-    )
-    certstream_seen_at = None
-    if certstream_summary:
-        certstream_seen_at = certstream_summary.get("last_run_at") or certstream_summary.get("last_success_at")
+    with SessionLocal() as db:
+        run_repo = IngestionRunRepository(db)
+        policy_repo = CzdsPolicyRepository(db)
+        certstream_summary = next(
+            (row for row in run_repo.get_source_summary() if row["source"] == "certstream"),
+            None,
+        )
+        certstream_seen_at = None
+        if certstream_summary:
+            certstream_seen_at = certstream_summary.get("last_run_at") or certstream_summary.get("last_success_at")
 
-    checkpoints = {(cp.source, cp.tld): cp for cp in run_repo.list_checkpoints()}
-    policies = {item.tld: item for item in policy_repo.list_all()}
-    resolved = resolve_tld_coverages(
-        db,
-        authorized_czds_tlds=authorized_czds_tlds,
-        policies=policies,
-    )
+        checkpoints = {
+            cp.tld: cp
+            for cp in run_repo.list_checkpoints(source="crtsh")
+        }
+        policies = {item.tld: item for item in policy_repo.list_all()}
+        resolved = resolve_tld_coverages(
+            db,
+            authorized_czds_tlds=authorized_czds_tlds,
+            policies=policies,
+        )
     coverage_rows = []
     for item in resolved:
-        crtsh_cp = checkpoints.get(("crtsh", item.tld))
+        crtsh_cp = checkpoints.get(item.tld)
         coverage_rows.append(
             TldCoverageResponse(
                 tld=item.tld,
