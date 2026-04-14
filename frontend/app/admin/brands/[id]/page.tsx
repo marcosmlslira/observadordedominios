@@ -38,9 +38,9 @@ import {
 } from "lucide-react"
 
 const BUCKETS = [
-  { value: "", label: "All" },
-  { value: "immediate_attention", label: "Immediate" },
-  { value: "defensive_gap", label: "Defensive Gap" },
+  { value: "", label: "Todos" },
+  { value: "immediate_attention", label: "Imediato" },
+  { value: "defensive_gap", label: "Gap Defensivo" },
   { value: "watchlist", label: "Watchlist" },
 ]
 
@@ -63,8 +63,8 @@ function bucketVariant(bucket: string | null) {
 
 function bucketLabel(bucket: string | null) {
   switch (bucket) {
-    case "immediate_attention": return "Immediate"
-    case "defensive_gap": return "Defensive Gap"
+    case "immediate_attention": return "Imediato"
+    case "defensive_gap": return "Gap Defensivo"
     case "watchlist": return "Watchlist"
     default: return bucket ?? "—"
   }
@@ -253,7 +253,7 @@ export default function BrandDetailPage() {
         className="-ml-2"
       >
         <ArrowLeft className="h-4 w-4 mr-1" />
-        Monitoring Profiles
+        Perfis de Monitoramento
       </Button>
 
       {/* Header card */}
@@ -266,7 +266,7 @@ export default function BrandDetailPage() {
                 <Badge variant={healthVariant(summary?.overall_health)}>
                   {summary?.overall_health ?? "unknown"}
                 </Badge>
-                {!brand.is_active && <Badge variant="outline">inactive</Badge>}
+                {!brand.is_active && <Badge variant="outline">inativo</Badge>}
               </div>
               <p className="font-mono text-xs text-muted-foreground mt-0.5">
                 {brand.brand_label}
@@ -279,7 +279,7 @@ export default function BrandDetailPage() {
               disabled={scanning}
             >
               <Search className="h-3 w-3 mr-1" />
-              {scanning ? "Queuing..." : "Trigger Scan"}
+              {scanning ? "Aguardando..." : "Disparar Varredura"}
             </Button>
           </div>
 
@@ -289,13 +289,13 @@ export default function BrandDetailPage() {
               <p className="text-2xl font-bold text-destructive leading-none">
                 {threats?.immediate_attention ?? 0}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Immediate</p>
+              <p className="text-xs text-muted-foreground mt-1">Imediato</p>
             </div>
             <div className="rounded-lg bg-secondary/50 p-3 text-center">
               <p className="text-2xl font-bold leading-none">
                 {threats?.defensive_gap ?? 0}
               </p>
-              <p className="text-xs text-muted-foreground mt-1">Defensive</p>
+              <p className="text-xs text-muted-foreground mt-1">Defensivo</p>
             </div>
             <div className="rounded-lg bg-muted p-3 text-center">
               <p className="text-2xl font-bold leading-none">
@@ -311,16 +311,16 @@ export default function BrandDetailPage() {
       {latestCycle && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Latest Monitoring Cycle</CardTitle>
+            <CardTitle className="text-sm font-medium">Último Ciclo de Monitoramento</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-4 text-sm">
               <div>
-                <p className="text-xs text-muted-foreground">Date</p>
+                <p className="text-xs text-muted-foreground">Data</p>
                 <p className="text-xs mt-0.5">{latestCycle.cycle_date}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Health</p>
+                <p className="text-xs text-muted-foreground">Saúde</p>
                 <Badge
                   variant={latestCycle.health_status === "completed" ? "outline" : "secondary"}
                   className="mt-0.5"
@@ -329,7 +329,7 @@ export default function BrandDetailPage() {
                 </Badge>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Scan</p>
+                <p className="text-xs text-muted-foreground">Varredura</p>
                 <Badge
                   variant={latestCycle.scan_status === "completed" ? "outline" : "secondary"}
                   className="mt-0.5"
@@ -338,11 +338,11 @@ export default function BrandDetailPage() {
                 </Badge>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Threats</p>
+                <p className="text-xs text-muted-foreground">Ameaças</p>
                 <p className="text-xs mt-0.5 font-semibold">{latestCycle.threats_detected}</p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">New Matches</p>
+                <p className="text-xs text-muted-foreground">Novos Matches</p>
                 <p className="text-xs mt-0.5">{latestCycle.new_matches_count}</p>
               </div>
             </div>
@@ -354,20 +354,20 @@ export default function BrandDetailPage() {
       {health && health.domains.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Domain Health</CardTitle>
+            <CardTitle className="text-sm font-medium">Saúde dos Domínios</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Domain</TableHead>
+                  <TableHead>Domínio</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-center">DNS</TableHead>
                   <TableHead className="text-center">SSL</TableHead>
                   <TableHead className="text-center">Email</TableHead>
                   <TableHead className="text-center">Headers</TableHead>
                   <TableHead className="text-center">Blacklist</TableHead>
-                  <TableHead>Last Check</TableHead>
+                  <TableHead>Última Verificação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -576,12 +576,12 @@ export default function BrandDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Bucket</TableHead>
+                  <TableHead>Domínio</TableHead>
+                  <TableHead>Categoria</TableHead>
                   <TableHead>Score</TableHead>
-                  <TableHead>Risk</TableHead>
-                  <TableHead>Signals</TableHead>
-                  <TableHead>Detected</TableHead>
+                  <TableHead>Risco</TableHead>
+                  <TableHead>Sinais</TableHead>
+                  <TableHead>Detectado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -653,7 +653,7 @@ export default function BrandDetailPage() {
           {snapshots && snapshots.total > limit && (
             <div className="flex items-center justify-between border-t px-4 py-3">
               <p className="text-xs text-muted-foreground">
-                {offset + 1}–{Math.min(offset + limit, snapshots.total)} of{" "}
+                {offset + 1}–{Math.min(offset + limit, snapshots.total)} de{" "}
                 {snapshots.total}
               </p>
               <div className="flex gap-2">
@@ -663,7 +663,7 @@ export default function BrandDetailPage() {
                   disabled={offset === 0}
                   onClick={() => setOffset(Math.max(0, offset - limit))}
                 >
-                  Previous
+                  Anterior
                 </Button>
                 <Button
                   variant="outline"
@@ -671,7 +671,7 @@ export default function BrandDetailPage() {
                   disabled={offset + limit >= snapshots.total}
                   onClick={() => setOffset(offset + limit)}
                 >
-                  Next
+                  Próximo
                 </Button>
               </div>
             </div>
@@ -680,10 +680,10 @@ export default function BrandDetailPage() {
       </Card>
 
       {/* Brand Configuration (collapsible) */}
-      <CollapsibleSection title="Brand Configuration">
+      <CollapsibleSection title="Configuração do Perfil">
         <div className="space-y-3 text-sm">
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Official Domains</p>
+            <p className="text-xs text-muted-foreground mb-1">Domínios Oficiais</p>
             <div className="flex flex-wrap gap-1">
               {brand.official_domains.map((d) => (
                 <Badge
@@ -697,10 +697,10 @@ export default function BrandDetailPage() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Keywords</p>
+            <p className="text-xs text-muted-foreground mb-1">Palavras-chave</p>
             <div className="flex flex-wrap gap-1">
               {brand.keywords.length === 0 ? (
-                <span className="text-muted-foreground text-xs">None</span>
+                <span className="text-muted-foreground text-xs">Nenhuma</span>
               ) : (
                 brand.keywords.map((k) => (
                   <Badge key={k} variant="outline" className="text-[11px]">
@@ -711,7 +711,7 @@ export default function BrandDetailPage() {
             </div>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground mb-1">Aliases</p>
+            <p className="text-xs text-muted-foreground mb-1">Aliases (variações)</p>
             <div className="flex flex-wrap gap-1">
               {brand.aliases
                 .filter((a) => a.alias_type !== "support_keyword")
@@ -724,7 +724,7 @@ export default function BrandDetailPage() {
           </div>
           <div>
             <p className="text-xs text-muted-foreground mb-1">
-              TLD Scope ({brand.tld_scope.length} TLDs)
+              Extensões Monitoradas ({brand.tld_scope.length} TLDs)
             </p>
             <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
               {brand.tld_scope.map((tld) => (
@@ -736,7 +736,7 @@ export default function BrandDetailPage() {
           </div>
           {brand.notes && (
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Notes</p>
+              <p className="text-xs text-muted-foreground mb-1">Notas</p>
               <p className="text-xs">{brand.notes}</p>
             </div>
           )}
@@ -745,16 +745,16 @@ export default function BrandDetailPage() {
 
       {/* Cycle History (collapsible) */}
       {cycles && cycles.items.length > 0 && (
-        <CollapsibleSection title={`Cycle History (${cycles.total})`}>
+        <CollapsibleSection title={`Histórico de Ciclos (${cycles.total})`}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Health</TableHead>
-                <TableHead>Scan</TableHead>
-                <TableHead>Enrichment</TableHead>
-                <TableHead>Threats</TableHead>
-                <TableHead>New Matches</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Saúde</TableHead>
+                <TableHead>Varredura</TableHead>
+                <TableHead>Enriquecimento</TableHead>
+                <TableHead>Ameaças</TableHead>
+                <TableHead>Novos Matches</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

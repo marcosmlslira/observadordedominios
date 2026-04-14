@@ -17,10 +17,10 @@ import {
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/ingestion", label: "Ingestion Runs", icon: Download },
-  { href: "/admin/brands", label: "Monitored Brands", icon: Shield },
-  { href: "/admin/matches", label: "Threats", icon: AlertTriangle },
-  { href: "/admin/tools", label: "Free Tools", icon: Wrench },
+  { href: "/admin/ingestion", label: "Ingestão de Dados", icon: Download },
+  { href: "/admin/brands", label: "Perfis de Marca", icon: Shield },
+  { href: "/admin/matches", label: "Ameaças", icon: AlertTriangle },
+  { href: "/admin/tools", label: "Ferramentas", icon: Wrench },
 ]
 
 export default function AdminLayout({
@@ -85,7 +85,7 @@ export default function AdminLayout({
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4 mr-2" />
-            Logout
+            Sair
           </Button>
         </div>
       </aside>
