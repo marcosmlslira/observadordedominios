@@ -22,34 +22,19 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Textarea } from "@/components/ui/textarea"
-import { Plus, Search, Trash2, RefreshCw, ArrowRight, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, Search, Trash2, RefreshCw, ArrowRight } from "lucide-react"
 
-const TLD_PRESETS = {
-  brasil: "com.br,net.br,org.br,adv.br,app.br,blog.br,dev.br,eco.br,emp.br,log.br,ong.br,srv.br",
-  internacional:
-    "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun," +
-    "club,vip,icu,live,digital,world,today,email,solutions,services," +
-    "support,group,company,center,zone,agency,systems,network,works," +
-    "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
-    "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
-    "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
-    "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
-    "academy,education,school,host,hosting,domains,security,safe," +
-    "protect,chat,social,community,team,studio,design,marketing," +
-    "consulting,partners,ventures,holdings,international",
-  completo:
-    "com,net,org,com.br,net.br,org.br,xyz,online,site,store,top,info,tech,space,website,fun," +
-    "club,vip,icu,live,digital,world,today,email,solutions,services," +
-    "support,group,company,center,zone,agency,systems,network,works," +
-    "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
-    "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
-    "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
-    "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
-    "academy,education,school,host,hosting,domains,security,safe," +
-    "protect,chat,social,community,team,studio,design,marketing," +
-    "consulting,partners,ventures,holdings,international",
-}
+const DEFAULT_TLD_SCOPE =
+  "com,net,org,com.br,net.br,org.br,xyz,online,site,store,top,info,tech,space,website,fun," +
+  "club,vip,icu,live,digital,world,today,email,solutions,services," +
+  "support,group,company,center,zone,agency,systems,network,works," +
+  "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
+  "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
+  "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
+  "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
+  "academy,education,school,host,hosting,domains,security,safe," +
+  "protect,chat,social,community,team,studio,design,marketing," +
+  "consulting,partners,ventures,holdings,international"
 
 function splitCsv(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean)
@@ -92,9 +77,6 @@ export default function BrandsPage() {
   const [newAliases, setNewAliases] = useState("")
   const [newPhrases, setNewPhrases] = useState("")
   const [newKeywords, setNewKeywords] = useState("")
-  const [tldPreset, setTldPreset] = useState<keyof typeof TLD_PRESETS>("completo")
-  const [tldCustom, setTldCustom] = useState("")
-  const [showTldCustom, setShowTldCustom] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState("")
 
@@ -118,14 +100,13 @@ export default function BrandsPage() {
     setCreating(true)
     setCreateError("")
     try {
-      const effectiveTlds = showTldCustom ? tldCustom : TLD_PRESETS[tldPreset]
       const created = await api.post<Brand>("/v1/brands", {
         brand_name: newName.trim(),
         primary_brand_name: newPrimaryBrand.trim() || undefined,
         official_domains: splitCsv(newOfficialDomains),
         aliases: buildAliasRequests(newAliases, newPhrases),
         keywords: splitCsv(newKeywords),
-        tld_scope: splitCsv(effectiveTlds),
+        tld_scope: splitCsv(DEFAULT_TLD_SCOPE),
       })
       setCreateOpen(false)
       setNewName("")
@@ -134,9 +115,6 @@ export default function BrandsPage() {
       setNewAliases("")
       setNewPhrases("")
       setNewKeywords("")
-      setTldPreset("completo")
-      setTldCustom("")
-      setShowTldCustom(false)
       // Trigger first scan (best-effort) then navigate to brand detail
       try {
         await api.post(`/v1/brands/${created.id}/scan`)
@@ -177,7 +155,7 @@ export default function BrandsPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-semibold">Monitoring Profiles</h1>
+        <h1 className="text-2xl font-semibold">Perfis de Monitoramento</h1>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-48 rounded-xl" />)}
         </div>
@@ -188,17 +166,17 @@ export default function BrandsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Monitoring Profiles</h1>
+        <h1 className="text-2xl font-semibold">Perfis de Monitoramento</h1>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={fetchBrands}>
             <RefreshCw className="mr-1 h-3 w-3" />
-            Refresh
+            Atualizar
           </Button>
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
               <Button size="sm">
                 <Plus className="mr-1 h-3 w-3" />
-                New Profile
+                Novo Perfil
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -268,64 +246,6 @@ export default function BrandsPage() {
                   <p className="text-xs text-muted-foreground">Termos relacionados ao negócio para detectar domínios temáticos suspeitos.</p>
                 </div>
 
-                {/* TLD Scope — presets */}
-                <div className="space-y-2 md:col-span-2">
-                  <Label>Cobertura de TLDs</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {(Object.keys(TLD_PRESETS) as Array<keyof typeof TLD_PRESETS>).map((key) => {
-                      const labels: Record<keyof typeof TLD_PRESETS, string> = {
-                        brasil: "🇧🇷 Apenas Brasil",
-                        internacional: "🌎 Internacional",
-                        completo: "🌐 Completo (recomendado)",
-                      }
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => { setTldPreset(key); setShowTldCustom(false) }}
-                          className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
-                            !showTldCustom && tldPreset === key
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "border-border hover:bg-muted"
-                          }`}
-                        >
-                          {labels[key]}
-                        </button>
-                      )
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => setShowTldCustom((v) => !v)}
-                      className={`rounded-md border px-3 py-1.5 text-xs transition-colors flex items-center gap-1 ${
-                        showTldCustom
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-border hover:bg-muted"
-                      }`}
-                    >
-                      Personalizar
-                      {showTldCustom ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                    </button>
-                  </div>
-                  {!showTldCustom && (
-                    <p className="text-xs text-muted-foreground">
-                      {splitCsv(TLD_PRESETS[tldPreset]).length} TLDs incluídos
-                    </p>
-                  )}
-                  {showTldCustom && (
-                    <div className="space-y-1">
-                      <Textarea
-                        value={tldCustom}
-                        onChange={(e) => setTldCustom(e.target.value)}
-                        placeholder="com,net,org,com.br,net.br,..."
-                        className="font-mono text-xs h-20"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Lista de TLDs separados por vírgula. {splitCsv(tldCustom).length} TLDs definidos.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
                 {createError && (
                   <p className="text-sm text-destructive md:col-span-2">{createError}</p>
                 )}
@@ -345,7 +265,7 @@ export default function BrandsPage() {
       {brands.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            No monitoring profiles yet. Create the first one to start scanning.
+            Nenhum perfil de monitoramento ainda. Crie o primeiro para iniciar as varreduras.
           </CardContent>
         </Card>
       ) : (
@@ -380,13 +300,13 @@ export default function BrandsPage() {
                         <p className="text-lg font-bold text-destructive leading-none">
                           {threats?.immediate_attention ?? 0}
                         </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Immediate</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Imediato</p>
                       </div>
                       <div className="rounded-md bg-secondary/50 px-2 py-1.5">
                         <p className="text-lg font-bold leading-none">
                           {threats?.defensive_gap ?? 0}
                         </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Defensive</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Defensivo</p>
                       </div>
                       <div className="rounded-md bg-muted px-2 py-1.5">
                         <p className="text-lg font-bold leading-none">
@@ -425,7 +345,7 @@ export default function BrandsPage() {
                           title="Trigger scan"
                         >
                           <Search className="h-3 w-3 mr-1" />
-                          Scan
+                          Varrer
                         </Button>
                         <Button
                           variant="outline"
@@ -441,7 +361,7 @@ export default function BrandsPage() {
                         </Button>
                       </div>
                       <span className="text-xs text-muted-foreground group-hover:text-foreground flex items-center gap-1 transition-colors">
-                        View <ArrowRight className="h-3 w-3" />
+                        Ver <ArrowRight className="h-3 w-3" />
                       </span>
                     </div>
                   </CardContent>
@@ -458,14 +378,14 @@ export default function BrandsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Profile</DialogTitle>
+            <DialogTitle>Excluir Perfil</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete{" "}
+            Tem certeza que deseja excluir{" "}
             <span className="font-medium text-foreground">
               {deleteTarget?.brand_name}
             </span>
-            ? This action cannot be undone.
+            ? Esta ação não pode ser desfeita.
           </p>
           <div className="flex justify-end gap-2 pt-4">
             <Button
@@ -473,14 +393,14 @@ export default function BrandsPage() {
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               variant="destructive"
               onClick={handleDelete}
               disabled={deleting}
             >
-              {deleting ? "Deleting..." : "Delete"}
+              {deleting ? "Excluindo..." : "Excluir"}
             </Button>
           </div>
         </DialogContent>
