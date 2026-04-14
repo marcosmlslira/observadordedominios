@@ -85,15 +85,9 @@ def test_ingestion_summary_includes_crtsh_hints(monkeypatch) -> None:
     assert "crtsh-bulk" not in payload
 
 
-def test_tld_coverage_uses_short_lived_session_and_crtsh_checkpoints_only(monkeypatch) -> None:
-    now = datetime.now(timezone.utc)
+def test_tld_coverage_uses_short_lived_session_without_checkpoint_queries(monkeypatch) -> None:
     app = FastAPI()
     app.include_router(ingestion_router.router)
-
-    class FakeCheckpoint:
-        def __init__(self, tld: str) -> None:
-            self.tld = tld
-            self.last_successful_run_at = now
 
     class FakePolicy:
         def __init__(self, tld: str) -> None:
@@ -112,15 +106,6 @@ def test_tld_coverage_uses_short_lived_session_and_crtsh_checkpoints_only(monkey
         seen["session_opened"] = True
         yield fake_session
         seen["session_closed"] = True
-
-    def fake_get_source_summary(self):
-        assert self.db is fake_session
-        return [{"source": "certstream", "last_run_at": now, "last_success_at": now}]
-
-    def fake_list_checkpoints(self, source=None):
-        assert self.db is fake_session
-        seen["checkpoint_source"] = source
-        return [FakeCheckpoint("com")]
 
     def fake_list_all(self):
         assert self.db is fake_session
@@ -142,9 +127,7 @@ def test_tld_coverage_uses_short_lived_session_and_crtsh_checkpoints_only(monkey
         ]
 
     monkeypatch.setattr(ingestion_router, "SessionLocal", fake_session_local)
-    monkeypatch.setattr(ingestion_router, "get_authorized_czds_tlds", lambda: {"com"})
-    monkeypatch.setattr(IngestionRunRepository, "get_source_summary", fake_get_source_summary)
-    monkeypatch.setattr(IngestionRunRepository, "list_checkpoints", fake_list_checkpoints)
+    monkeypatch.setattr(ingestion_router, "get_target_tlds", lambda: ["com"])
     monkeypatch.setattr(ingestion_router.CzdsPolicyRepository, "list_all", fake_list_all)
     monkeypatch.setattr(ingestion_router, "resolve_tld_coverages", fake_resolve)
     app.dependency_overrides[get_current_admin] = _override_admin
@@ -158,7 +141,8 @@ def test_tld_coverage_uses_short_lived_session_and_crtsh_checkpoints_only(monkey
     assert response.status_code == 200
     payload = response.json()
     assert payload[0]["tld"] == "com"
+    assert payload[0]["last_ct_stream_seen_at"] is None
+    assert payload[0]["last_crtsh_success_at"] is None
     assert seen["session_opened"] is True
     assert seen["session_closed"] is True
-    assert seen["checkpoint_source"] == "crtsh"
     assert set(seen["resolved_policies"]) == {"com"}

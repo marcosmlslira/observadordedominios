@@ -28,7 +28,7 @@ from app.schemas.czds_ingestion import (
     TldRunMetricsResponse,
     TldRunMetricItem,
 )
-from app.services.tld_coverage import get_authorized_czds_tlds, resolve_tld_coverages
+from app.services.tld_coverage import get_target_tlds, resolve_tld_coverages
 
 router = APIRouter(
     prefix="/v1/ingestion",
@@ -328,31 +328,17 @@ def get_cycle_status(
 )
 def list_tld_coverage(
 ):
-    authorized_czds_tlds = get_authorized_czds_tlds()
+    authorized_czds_tlds = set(get_target_tlds())
     with SessionLocal() as db:
-        run_repo = IngestionRunRepository(db)
         policy_repo = CzdsPolicyRepository(db)
-        certstream_summary = next(
-            (row for row in run_repo.get_source_summary() if row["source"] == "certstream"),
-            None,
-        )
-        certstream_seen_at = None
-        if certstream_summary:
-            certstream_seen_at = certstream_summary.get("last_run_at") or certstream_summary.get("last_success_at")
-
-        checkpoints = {
-            cp.tld: cp
-            for cp in run_repo.list_checkpoints(source="crtsh")
-        }
         policies = {item.tld: item for item in policy_repo.list_all()}
         resolved = resolve_tld_coverages(
             db,
             authorized_czds_tlds=authorized_czds_tlds,
             policies=policies,
-        )
+    )
     coverage_rows = []
     for item in resolved:
-        crtsh_cp = checkpoints.get(item.tld)
         coverage_rows.append(
             TldCoverageResponse(
                 tld=item.tld,
@@ -362,8 +348,8 @@ def list_tld_coverage(
                 bulk_status=item.bulk_status,
                 fallback_reason=item.fallback_reason,
                 priority_group=item.priority_group,
-                last_ct_stream_seen_at=certstream_seen_at if item.ct_enabled else None,
-                last_crtsh_success_at=crtsh_cp.last_successful_run_at if crtsh_cp else None,
+                last_ct_stream_seen_at=None,
+                last_crtsh_success_at=None,
             )
         )
     return coverage_rows
