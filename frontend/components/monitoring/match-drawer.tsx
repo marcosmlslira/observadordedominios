@@ -32,10 +32,20 @@ function bucketVariant(bucket: string | null) {
 
 function bucketLabel(bucket: string | null) {
   switch (bucket) {
-    case "immediate_attention": return "Immediate Attention"
-    case "defensive_gap": return "Defensive Gap"
+    case "immediate_attention": return "Imediato"
+    case "defensive_gap": return "Gap Defensivo"
     case "watchlist": return "Watchlist"
-    default: return "Unclassified"
+    default: return "Não classificado"
+  }
+}
+
+function riskLabel(risk: string | null) {
+  switch (risk) {
+    case "critical": return "Crítico"
+    case "high": return "Alto"
+    case "medium": return "Médio"
+    case "low": return "Baixo"
+    default: return risk ?? "—"
   }
 }
 
@@ -111,7 +121,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                 </Badge>
                 {match.derived_risk && (
                   <Badge variant={riskVariant(match.derived_risk)}>
-                    {match.derived_risk}
+                    {riskLabel(match.derived_risk)}
                   </Badge>
                 )}
                 {match.auto_disposition && (
@@ -138,7 +148,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
               {/* Scores */}
               <div className="grid grid-cols-2 gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
                 <div>
-                  <p className="text-xs text-muted-foreground">Derived Score</p>
+                  <p className="text-xs text-muted-foreground">Score Derivado</p>
                   <p className="font-semibold text-lg">
                     {match.derived_score != null
                       ? `${(match.derived_score * 100).toFixed(0)}%`
@@ -146,21 +156,21 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Similarity Score</p>
+                  <p className="text-xs text-muted-foreground">Score de Similaridade</p>
                   <p className="font-semibold text-lg">
                     {(match.score_final * 100).toFixed(0)}%
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">First Detected</p>
+                  <p className="text-xs text-muted-foreground">Primeira Detecção</p>
                   <p className="text-xs">
-                    {new Date(match.first_detected_at).toLocaleDateString()}
+                    {new Date(match.first_detected_at).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Domain Registered</p>
+                  <p className="text-xs text-muted-foreground">Registrado em</p>
                   <p className="text-xs">
-                    {new Date(match.domain_first_seen).toLocaleDateString()}
+                    {new Date(match.domain_first_seen).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
               </div>
@@ -168,7 +178,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
               {/* Active Signals */}
               {match.active_signals.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium mb-2">Active Signals</p>
+                  <p className="text-sm font-medium mb-2">Sinais Ativos</p>
                   <div className="space-y-2">
                     {match.active_signals.map((signal) => (
                       <div
@@ -208,7 +218,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
               {match.llm_assessment && (
                 <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">LLM Assessment</p>
+                    <p className="text-sm font-medium">Avaliação IA</p>
                     <div className="flex items-center gap-2">
                       <Badge
                         variant={
@@ -219,7 +229,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                               : "outline"
                         }
                       >
-                        Risk {match.llm_assessment.risco_score}/100
+                        Risco {match.llm_assessment.risco_score}/100
                       </Badge>
                       <Badge variant="outline" className="text-[11px]">
                         {match.llm_assessment.categoria}
@@ -238,7 +248,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                     </ul>
                   )}
                   <div className="rounded-md bg-background p-2 text-xs">
-                    <span className="text-muted-foreground">Recommendation: </span>
+                    <span className="text-muted-foreground">Recomendação: </span>
                     {match.llm_assessment.recomendacao_acao}
                   </div>
                 </div>
@@ -246,12 +256,12 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
 
               {/* Event Timeline */}
               <div>
-                <p className="text-sm font-medium mb-2">Event Timeline</p>
+                <p className="text-sm font-medium mb-2">Linha do Tempo</p>
                 {eventsLoading ? (
                   <Skeleton className="h-20" />
                 ) : events.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
-                    No events recorded yet.
+                    Nenhum evento registrado ainda.
                   </p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -279,7 +289,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
 
               {/* Status Update */}
               <div className="border-t pt-4 space-y-3">
-                <p className="text-sm font-medium">Review</p>
+                <p className="text-sm font-medium">Revisão</p>
                 <div className="space-y-2">
                   <Label className="text-xs">Status</Label>
                   <Select value={editStatus} onValueChange={setEditStatus}>
@@ -287,23 +297,23 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="new">new</SelectItem>
-                      <SelectItem value="reviewing">reviewing</SelectItem>
-                      <SelectItem value="dismissed">dismissed</SelectItem>
-                      <SelectItem value="confirmed_threat">confirmed_threat</SelectItem>
+                      <SelectItem value="new">Novo</SelectItem>
+                      <SelectItem value="reviewing">Em revisão</SelectItem>
+                      <SelectItem value="dismissed">Descartado</SelectItem>
+                      <SelectItem value="confirmed_threat">Ameaça confirmada</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs">Notes</Label>
+                  <Label className="text-xs">Observações</Label>
                   <Input
                     value={editNotes}
                     onChange={(e) => setEditNotes(e.target.value)}
-                    placeholder="Optional review notes..."
+                    placeholder="Observações de revisão (opcional)..."
                   />
                 </div>
                 <Button onClick={handleSave} disabled={saving} className="w-full">
-                  {saving ? "Saving..." : "Update Status"}
+                  {saving ? "Salvando..." : "Atualizar Status"}
                 </Button>
               </div>
             </div>

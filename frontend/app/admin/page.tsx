@@ -168,13 +168,13 @@ export default function DashboardPage() {
       {/* Similarity threat intelligence cards */}
       {simMetrics && (
         <div>
-          <h2 className="text-base font-semibold mb-3">Threat Intelligence</h2>
+          <h2 className="text-base font-semibold mb-3">Inteligência de Ameaças</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Link href="/admin/matches?bucket=immediate_attention">
               <Card className="hover:border-red-400/50 transition-colors cursor-pointer border-red-200/30">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Immediate Threats
+                    Ameaças Imediatas
                   </CardTitle>
                   <AlertTriangle className="h-4 w-4 text-red-500" />
                 </CardHeader>
@@ -183,7 +183,7 @@ export default function DashboardPage() {
                     {simMetrics.totals.immediate_attention ?? 0}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">immediate_attention</Badge>
+                    <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Imediato</Badge>
                   </p>
                 </CardContent>
               </Card>
@@ -202,7 +202,7 @@ export default function DashboardPage() {
                     {simMetrics.totals.defensive_gap ?? 0}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-300 text-orange-600">defensive_gap</Badge>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-orange-300 text-orange-600">Defensivo</Badge>
                   </p>
                 </CardContent>
               </Card>
@@ -221,7 +221,7 @@ export default function DashboardPage() {
                     {simMetrics.totals.watchlist ?? 0}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-300 text-yellow-600">watchlist</Badge>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-300 text-yellow-600">Watchlist</Badge>
                   </p>
                 </CardContent>
               </Card>
@@ -231,7 +231,7 @@ export default function DashboardPage() {
               <Card className="hover:border-primary/50 transition-colors cursor-pointer">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
-                    New (7 days)
+                    Novos (7 dias)
                   </CardTitle>
                   <Sparkles className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
@@ -240,7 +240,7 @@ export default function DashboardPage() {
                     {simMetrics.totals.new_last_7d ?? 0}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    <span className="text-blue-500">{simMetrics.totals.new_last_24h ?? 0}</span> in last 24h
+                    <span className="text-blue-500">{simMetrics.totals.new_last_24h ?? 0}</span> nas últimas 24h
                   </p>
                 </CardContent>
               </Card>

@@ -21,9 +21,9 @@ import { MatchDrawer } from "@/components/monitoring/match-drawer"
 import { AlertTriangle, Shield, Eye, Inbox } from "lucide-react"
 
 const BUCKETS = [
-  { value: "", label: "All Threats", icon: null },
-  { value: "immediate_attention", label: "Immediate", icon: AlertTriangle },
-  { value: "defensive_gap", label: "Defensive Gap", icon: Shield },
+  { value: "", label: "Todas as Ameaças", icon: null },
+  { value: "immediate_attention", label: "Imediato", icon: AlertTriangle },
+  { value: "defensive_gap", label: "Gap Defensivo", icon: Shield },
   { value: "watchlist", label: "Watchlist", icon: Eye },
 ]
 
@@ -37,8 +37,8 @@ function bucketVariant(bucket: string | null) {
 
 function bucketLabel(bucket: string | null) {
   switch (bucket) {
-    case "immediate_attention": return "Immediate"
-    case "defensive_gap": return "Defensive Gap"
+    case "immediate_attention": return "Imediato"
+    case "defensive_gap": return "Gap Defensivo"
     case "watchlist": return "Watchlist"
     default: return bucket ?? "—"
   }
@@ -126,7 +126,7 @@ export default function MatchesPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">
-            {selectedBucket ? bucketLabel(selectedBucket) : "All Threats"}
+            {selectedBucket ? bucketLabel(selectedBucket) : "Todas as Ameaças"}
             {data && (
               <span className="ml-2 font-normal text-muted-foreground">
                 ({data.total.toLocaleString()})
