@@ -1,0 +1,179 @@
+- generic:
+  - alert
+  - generic:
+    - complementary:
+      - generic:
+        - heading [level=1]: Observador de Dominios
+        - paragraph: Admin
+      - navigation:
+        - link:
+          - /url: /admin
+          - img
+          - text: Dashboard
+        - link:
+          - /url: /admin/ingestion
+          - img
+          - text: Ingestion Runs
+        - link:
+          - /url: /admin/brands
+          - img
+          - text: Monitored Brands
+        - link:
+          - /url: /admin/matches
+          - img
+          - text: Threats
+        - link:
+          - /url: /admin/tools
+          - img
+          - text: Free Tools
+      - generic:
+        - button:
+          - img
+          - text: Logout
+    - generic:
+      - main:
+        - generic:
+          - generic:
+            - heading [level=1]: Monitoring Profiles
+            - generic:
+              - button:
+                - img
+                - text: Refresh
+              - button [expanded]:
+                - img
+                - text: New Profile
+          - generic:
+            - link:
+              - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: Banco do Brasil
+                      - paragraph: bb
+                    - generic:
+                      - generic: Critical
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: "1"
+                      - paragraph: Immediate
+                    - generic:
+                      - paragraph: "54"
+                      - paragraph: Defensive
+                    - generic:
+                      - paragraph: "0"
+                      - paragraph: Watchlist
+                  - generic:
+                    - generic: bb.com.br
+                    - generic: bancodobrasil.com.br
+                  - generic:
+                    - generic:
+                      - button:
+                        - img
+                        - text: Scan
+                      - button:
+                        - img
+                    - generic:
+                      - text: View
+                      - img
+            - link:
+              - /url: /admin/brands/9efb198e-32f9-4387-8a96-e1ea4927e7bd
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: Bradesco
+                      - paragraph: bradesco
+                    - generic:
+                      - generic: Unknown
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: "12"
+                      - paragraph: Immediate
+                    - generic:
+                      - paragraph: "112"
+                      - paragraph: Defensive
+                    - generic:
+                      - paragraph: "0"
+                      - paragraph: Watchlist
+                  - generic:
+                    - generic:
+                      - button:
+                        - img
+                        - text: Scan
+                      - button:
+                        - img
+                    - generic:
+                      - text: View
+                      - img
+            - link:
+              - /url: /admin/brands/80c00906-2f51-4c59-80ba-3dd145c4d628
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: Observador de Dominios
+                      - paragraph: observadordedominios
+                    - generic:
+                      - generic: Critical
+                - generic:
+                  - generic:
+                    - generic:
+                      - paragraph: "0"
+                      - paragraph: Immediate
+                    - generic:
+                      - paragraph: "13"
+                      - paragraph: Defensive
+                    - generic:
+                      - paragraph: "0"
+                      - paragraph: Watchlist
+                  - generic:
+                    - generic: observadordedominios.com.br
+                  - generic:
+                    - generic:
+                      - button:
+                        - img
+                        - text: Scan
+                      - button:
+                        - img
+                    - generic:
+                      - text: View
+                      - img
+  - dialog "Create Monitoring Profile" [ref=e130]:
+    - heading "Create Monitoring Profile" [level=2] [ref=e132]
+    - generic [ref=e133]:
+      - generic [ref=e134]:
+        - text: Profile Name
+        - textbox "Profile Name" [active] [ref=e135]:
+          - /placeholder: e.g. Growth Suplementos
+      - generic [ref=e136]:
+        - text: Primary Brand Name
+        - textbox "Primary Brand Name" [ref=e137]:
+          - /placeholder: e.g. Growth Suplementos
+      - generic [ref=e138]:
+        - text: Official Domains
+        - textbox "Official Domains" [ref=e139]:
+          - /placeholder: e.g. gsuplementos.com.br, growth.com
+      - generic [ref=e140]:
+        - text: Brand Aliases
+        - textbox "Brand Aliases" [ref=e141]:
+          - /placeholder: e.g. growth, gsuplementos
+      - generic [ref=e142]:
+        - text: Brand Phrases
+        - textbox "Brand Phrases" [ref=e143]:
+          - /placeholder: e.g. growth suplementos
+      - generic [ref=e144]:
+        - text: Support Keywords
+        - textbox "Support Keywords" [ref=e145]:
+          - /placeholder: e.g. suplementos, whey
+      - generic [ref=e146]:
+        - text: TLD Scope
+        - textbox "TLD Scope" [ref=e147]:
+          - /placeholder: com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
+          - text: com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
+      - button "Create Profile" [disabled]
+    - button "Close" [ref=e148]:
+      - img [ref=e149]
+      - generic [ref=e152]: Close

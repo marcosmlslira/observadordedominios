@@ -1,0 +1,6 @@
+[   20013ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[29907706ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.observadordedominios.com.br/v1/matches?limit=50&offset=0:0
+[29907739ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.observadordedominios.com.br/v1/brands?active_only=false&limit=200:0
+[29908023ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ https://observadordedominios.com.br/login:0
+[32650148ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://api.observadordedominios.com.br/v1/ingestion/ct-bulk/jobs:0
+[32662827ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://api.observadordedominios.com.br/v1/ingestion/ct-bulk/jobs:0

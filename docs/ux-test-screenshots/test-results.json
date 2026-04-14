@@ -1,0 +1,185 @@
+{
+  "pages": {
+    "landing_desktop": {
+      "title": "Observador de Dominios — Admin",
+      "url": "https://observadordedominios.com.br/login",
+      "h1": [],
+      "h2": [],
+      "buttons": [
+        "Sign in"
+      ],
+      "navLinks": [],
+      "hasHero": false,
+      "hasCTA": false,
+      "console": []
+    },
+    "landing_mobile": {
+      "mobileMenuVisible": false,
+      "mobileLayout": {
+        "bodyWidth": 390,
+        "hasHorizontalScroll": false,
+        "navDisplay": "none"
+      },
+      "hasHorizontalScroll": false
+    },
+    "login": {
+      "loginTitle": "Observador de Dominios — Admin",
+      "loginUrl": "https://observadordedominios.com.br/login",
+      "hasEmailField": true,
+      "hasPasswordField": true,
+      "hasLoginButton": true,
+      "afterLoginUrl": "https://observadordedominios.com.br/admin",
+      "afterLoginTitle": "Observador de Dominios — Admin",
+      "loginConsoleErrors": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        }
+      ]
+    },
+    "dashboard": {
+      "dashUrl": "https://observadordedominios.com.br/admin",
+      "dashTitle": "Observador de Dominios — Admin",
+      "headings": [
+        "Observador de Dominios",
+        "Observador Admin",
+        "Dashboard",
+        "Threat Intelligence",
+        "Ingestion Sources"
+      ],
+      "stats": [],
+      "hasSidebar": true,
+      "sidebarLinks": [
+        {
+          "text": "Dashboard",
+          "href": "/admin"
+        },
+        {
+          "text": "Ingestion Runs",
+          "href": "/admin/ingestion"
+        },
+        {
+          "text": "Monitored Brands",
+          "href": "/admin/brands"
+        },
+        {
+          "text": "Free Tools",
+          "href": "/admin/tools"
+        }
+      ],
+      "hasTables": false,
+      "hasCards": true,
+      "pageTextSample": "Observador de Dominios\n\nAdmin\n\nDashboard\nIngestion Runs\nMonitored Brands\nFree Tools\nLogout\nDashboard\nMonitored Brands\n3\n\n3 active\n\nTotal Domains Ingested\n693.965.747\n\n4 sources(3 running)\n\nQuick Actions\nNew Brand\nView Ingestion\nThreat Intelligence\nImmediate Threats\n51\n\nimmediate_attention\n\nDefensive Gap\n40\n\ndefensive_gap\n\nWatchlist\n1574\n\nwatchlist\n\nNew (7 days)\n1592\n\n1573 in last 24h\n\nIngestion Sources\nCZDS\n624.674.188\n\ndomains inserted\n\nrunning\n16m ago\nCertStream\n14.198.329\n\ndomains inserted\n\nr"
+    },
+    "brand_observador": {
+      "url": "https://observadordedominios.com.br/admin/brands/80c00906-2f51-4c59-80ba-3dd145c4d628",
+      "title": "Observador de Dominios — Admin",
+      "headings": [
+        "Observador de Dominios",
+        "Observador Admin",
+        "Observador de Dominios"
+      ],
+      "stats": [
+        "DomainStatusDNSSSLEmailHeadersBlacklistLast Check",
+        "observadordedominios.com.brprimarycritical12/04/2026",
+        "DomainBucketScoreRiskSignalsDetected",
+        "observadordetendencias.com.br.com.brDefensive Gap57%low28/03/2026",
+        "observadorpolitico.com.br.com.brDefensive Gap55%low09/04/2026",
+        "serv-condominios.com.br.com.brDefensive Gap55%low02/04/2026",
+        "gerenciadordecondominios.com.br.com.brDefensive Gap54%low28/03/2026",
+        "observadorregional.com.br.com.brDefensive Gap54%low11/04/2026",
+        "observadorlivre.com.br.com.brDefensive Gap53%low09/04/2026",
+        "observadorcz.com.br.com.brDefensive Gap53%low27/03/2026",
+        "servconcondominios.com.br.com.brDefensive Gap53%low27/03/2026",
+        "centraldedominios.com.br.com.brDefensive Gap53%low04/04/2026",
+        "observadorpiraju.com.br.com.brDefensive Gap53%low28/03/2026",
+        "dedominios.com.br.com.brDefensive Gap53%low28/03/2026",
+        "observatorios.com.br.com.brDefensive Gap52%low01/04/2026",
+        "oobservador.com.br.com.brDefensive Gap51%low30/03/2026"
+      ],
+      "is404": false,
+      "textSample": "Observador de Dominios\n\nAdmin\n\nDashboard\nIngestion Runs\nMonitored Brands\nFree Tools\nLogout\nMonitoring Profiles\nObservador de Dominios\ncritical\n\nobservadordedominios\n\nTrigger Scan\n\n0\n\nImmediate\n\n13\n\nDefensive\n\n0\n\nWatchlist\n\nLatest Monitoring Cycle\n\nDate\n\n2026-04-13\n\nHealth\n\ncompleted\n\nScan\n\ncompleted\n\nThreats\n\n0\n\nNew Matches\n\n0\n\nDomain Health\nDomain\tStatus\tDNS\tSSL\tEmail\tHeaders\tBlacklist\tLast Check\nobservadordedominios.com.brprimary\tcritical\t\n\t\n\t\n\t\n\t\n\t12/04/2026\nThreats\nAll\nImmediate\nDefensive Ga"
+    },
+    "brand_bb": {
+      "url": "https://observadordedominios.com.br/admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5",
+      "title": "Observador de Dominios — Admin",
+      "headings": [
+        "Observador de Dominios",
+        "Observador Admin",
+        "Banco do Brasil"
+      ],
+      "stats": [
+        "DomainStatusDNSSSLEmailHeadersBlacklistLast Check",
+        "bancodobrasil.com.brunknown—",
+        "bb.com.brprimarycritical12/04/2026",
+        "DomainBucketScoreRiskSignalsDetected",
+        "bancobrasil.com.br.com.brDefensive Gap72%low12/04/2026",
+        "bancodobrasilseguros.com.br.com.brDefensive Gap72%low12/04/2026",
+        "projetobancodobrasil.com.br.com.brDefensive Gap71%low12/04/2026",
+        "bancodobrasilseguridade.com.br.com.brDefensive Gap69%low12/04/2026",
+        "banjodobrasil.com.br.com.brDefensive Gap68%low12/04/2026",
+        "bancosbrasil.com.br.com.brDefensive Gap67%low12/04/2026",
+        "basicodobrasil.com.br.com.brDefensive Gap67%low12/04/2026",
+        "bancoviabrasil.com.br.com.brDefensive Gap65%low12/04/2026",
+        "biobancobrasil.com.br.com.brDefensive Gap63%low12/04/2026",
+        "bancoxcmgbrasil.com.br.com.brDefensive Gap63%low12/04/2026",
+        "banjobrasil.com.br.com.brDefensive Gap62%low12/04/2026",
+        "bancoecologicodobrasil.com.br.com.brDefensive Gap61%low12/04/2026",
+        "baurdobrasil.com.br.com.brDefensive Gap61%low12/04/2026",
+        "babydobrasil.com.br.com.brDefensive Gap61%low12/04/2026",
+        "wecodobrasil.com.br.com.brDefensive Gap61%low12/04/2026",
+        "tzcodobrasil.com.br.com.brDefensive Gap61%low12/04/2026"
+      ],
+      "is404": false,
+      "textSample": "Observador de Dominios\n\nAdmin\n\nDashboard\nIngestion Runs\nMonitored Brands\nFree Tools\nLogout\nMonitoring Profiles\nBanco do Brasil\ncritical\n\nbb\n\nTrigger Scan\n\n0\n\nImmediate\n\n50\n\nDefensive\n\n0\n\nWatchlist\n\nLatest Monitoring Cycle\n\nDate\n\n2026-04-13\n\nHealth\n\ncompleted\n\nScan\n\npending\n\nThreats\n\n0\n\nNew Matches\n\n0\n\nDomain Health\nDomain\tStatus\tDNS\tSSL\tEmail\tHeaders\tBlacklist\tLast Check\nbancodobrasil.com.br\tunknown\t\n\t\n\t\n\t\n\t\n\t—\nbb.com.brprimary\tcritical\t\n\t\n\t\n\t\n\t\n\t12/04/2026\nThreats\nAll\nImmediate\nDefensive Gap\nWa"
+    },
+    "matches_bb": {
+      "url": "https://observadordedominios.com.br/admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5/matches",
+      "title": "Observador de Dominios — Admin",
+      "headings": [
+        "404",
+        "This page could not be found."
+      ],
+      "matchCount": 0,
+      "hasPagination": false,
+      "tables": [],
+      "textSample": "404\nThis page could not be found."
+    },
+    "tools": {
+      "url": "https://observadordedominios.com.br/ferramentas",
+      "title": "Observador de Dominios — Admin",
+      "headings": [
+        "404",
+        "This page could not be found."
+      ],
+      "toolItems": [],
+      "textSample": "404\nThis page could not be found."
+    },
+    "dashboard_mobile": {
+      "url": "https://observadordedominios.com.br/admin",
+      "title": "Observador de Dominios — Admin",
+      "hasSidebar": false,
+      "hasBottomNav": false,
+      "hasHamburger": false,
+      "layout": {
+        "bodyWidth": 390,
+        "windowWidth": 390,
+        "hasHorizontalOverflow": false
+      }
+    },
+    "settings": {
+      "url": "https://observadordedominios.com.br/admin/profile",
+      "title": "Observador de Dominios — Admin",
+      "headings": [
+        "404",
+        "This page could not be found."
+      ],
+      "formCount": 0,
+      "inputs": [],
+      "tabs": [],
+      "textSample": "404\nThis page could not be found."
+    }
+  },
+  "consoleErrors": {},
+  "networkErrors": {}
+}

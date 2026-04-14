@@ -1,0 +1,52 @@
+- generic [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Observador de Dominios" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Admin
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e10]
+          - text: Dashboard
+        - link "Ingestion Runs" [ref=e15] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e16]
+          - text: Ingestion Runs
+        - link "Monitored Brands" [ref=e19] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e20]
+          - text: Monitored Brands
+        - link "Threats" [active] [ref=e22] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e23]
+          - text: Threats
+        - link "Free Tools" [ref=e25] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e26]
+          - text: Free Tools
+      - button "Logout" [ref=e29]:
+        - img
+        - text: Logout
+    - main [ref=e31]:
+      - generic [ref=e161]:
+        - generic [ref=e162]:
+          - heading "Threat Intelligence" [level=1] [ref=e163]
+          - paragraph [ref=e164]: All detected threats across monitored brands
+        - generic [ref=e165]:
+          - button "All Threats" [ref=e166]
+          - button "Immediate" [ref=e167]:
+            - img
+            - text: Immediate
+          - button "Defensive Gap" [ref=e168]:
+            - img
+            - text: Defensive Gap
+          - button "Watchlist" [ref=e169]:
+            - img
+            - text: Watchlist
+        - generic [ref=e170]:
+          - generic [ref=e172]: All Threats
+          - generic [ref=e174]:
+            - img [ref=e175]
+            - paragraph [ref=e178]: No threats found for this filter.

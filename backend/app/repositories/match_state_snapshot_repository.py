@@ -150,10 +150,15 @@ class MatchStateSnapshotRepository:
         bucket: str | None = None,
         brand_id: UUID | None = None,
         exclude_auto_dismissed: bool = True,
+        verified_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> list[MatchStateSnapshot]:
-        """List snapshots across all brands, optionally filtered by bucket/brand."""
+        """List snapshots across all brands, optionally filtered by bucket/brand.
+
+        When ``verified_only`` is True, returns only snapshots for matches that
+        have been confirmed as company-owned (auto_disposition == "self_owned").
+        """
         from app.models.similarity_match import SimilarityMatch
 
         q = self.db.query(MatchStateSnapshot)
@@ -161,7 +166,11 @@ class MatchStateSnapshotRepository:
             q = q.filter(MatchStateSnapshot.brand_id == brand_id)
         if bucket:
             q = q.filter(MatchStateSnapshot.derived_bucket == bucket)
-        if exclude_auto_dismissed:
+        if verified_only:
+            q = q.join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id).filter(
+                SimilarityMatch.auto_disposition == "self_owned"
+            )
+        elif exclude_auto_dismissed:
             q = q.join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id).filter(
                 SimilarityMatch.auto_disposition.is_(None)
             )
@@ -178,6 +187,7 @@ class MatchStateSnapshotRepository:
         bucket: str | None = None,
         brand_id: UUID | None = None,
         exclude_auto_dismissed: bool = True,
+        verified_only: bool = False,
     ) -> int:
         """Count snapshots across all brands."""
         from app.models.similarity_match import SimilarityMatch
@@ -187,7 +197,11 @@ class MatchStateSnapshotRepository:
             q = q.filter(MatchStateSnapshot.brand_id == brand_id)
         if bucket:
             q = q.filter(MatchStateSnapshot.derived_bucket == bucket)
-        if exclude_auto_dismissed:
+        if verified_only:
+            q = q.join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id).filter(
+                SimilarityMatch.auto_disposition == "self_owned"
+            )
+        elif exclude_auto_dismissed:
             q = q.join(SimilarityMatch, MatchStateSnapshot.match_id == SimilarityMatch.id).filter(
                 SimilarityMatch.auto_disposition.is_(None)
             )

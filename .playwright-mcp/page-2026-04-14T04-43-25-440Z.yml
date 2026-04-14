@@ -1,0 +1,18 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]: Observador de Dominios
+        - paragraph [ref=e6]: Admin Panel
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - text: Email
+          - textbox "Email" [ref=e10]:
+            - /placeholder: admin@observador.com
+            - text: admin@observadordedominios.com.br
+        - generic [ref=e11]:
+          - text: Password
+          - textbox "Password" [ref=e12]: mls1509ti
+        - paragraph [ref=e15]: Invalid credentials
+        - button "Sign in" [ref=e13]
+  - alert [ref=e14]

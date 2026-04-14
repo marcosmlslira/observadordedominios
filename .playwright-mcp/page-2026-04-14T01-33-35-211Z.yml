@@ -1,0 +1,134 @@
+- generic [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Observador de Dominios" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Admin
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e10]
+          - text: Dashboard
+        - link "Ingestion Runs" [ref=e15] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e16]
+          - text: Ingestion Runs
+        - link "Monitored Brands" [ref=e19] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e20]
+          - text: Monitored Brands
+        - link "Threats" [ref=e22] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e23]
+          - text: Threats
+        - link "Free Tools" [ref=e25] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e26]
+          - text: Free Tools
+      - button "Logout" [ref=e29]:
+        - img
+        - text: Logout
+    - main [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e38]:
+          - heading "Monitoring Profiles" [level=1] [ref=e39]
+          - generic [ref=e40]:
+            - button "Refresh" [ref=e41]:
+              - img
+              - text: Refresh
+            - button "New Profile" [active] [ref=e42]:
+              - img
+              - text: New Profile
+        - generic [ref=e34]:
+          - link "Banco do Brasil bb Critical 1 Immediate 54 Defensive 0 Watchlist bb.com.br bancodobrasil.com.br Scan View" [ref=e43] [cursor=pointer]:
+            - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+            - generic [ref=e44]:
+              - generic [ref=e46]:
+                - generic [ref=e47]:
+                  - paragraph [ref=e48]: Banco do Brasil
+                  - paragraph [ref=e49]: bb
+                - generic [ref=e51]: Critical
+              - generic [ref=e52]:
+                - generic [ref=e53]:
+                  - generic [ref=e54]:
+                    - paragraph [ref=e55]: "1"
+                    - paragraph [ref=e56]: Immediate
+                  - generic [ref=e57]:
+                    - paragraph [ref=e58]: "54"
+                    - paragraph [ref=e59]: Defensive
+                  - generic [ref=e60]:
+                    - paragraph [ref=e61]: "0"
+                    - paragraph [ref=e62]: Watchlist
+                - generic [ref=e63]:
+                  - generic [ref=e64]: bb.com.br
+                  - generic [ref=e65]: bancodobrasil.com.br
+                - generic [ref=e66]:
+                  - generic [ref=e67]:
+                    - button "Scan" [ref=e68]:
+                      - img
+                      - text: Scan
+                    - button "Delete" [ref=e69]:
+                      - img
+                  - generic [ref=e70]:
+                    - text: View
+                    - img [ref=e71]
+          - link "Bradesco bradesco Unknown 12 Immediate 112 Defensive 0 Watchlist Scan View" [ref=e73] [cursor=pointer]:
+            - /url: /admin/brands/9efb198e-32f9-4387-8a96-e1ea4927e7bd
+            - generic [ref=e74]:
+              - generic [ref=e76]:
+                - generic [ref=e77]:
+                  - paragraph [ref=e78]: Bradesco
+                  - paragraph [ref=e79]: bradesco
+                - generic [ref=e81]: Unknown
+              - generic [ref=e82]:
+                - generic [ref=e83]:
+                  - generic [ref=e84]:
+                    - paragraph [ref=e85]: "12"
+                    - paragraph [ref=e86]: Immediate
+                  - generic [ref=e87]:
+                    - paragraph [ref=e88]: "112"
+                    - paragraph [ref=e89]: Defensive
+                  - generic [ref=e90]:
+                    - paragraph [ref=e91]: "0"
+                    - paragraph [ref=e92]: Watchlist
+                - generic [ref=e93]:
+                  - generic [ref=e94]:
+                    - button "Scan" [ref=e95]:
+                      - img
+                      - text: Scan
+                    - button "Delete" [ref=e96]:
+                      - img
+                  - generic [ref=e97]:
+                    - text: View
+                    - img [ref=e98]
+          - link "Observador de Dominios observadordedominios Critical 0 Immediate 13 Defensive 0 Watchlist observadordedominios.com.br Scan View" [ref=e100] [cursor=pointer]:
+            - /url: /admin/brands/80c00906-2f51-4c59-80ba-3dd145c4d628
+            - generic [ref=e101]:
+              - generic [ref=e103]:
+                - generic [ref=e104]:
+                  - paragraph [ref=e105]: Observador de Dominios
+                  - paragraph [ref=e106]: observadordedominios
+                - generic [ref=e108]: Critical
+              - generic [ref=e109]:
+                - generic [ref=e110]:
+                  - generic [ref=e111]:
+                    - paragraph [ref=e112]: "0"
+                    - paragraph [ref=e113]: Immediate
+                  - generic [ref=e114]:
+                    - paragraph [ref=e115]: "13"
+                    - paragraph [ref=e116]: Defensive
+                  - generic [ref=e117]:
+                    - paragraph [ref=e118]: "0"
+                    - paragraph [ref=e119]: Watchlist
+                - generic [ref=e121]: observadordedominios.com.br
+                - generic [ref=e122]:
+                  - generic [ref=e123]:
+                    - button "Scan" [ref=e124]:
+                      - img
+                      - text: Scan
+                    - button "Delete" [ref=e125]:
+                      - img
+                  - generic [ref=e126]:
+                    - text: View
+                    - img [ref=e127]

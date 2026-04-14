@@ -1,0 +1,168 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e18] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e19]:
+      - img [ref=e20]
+    - generic [ref=e24]:
+      - button "Open issues overlay" [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: "1"
+          - generic [ref=e28]: "2"
+        - generic [ref=e29]:
+          - text: Issue
+          - generic [ref=e30]: s
+      - button "Collapse issues badge" [ref=e31]:
+        - img [ref=e32]
+  - alert [ref=e23]
+  - generic [ref=e34]:
+    - complementary [ref=e35]:
+      - generic [ref=e36]:
+        - heading "Observador de Dominios" [level=1] [ref=e37]
+        - paragraph [ref=e38]: Admin
+      - navigation [ref=e39]:
+        - link "Dashboard" [ref=e40] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e41]
+          - text: Dashboard
+        - link "Ingestion Runs" [ref=e46] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e47]
+          - text: Ingestion Runs
+        - link "Monitored Brands" [ref=e50] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e51]
+          - text: Monitored Brands
+        - link "Similarity Matches" [ref=e53] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e54]
+          - text: Similarity Matches
+        - link "Free Tools" [ref=e57] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e58]
+          - text: Free Tools
+      - button "Logout" [ref=e61]:
+        - img
+        - text: Logout
+    - main [ref=e63]:
+      - generic [ref=e64]:
+        - heading "Dashboard" [level=1] [ref=e65]
+        - generic [ref=e66]:
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - generic [ref=e69]: Monitored Brands
+              - img [ref=e70]
+            - generic [ref=e72]:
+              - generic [ref=e73]: "2"
+              - paragraph [ref=e74]: 2 active
+          - generic [ref=e75]:
+            - generic [ref=e76]:
+              - generic [ref=e77]: Total Domains Ingested
+              - img [ref=e78]
+            - generic [ref=e81]:
+              - generic [ref=e82]: 608.430.344
+              - paragraph [ref=e83]:
+                - text: 4 sources
+                - generic [ref=e84]: (19 running)
+          - generic [ref=e85]:
+            - generic [ref=e86]:
+              - generic [ref=e87]: Quick Actions
+              - img [ref=e88]
+            - generic [ref=e91]:
+              - link "New Brand" [ref=e92] [cursor=pointer]:
+                - /url: /admin/brands
+                - img
+                - text: New Brand
+              - link "View Ingestion" [ref=e93] [cursor=pointer]:
+                - /url: /admin/ingestion
+        - generic [ref=e94]:
+          - heading "Threat Intelligence" [level=2] [ref=e95]
+          - generic [ref=e96]:
+            - link "Immediate Threats 0 immediate_attention" [ref=e97] [cursor=pointer]:
+              - /url: /admin/matches?bucket=immediate_attention
+              - generic [ref=e98]:
+                - generic [ref=e99]:
+                  - generic [ref=e100]: Immediate Threats
+                  - img [ref=e101]
+                - generic [ref=e103]:
+                  - generic [ref=e104]: "0"
+                  - paragraph [ref=e105]:
+                    - generic [ref=e106]: immediate_attention
+            - link "Defensive Gap 2 defensive_gap" [ref=e107] [cursor=pointer]:
+              - /url: /admin/matches?bucket=defensive_gap
+              - generic [ref=e108]:
+                - generic [ref=e109]:
+                  - generic [ref=e110]: Defensive Gap
+                  - img [ref=e111]
+                - generic [ref=e113]:
+                  - generic [ref=e114]: "2"
+                  - paragraph [ref=e115]:
+                    - generic [ref=e116]: defensive_gap
+            - link "Watchlist 77 watchlist" [ref=e117] [cursor=pointer]:
+              - /url: /admin/matches?bucket=watchlist
+              - generic [ref=e118]:
+                - generic [ref=e119]:
+                  - generic [ref=e120]: Watchlist
+                  - img [ref=e121]
+                - generic [ref=e124]:
+                  - generic [ref=e125]: "77"
+                  - paragraph [ref=e126]:
+                    - generic [ref=e127]: watchlist
+            - link "New (7 days) 7 1 in last 24h" [ref=e128] [cursor=pointer]:
+              - /url: /admin/matches
+              - generic [ref=e129]:
+                - generic [ref=e130]:
+                  - generic [ref=e131]: New (7 days)
+                  - img [ref=e132]
+                - generic [ref=e135]:
+                  - generic [ref=e136]: "7"
+                  - paragraph [ref=e137]: 1 in last 24h
+        - generic [ref=e138]:
+          - heading "Ingestion Sources" [level=2] [ref=e139]
+          - generic [ref=e140]:
+            - link "CZDS 589.792.517 domains inserted running 55m ago" [ref=e141] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e142]:
+                - generic [ref=e143]:
+                  - generic [ref=e144]: CZDS
+                  - img [ref=e145]
+                - generic [ref=e147]:
+                  - generic [ref=e148]: 589.792.517
+                  - paragraph [ref=e149]: domains inserted
+                  - generic [ref=e150]:
+                    - generic [ref=e151]: running
+                    - generic [ref=e152]: 55m ago
+            - link "CertStream 13.986.898 domains inserted running 55m ago" [ref=e153] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e154]:
+                - generic [ref=e155]:
+                  - generic [ref=e156]: CertStream
+                  - img [ref=e157]
+                - generic [ref=e159]:
+                  - generic [ref=e160]: 13.986.898
+                  - paragraph [ref=e161]: domains inserted
+                  - generic [ref=e162]:
+                    - generic [ref=e163]: running
+                    - generic [ref=e164]: 55m ago
+            - link "crt.sh 114.858 domains inserted success 6h ago" [ref=e165] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e166]:
+                - generic [ref=e167]:
+                  - generic [ref=e168]: crt.sh
+                  - img [ref=e169]
+                - generic [ref=e172]:
+                  - generic [ref=e173]: "114.858"
+                  - paragraph [ref=e174]: domains inserted
+                  - generic [ref=e175]:
+                    - generic [ref=e176]: success
+                    - generic [ref=e177]: 6h ago
+            - link "openintel 4.536.071 domains inserted running 3m ago" [ref=e178] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - generic [ref=e181]: openintel
+                  - img [ref=e182]
+                - generic [ref=e184]:
+                  - generic [ref=e185]: 4.536.071
+                  - paragraph [ref=e186]: domains inserted
+                  - generic [ref=e187]:
+                    - generic [ref=e188]: running
+                    - generic [ref=e189]: 3m ago

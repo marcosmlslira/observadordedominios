@@ -1,0 +1,124 @@
+## stack.local.yml — Ambiente local SEGURO (sem workers de ingestão)
+##
+## Use este arquivo para desenvolvimento local sem risco de disparar
+## ingestões pesadas (CZDS zone files, CertStream, OpenINTEL).
+##
+## Fluxo:
+##   make deploy-local   → sobe esta stack
+##   make seed           → popula com dados de exemplo
+##
+## Serviços disponíveis:
+##   frontend  → http://localhost:3005
+##   backend   → http://localhost:8005/docs
+##   minio     → http://localhost:9001 (console)
+##
+## NÃO estão presentes: czds_ingestor, ct_ingestor, openintel_ingestor,
+##                       similarity_worker, certstream_server
+
+services:
+  frontend:
+    image: observadordedominios-frontend:dev
+    ports:
+      - "3005:3000"
+    volumes:
+      - c:\PROJETOS\observadordedominios\frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+      - WATCHPACK_POLLING_INTERVAL=1000
+      - NEXT_PUBLIC_API_URL=http://localhost:8005
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  backend:
+    image: observadordedominios-backend:dev
+    ports:
+      - "8005:8000"
+    volumes:
+      - c:\PROJETOS\observadordedominios\backend:/app
+      - zonedata:/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
+      - S3_BUCKET=observador-zones
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_FORCE_PATH_STYLE=true
+      - CZDS_ENABLED_TLDS=com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
+      - ADMIN_EMAIL=admin@observador.com
+      - ADMIN_PASSWORD_HASH=$$2b$$12$$yO4Ti.ntPbWQKbl7cdADq.TbSjmfZjy/DMZmjZnjOUCRUy2vySexy
+      - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
+      - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+      - minio
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c work_mem=16MB
+      -c maintenance_work_mem=128MB
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=obs
+      - POSTGRES_PASSWORD=obs
+      - POSTGRES_DB=obs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - app-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  app-network:
+    driver: overlay
+
+volumes:
+  pgdata:
+  miniodata:
+  zonedata:

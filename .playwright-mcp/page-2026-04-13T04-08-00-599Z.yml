@@ -1,0 +1,861 @@
+- generic:
+  - alert
+  - generic:
+    - complementary:
+      - generic:
+        - heading [level=1]: Observador de Dominios
+        - paragraph: Admin
+      - navigation:
+        - link:
+          - /url: /admin
+          - img
+          - text: Dashboard
+        - link:
+          - /url: /admin/ingestion
+          - img
+          - text: Ingestion Runs
+        - link:
+          - /url: /admin/brands
+          - img
+          - text: Monitored Brands
+        - link:
+          - /url: /admin/matches
+          - img
+          - text: Threats
+        - link:
+          - /url: /admin/tools
+          - img
+          - text: Free Tools
+      - generic:
+        - button:
+          - img
+          - text: Logout
+    - generic:
+      - main:
+        - generic:
+          - generic:
+            - heading [level=1]: Threat Intelligence
+            - paragraph: All detected threats across monitored brands
+          - generic:
+            - button: All Threats
+            - button:
+              - img
+              - text: Immediate
+            - button:
+              - img
+              - text: Defensive Gap
+            - button:
+              - img
+              - text: Watchlist
+          - generic:
+            - generic:
+              - generic:
+                - text: All Threats
+                - generic: (63)
+            - generic:
+              - generic:
+                - table:
+                  - rowgroup:
+                    - row:
+                      - columnheader: Domain
+                      - columnheader: Brand
+                      - columnheader: Bucket
+                      - columnheader: Score
+                      - columnheader: Risk
+                      - columnheader: Signals
+                      - columnheader: Detected
+                  - rowgroup:
+                    - row:
+                      - cell: bancobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 72%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancodobrasilseguros.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 72%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: projetobancodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 71%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancodobrasilseguridade.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 69%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: banjodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 68%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancosbrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 67%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: basicodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 67%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancoviabrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 65%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: biobancobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 63%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancoxcmgbrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 63%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: banjobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 62%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancoecologicodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: elcodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: babydobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: baurdobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: tzcodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: wecodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancodevagasbrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: tescodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bancasabrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bangalobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: ribcodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bandbrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bingaodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: lavecodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 61%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: caodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: barcobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: rarodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: lagodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: aldodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: armodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: hinodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: arfodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: junodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bonedobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: sinodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: biobancosbrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 60%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: branchendobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: concordobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: gsansodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: janprodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: ocantodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: bairrosdobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: metalcodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: fomecodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: essecodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: budobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: todobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: sodobrasil.net.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+                    - row:
+                      - cell: montebiancodobrasil.com.br
+                      - cell:
+                        - link:
+                          - /url: /admin/brands/4185de60-db89-43ca-95d6-b09b385a2db5
+                          - text: Banco do Brasil
+                      - cell:
+                        - generic: Defensive Gap
+                      - cell: 59%
+                      - cell:
+                        - generic: low
+                      - cell
+                      - cell: 12/04/2026
+              - generic:
+                - paragraph: 1–50 of 63
+                - generic:
+                  - button [disabled]: Previous
+                  - button: Next
+  - dialog "bancobrasil.com.br" [ref=e619]:
+    - generic [ref=e620]:
+      - heading "bancobrasil.com.br" [level=2] [ref=e621]
+      - generic [ref=e622]:
+        - generic [ref=e623]: Defensive Gap
+        - generic [ref=e624]: low
+    - generic [ref=e625]:
+      - generic [ref=e626]:
+        - generic [ref=e627]:
+          - paragraph [ref=e628]: Derived Score
+          - paragraph [ref=e629]: 72%
+        - generic [ref=e630]:
+          - paragraph [ref=e631]: Similarity Score
+          - paragraph [ref=e632]: 72%
+        - generic [ref=e633]:
+          - paragraph [ref=e634]: First Detected
+          - paragraph [ref=e635]: 12/04/2026
+        - generic [ref=e636]:
+          - paragraph [ref=e637]: Domain Registered
+          - paragraph [ref=e638]: 25/03/2026
+      - generic [ref=e639]:
+        - generic [ref=e640]:
+          - paragraph [ref=e641]: LLM Assessment
+          - generic [ref=e642]:
+            - generic [ref=e643]: Risk 25/100
+            - generic [ref=e644]: Tiposquatting
+        - paragraph [ref=e645]: "O domínio suspeito apresenta alta similaridade visual com a marca Banco do Brasil, o que sugere possível intenção de typosquatting. Entretanto, não há evidências técnicas de atividade maliciosa: não há registros DNS (sem MX, sem web), não há dados WHOIS disponíveis e não foi possível obter resposta HTTP ou conteúdo de página. Ausência de sinais de captura de credenciais, spoofing de e‑mail ou geolocalização reforça a baixa exposição atual. O risco é considerado baixo, mas o domínio permanece em um cenário de lacuna defensiva que poderia ser explorado futuramente."
+        - list [ref=e646]:
+          - listitem [ref=e647]:
+            - generic [ref=e648]: ·
+            - text: Alta similaridade visual com Banco do Brasil (score 0.7243)
+          - listitem [ref=e649]:
+            - generic [ref=e650]: ·
+            - text: Ausência de registros DNS ativos (sem MX, sem web)
+          - listitem [ref=e651]:
+            - generic [ref=e652]: ·
+            - text: Dados WHOIS indisponíveis, indicando possível não registro ou privacidade
+        - generic [ref=e653]: "Recommendation: Monitorar"
+      - generic [ref=e654]:
+        - paragraph [ref=e655]: Event Timeline
+        - generic [ref=e656]:
+          - generic [ref=e657]:
+            - generic [ref=e658]: 12/04/2026
+            - generic [ref=e659]:
+              - generic [ref=e660]: assessment
+              - text: llm_assessment
+              - generic [ref=e661]: — llm
+          - generic [ref=e662]:
+            - generic [ref=e663]: 12/04/2026
+            - generic [ref=e664]:
+              - generic [ref=e665]: enrichment
+              - text: tool_execution
+              - generic [ref=e666]: — whois
+          - generic [ref=e667]:
+            - generic [ref=e668]: 12/04/2026
+            - generic [ref=e669]:
+              - generic [ref=e670]: enrichment
+              - text: tool_execution
+              - generic [ref=e671]: — ssl_check
+          - generic [ref=e672]:
+            - generic [ref=e673]: 12/04/2026
+            - generic [ref=e674]:
+              - generic [ref=e675]: enrichment
+              - text: tool_execution
+              - generic [ref=e676]: — http_headers
+          - generic [ref=e677]:
+            - generic [ref=e678]: 12/04/2026
+            - generic [ref=e679]:
+              - generic [ref=e680]: enrichment
+              - text: tool_execution
+              - generic [ref=e681]: — screenshot
+          - generic [ref=e682]:
+            - generic [ref=e683]: 12/04/2026
+            - generic [ref=e684]:
+              - generic [ref=e685]: enrichment
+              - text: tool_execution
+              - generic [ref=e686]: — suspicious_page
+          - generic [ref=e687]:
+            - generic [ref=e688]: 12/04/2026
+            - generic [ref=e689]:
+              - generic [ref=e690]: enrichment
+              - text: tool_execution
+              - generic [ref=e691]: — email_security
+          - generic [ref=e692]:
+            - generic [ref=e693]: 12/04/2026
+            - generic [ref=e694]:
+              - generic [ref=e695]: enrichment
+              - text: tool_execution
+              - generic [ref=e696]: — dns_lookup
+          - generic [ref=e697]:
+            - generic [ref=e698]: 12/04/2026
+            - generic [ref=e699]:
+              - generic [ref=e700]: enrichment
+              - text: tool_execution
+              - generic [ref=e701]: — blacklist_check
+          - generic [ref=e702]:
+            - generic [ref=e703]: 12/04/2026
+            - generic [ref=e704]:
+              - generic [ref=e705]: enrichment
+              - text: tool_execution
+              - generic [ref=e706]: — safe_browsing
+          - generic [ref=e707]:
+            - generic [ref=e708]: 12/04/2026
+            - generic [ref=e709]:
+              - generic [ref=e710]: enrichment
+              - text: tool_execution
+              - generic [ref=e711]: — urlhaus
+          - generic [ref=e712]:
+            - generic [ref=e713]: 12/04/2026
+            - generic [ref=e714]:
+              - generic [ref=e715]: enrichment
+              - text: tool_execution
+              - generic [ref=e716]: — phishtank
+          - generic [ref=e717]:
+            - generic [ref=e718]: 12/04/2026
+            - generic [ref=e719]:
+              - generic [ref=e720]: enrichment
+              - text: tool_execution
+              - generic [ref=e721]: — website_clone
+          - generic [ref=e722]:
+            - generic [ref=e723]: 12/04/2026
+            - generic [ref=e724]:
+              - generic [ref=e725]: enrichment
+              - text: tool_execution
+              - generic [ref=e726]: — ip_geolocation
+      - generic [ref=e727]:
+        - paragraph [ref=e728]: Review
+        - generic [ref=e729]:
+          - text: Status
+          - combobox [active] [ref=e730]:
+            - generic: new
+            - img [ref=e731]
+        - generic [ref=e733]:
+          - text: Notes
+          - textbox "Optional review notes..." [ref=e734]
+        - button "Update Status" [ref=e735]
+    - button "Close" [ref=e736]:
+      - img [ref=e737]
+      - generic [ref=e740]: Close

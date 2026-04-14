@@ -1,0 +1,33 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e14]
+  - generic [ref=e17]:
+    - complementary [ref=e18]:
+      - generic [ref=e19]:
+        - heading "Observador de Dominios" [level=1] [ref=e20]
+        - paragraph [ref=e21]: Admin
+      - navigation [ref=e22]:
+        - link "Dashboard" [ref=e23] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e24]
+          - text: Dashboard
+        - link "Ingestion Runs" [ref=e29] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e30]
+          - text: Ingestion Runs
+        - link "Monitored Brands" [ref=e33] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e34]
+          - text: Monitored Brands
+        - link "Threats" [ref=e36] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e37]
+          - text: Threats
+        - link "Free Tools" [ref=e39] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e40]
+          - text: Free Tools
+      - button "Logout" [ref=e43]:
+        - img
+        - text: Logout
+    - main [ref=e45]:
+      - heading "Dashboard" [level=1] [ref=e47]

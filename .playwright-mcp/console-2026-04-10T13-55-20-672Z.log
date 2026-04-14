@@ -1,0 +1,37 @@
+[    8453ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/login:0
+[    9118ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:25630
+[   25948ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[   28250ms] [LOG] [Fast Refresh] done in 2302ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/report-hmr-latency.js:13
+[   29323ms] [ERROR] In HTML, %s cannot be a descendant of <%s>.
+This will cause a hydration error.%s <div> p 
+
+  ...
+    <SegmentViewNode type="page" pagePath="admin/page...">
+      <SegmentTrieNode>
+      <ClientPageRoot Component={function DashboardPage} searchParams={{}} params={{}}>
+        <DashboardPage params={Promise} searchParams={Promise}>
+          <div className="space-y-6">
+            <h1>
+            <div>
+            <div>
+              <h2>
+              <div className="grid grid-...">
+                <LinkComponent href="/admin/mat...">
+                  <a ref={function} onClick={function onClick} onMouseEnter={function onMouseEnter} ...>
+                    <_c className="hover:bord...">
+                      <div ref={null} className="rounded-xl...">
+                        <_c2>
+                        <_c8>
+                          <div ref={null} className="p-6 pt-0">
+                            <div>
+>                           <p className="text-xs text-muted-foreground mt-1">
+                              <Badge variant="destructive" className="text-[10px...">
+>                               <div
+>                                 className="inline-flex items-center rounded-md border font-semibold transition-color..."
+>                               >
+                ...
+            ...
+    ...
+ @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56
+[   29324ms] [ERROR] <%s> cannot contain a nested %s.
+See this log for the ancestor stack trace. p <div> @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/next-devtools/userspace/app/errors/intercept-console-error.js:56

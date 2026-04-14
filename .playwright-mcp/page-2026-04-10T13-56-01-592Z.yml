@@ -1,0 +1,35 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e14]:
+        - heading "Observador de Dominios" [level=1] [ref=e15]
+        - paragraph [ref=e16]: Admin
+      - navigation [ref=e17]:
+        - link "Dashboard" [ref=e18] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e19]
+          - text: Dashboard
+        - link "Ingestion Runs" [ref=e24] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e25]
+          - text: Ingestion Runs
+        - link "Monitored Brands" [ref=e28] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e29]
+          - text: Monitored Brands
+        - link "Similarity Matches" [ref=e31] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e32]
+          - text: Similarity Matches
+        - link "Free Tools" [ref=e35] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e36]
+          - text: Free Tools
+      - button "Logout" [ref=e39]:
+        - img
+        - text: Logout
+    - main [ref=e41]:
+      - heading "Ingestion Monitoring" [level=1] [ref=e43]

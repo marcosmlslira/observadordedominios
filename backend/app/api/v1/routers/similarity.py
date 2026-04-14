@@ -25,6 +25,7 @@ from app.schemas.monitoring import (
     SignalSchema,
 )
 from app.schemas.similarity import (
+    MarkOwnedRequest,
     MatchListResponse,
     MatchResponse,
     SimilarityHealthResponse,
@@ -283,6 +284,7 @@ def list_all_matches(
     bucket: str | None = Query(None, description="Filter by derived_bucket"),
     brand_id: UUID | None = Query(None, description="Filter by brand"),
     exclude_auto_dismissed: bool = Query(True, description="Exclude auto-dismissed matches"),
+    verified_only: bool = Query(False, description="Return only verified/self-owned matches"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -292,6 +294,7 @@ def list_all_matches(
         bucket=bucket,
         brand_id=brand_id,
         exclude_auto_dismissed=exclude_auto_dismissed,
+        verified_only=verified_only,
         limit=limit,
         offset=offset,
     )
@@ -299,6 +302,7 @@ def list_all_matches(
         bucket=bucket,
         brand_id=brand_id,
         exclude_auto_dismissed=exclude_auto_dismissed,
+        verified_only=verified_only,
     )
     match_ids = [s.match_id for s in snapshots]
     matches_by_id: dict = {}
@@ -326,6 +330,9 @@ def list_all_matches(
             auto_disposition_reason=m.auto_disposition_reason,
             first_detected_at=m.first_detected_at,
             domain_first_seen=m.domain_first_seen,
+            status=m.status,
+            self_owned=m.self_owned,
+            ownership_classification=m.ownership_classification,
             derived_score=snap.derived_score,
             derived_bucket=snap.derived_bucket,
             derived_risk=snap.derived_risk,
@@ -377,6 +384,26 @@ def update_match_status(
         status=body.status,
         notes=body.notes,
     )
+    db.commit()
+    return match
+
+
+@router.post(
+    "/matches/{match_id}/mark-owned",
+    response_model=MatchResponse,
+    summary="Mark a match as a company-owned domain (confirms as self_owned, dismisses it)",
+)
+def mark_match_owned(
+    match_id: UUID,
+    body: MarkOwnedRequest,
+    db: Session = Depends(get_db),
+):
+    repo = SimilarityRepository(db)
+    match = repo.get_match(match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    repo.mark_match_owned(match, add_to_profile=body.add_to_profile)
     db.commit()
     return match
 

@@ -121,6 +121,9 @@ class MatchSnapshotResponse(BaseModel):
     auto_disposition_reason: str | None = None
     first_detected_at: datetime
     domain_first_seen: datetime
+    status: str | None = None
+    self_owned: bool | None = None
+    ownership_classification: str | None = None
 
     derived_score: float | None = None
     derived_bucket: str | None = None

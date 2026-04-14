@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import type { ReactNode } from "react"
 import type { Brand, BrandHealthResponse, DomainHealthCheck } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,7 @@ import {
   Loader2,
   Clock,
   CalendarDays,
+  ChevronRight,
 } from "lucide-react"
 
 // ── Safe data extractors ─────────────────────────────────
@@ -33,6 +35,20 @@ function safeStr(val: unknown): string | null {
 
 function safeNum(val: unknown): number | null {
   return typeof val === "number" ? val : null
+}
+
+function safeArr(val: unknown): unknown[] {
+  return Array.isArray(val) ? val : []
+}
+
+function safeBool(val: unknown): boolean | null {
+  return typeof val === "boolean" ? val : null
+}
+
+function safeObj(val: unknown): Record<string, unknown> | null {
+  return val !== null && val !== undefined && typeof val === "object" && !Array.isArray(val)
+    ? (val as Record<string, unknown>)
+    : null
 }
 
 // ── Status types ─────────────────────────────────────────
@@ -50,11 +66,17 @@ function statusColorText(status: CheckStatus) {
 
 function statusBgBorder(status: CheckStatus) {
   switch (status) {
-    case "ok": return "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/40"
-    case "warning": return "bg-amber-50 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-800/40"
-    case "critical": return "bg-red-50 dark:bg-red-950/20 border-red-200/80 dark:border-red-800/40"
-    default: return "bg-muted/20 border-border"
+    case "ok":       return "bg-background dark:bg-card border-border/60"
+    case "warning":  return "bg-amber-50/80 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/70"
+    case "critical": return "bg-red-50/80 dark:bg-red-950/30 border-red-200 dark:border-red-800/70"
+    default:         return "bg-muted/30 border-border/50"
   }
+}
+
+function statusLeftAccent(status: CheckStatus) {
+  if (status === "warning")  return "border-l-[3px] border-l-amber-400 dark:border-l-amber-500"
+  if (status === "critical") return "border-l-[3px] border-l-red-400 dark:border-l-red-500"
+  return ""
 }
 
 function StatusIcon({ status, size = "sm" }: { status: CheckStatus; size?: "sm" | "md" }) {
@@ -81,13 +103,38 @@ function overallLabel(status: string | undefined) {
   }
 }
 
-function overallMessage(status: string | undefined) {
-  switch (status) {
-    case "healthy": return "O domínio oficial está operacional e sem sinais relevantes de risco."
-    case "warning": return "O domínio está ativo, mas há ajustes recomendados de segurança."
-    case "critical": return "O domínio exige ação imediata para evitar exposição ou indisponibilidade."
-    default: return "Aguardando primeira verificação de saúde para este domínio."
+function buildSummaryMessage(domain: DomainHealthCheck | null, status: string | undefined): string {
+  if (!domain || !status || status === "unknown") {
+    return "Aguardando primeira verificação de saúde para este domínio."
   }
+  if (status === "healthy") {
+    return "O domínio oficial está operacional e sem sinais relevantes de risco."
+  }
+  if (status === "critical") {
+    const issues: string[] = []
+    if (!domain.dns?.ok) issues.push("DNS")
+    if (!domain.ssl?.ok) issues.push("certificado SSL")
+    if (domain.blacklist?.ok === false || domain.safe_browsing?.ok === false || domain.urlhaus?.ok === false || domain.phishtank?.ok === false) issues.push("reputação em listas de segurança")
+    if (domain.takeover?.ok === false || domain.suspicious_page?.ok === false) issues.push("integridade do domínio")
+    if (issues.length === 0) return "O domínio exige ação imediata para evitar exposição ou indisponibilidade."
+    if (issues.length === 1) return `O domínio exige ação imediata — problema crítico em ${issues[0]}.`
+    const last = issues.pop()!
+    return `O domínio exige ação imediata — problemas críticos em ${issues.join(", ")} e ${last}.`
+  }
+  // warning — build specific message
+  const issues: string[] = []
+  if (!domain.headers?.ok) issues.push("headers de segurança")
+  if (!domain.email_security?.ok) issues.push("proteção de e-mail")
+  if (domain.ssl?.ok && (safeNum(domain.ssl?.details?.["days_remaining"]) ?? 999) <= 30) issues.push("certificado SSL próximo da expiração")
+  if (!domain.dns?.ok) issues.push("configuração DNS")
+  if (issues.length === 0) return "O domínio está ativo com ajustes recomendados de segurança."
+  if (issues.length === 1) return `O domínio está ativo e protegido, mas encontramos ajustes recomendados em ${issues[0]}.`
+  const last = issues.pop()!
+  return `O domínio está ativo, mas encontramos ajustes recomendados em ${issues.join(", ")} e ${last}.`
+}
+
+function overallMessage(status: string | undefined) {
+  return buildSummaryMessage(null, status)
 }
 
 function overallBarStyle(status: string | undefined): string {
@@ -237,7 +284,7 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
     },
     {
       key: "ssl",
-      label: "Certificado",
+      label: "SSL",
       status: sslStatus,
       summary: sslSummary,
       microtext: sslMicrotext,
@@ -264,7 +311,7 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
     },
     {
       key: "security",
-      label: "Reputação",
+      label: "Blacklist",
       status: securityStatus,
       summary: securitySummary,
       microtext: securityMicrotext,
@@ -308,15 +355,19 @@ function CheckMiniCard({ info, onClick }: { info: CheckCardInfo; onClick: () => 
           <button
             onClick={onClick}
             className={cn(
-              "flex flex-col gap-2 rounded-xl border p-3 text-left w-full transition-all duration-150",
-              "hover:shadow-sm hover:scale-[1.01] active:scale-[0.99]",
+              "group flex flex-col gap-2 rounded-xl border p-3 text-left w-full transition-all duration-150",
+              "hover:shadow-md hover:scale-[1.02] active:scale-[0.99]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              statusBgBorder(info.status)
+              statusBgBorder(info.status),
+              statusLeftAccent(info.status)
             )}
           >
             <div className="flex items-center justify-between">
               <CheckTypeIcon type={info.key} className={cn("opacity-70", statusColorText(info.status))} />
-              <StatusIcon status={info.status} />
+              <div className="flex items-center gap-1">
+                <StatusIcon status={info.status} />
+                <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity text-muted-foreground" />
+              </div>
             </div>
             <div className="space-y-0.5">
               <p className="text-[11px] font-medium text-muted-foreground leading-none uppercase tracking-wide">
@@ -337,7 +388,7 @@ function CheckMiniCard({ info, onClick }: { info: CheckCardInfo; onClick: () => 
   )
 }
 
-// ── Modal row helper ─────────────────────────────────────
+// ── Modal helpers ────────────────────────────────────────
 
 function ModalRow({
   label,
@@ -345,20 +396,49 @@ function ModalRow({
   status,
 }: {
   label: string
-  value: React.ReactNode
+  value: ReactNode
   status?: CheckStatus
 }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          "text-sm font-medium",
-          status ? statusColorText(status) : ""
-        )}
-      >
+    <div className="flex items-start justify-between gap-4 py-2 border-b last:border-0">
+      <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+      <span className={cn("text-xs font-medium text-right", status ? statusColorText(status) : "")}>
         {value}
       </span>
+    </div>
+  )
+}
+
+function ModalSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+        {title}
+      </p>
+      <div className="rounded-lg border bg-muted/20 px-3 py-1">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function RawCollapsible({ data }: { data: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false)
+  if (!data || Object.keys(data).filter(k => data[k] !== undefined && data[k] !== null).length === 0) return null
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
+        Dados brutos (JSON)
+      </button>
+      {open && (
+        <pre className="mt-1 text-[11px] font-mono bg-muted/40 border rounded-lg p-3 overflow-x-auto overflow-y-auto max-h-48 whitespace-pre-wrap break-all leading-relaxed">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
     </div>
   )
 }
@@ -366,29 +446,82 @@ function ModalRow({
 // ── Modal: DNS ───────────────────────────────────────────
 
 function DnsModal({ domain }: { domain: DomainHealthCheck }) {
-  const status = okToStatus(domain.dns?.ok)
+  const check = domain.dns
+  const status = okToStatus(check?.ok)
+  const details = safeObj(check?.details) ?? {}
+  const records = safeArr(details["records"])
+  const nameservers = safeArr(details["nameservers"])
+  const resolutionMs = safeNum(details["resolution_time_ms"])
+
+  // Group records by type
+  const recordsByType: Record<string, { value: string; ttl?: number }[]> = {}
+  for (const r of records) {
+    const obj = safeObj(r)
+    if (!obj) continue
+    const type = safeStr(obj["type"]) ?? "OTHER"
+    if (!recordsByType[type]) recordsByType[type] = []
+    recordsByType[type].push({
+      value: safeStr(obj["value"]) ?? "—",
+      ttl: safeNum(obj["ttl"]) ?? undefined,
+    })
+  }
+
+  const typeOrder = ["A", "AAAA", "MX", "NS", "TXT", "CNAME", "SOA", "CAA"]
+  const sortedTypes = [
+    ...typeOrder.filter((t) => recordsByType[t]),
+    ...Object.keys(recordsByType).filter((t) => !typeOrder.includes(t)),
+  ]
+
   return (
-    <div className="space-y-1">
-      <ModalRow
-        label="Status de resolução"
-        value={status === "ok" ? "Resolve corretamente" : status === "unknown" ? "Não verificado" : "Falhou"}
-        status={status}
-      />
-      <ModalRow
-        label="Última verificação"
-        value={
-          domain.last_check_at
-            ? new Date(domain.last_check_at).toLocaleString("pt-BR")
-            : "—"
-        }
-      />
-      <p className={cn("mt-3 text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(status === "ok" ? "healthy" : status === "unknown" ? undefined : "warning"))}>
+    <div className="space-y-4">
+      {/* Summary */}
+      <ModalSection title="Resumo">
+        <ModalRow
+          label="Resolução"
+          value={status === "ok" ? "Resolve corretamente" : status === "unknown" ? "Não verificado" : "Falhou"}
+          status={status}
+        />
+        {resolutionMs !== null && (
+          <ModalRow label="Tempo de resposta" value={`${resolutionMs} ms`} />
+        )}
+        <ModalRow
+          label="Última verificação"
+          value={domain.last_check_at ? new Date(domain.last_check_at).toLocaleString("pt-BR") : "—"}
+        />
+      </ModalSection>
+
+      {/* Records grouped by type */}
+      {sortedTypes.length > 0 && sortedTypes.map((type) => (
+        <ModalSection key={type} title={`Registros ${type}`}>
+          {recordsByType[type].map((rec, i) => (
+            <ModalRow
+              key={i}
+              label={rec.ttl !== undefined ? `TTL ${rec.ttl}s` : `#${i + 1}`}
+              value={<span className="font-mono text-[11px] break-all">{rec.value}</span>}
+            />
+          ))}
+        </ModalSection>
+      ))}
+
+      {/* Nameservers */}
+      {nameservers.length > 0 && (
+        <ModalSection title="Servidores de Nome (NS)">
+          {nameservers.map((ns, i) => (
+            <ModalRow key={i} label={`NS ${i + 1}`} value={<span className="font-mono text-[11px]">{safeStr(ns) ?? "—"}</span>} />
+          ))}
+        </ModalSection>
+      )}
+
+      {/* Recommendation */}
+      <p className={cn("text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(status === "ok" ? "healthy" : status === "unknown" ? undefined : "critical"))}>
         {status === "ok"
           ? "Nenhuma ação necessária. O domínio resolve corretamente."
           : status === "unknown"
             ? "Aguardando a próxima verificação automática."
-            : "Verifique os registros DNS do domínio no seu provedor de hospedagem."}
+            : "Verifique os registros DNS no seu provedor de hospedagem."}
       </p>
+
+      <RawCollapsible data={details} />
     </div>
   )
 }
@@ -397,58 +530,117 @@ function DnsModal({ domain }: { domain: DomainHealthCheck }) {
 
 function SslModal({ domain }: { domain: DomainHealthCheck }) {
   const check = domain.ssl
-  const status = okToStatus(check?.ok)
-  const days = safeNum(check?.details?.["days_remaining"])
+  const details = safeObj(check?.details) ?? {}
+  const cert = safeObj(details["certificate"]) ?? {}
+  const issues = safeArr(details["issues"])
+  const sanEntries = safeArr(cert["san"] ?? details["san_entries"])
+  const days = safeNum(cert["days_remaining"] ?? details["days_remaining"])
+  const protocol = safeStr(details["protocol_version"])
+  const cipher = safeStr(details["cipher_suite"])
+  const chainLen = safeNum(details["chain_length"])
+  const selfSigned = safeBool(details["self_signed"] ?? cert["self_signed"])
+  const issuer = safeStr(cert["issuer"] ?? details["issuer"])
+  const subject = safeStr(cert["subject"] ?? details["subject"])
+  const notBefore = safeStr(cert["not_before"])
+  const notAfter = safeStr(cert["not_after"] ?? cert["expires_at"] ?? details["expires_at"])
+  const serial = safeStr(cert["serial_number"])
+  const version = safeNum(cert["version"])
+  const ocsp = safeStr(cert["ocsp_status"])
 
-  const certStatus =
-    check === undefined
-      ? "unknown"
-      : !check.ok
-        ? "critical"
-        : days !== null && days <= 7
-          ? "critical"
-          : days !== null && days <= 30
-            ? "warning"
-            : "ok"
+  const certStatus: CheckStatus =
+    check === undefined ? "unknown"
+    : !check.ok ? "critical"
+    : days !== null && days <= 7 ? "critical"
+    : days !== null && days <= 30 ? "warning"
+    : "ok"
 
-  const recommendation =
-    certStatus === "critical" && days !== null && days <= 7
-      ? `O certificado expira em ${days} dias. Renovação imediata recomendada.`
-      : certStatus === "warning"
-        ? `O certificado expira em ${days} dias. Agende a renovação em breve.`
-        : certStatus === "ok"
-          ? "Certificado válido. Nenhuma ação necessária."
-          : certStatus === "critical"
-            ? "Certificado inválido. Verifique a configuração do servidor."
-            : "Aguardando verificação do certificado."
+  const fmtDate = (d: string | null) => {
+    if (!d) return "—"
+    try { return new Date(d).toLocaleDateString("pt-BR") } catch { return d }
+  }
 
   return (
-    <div className="space-y-1">
-      <ModalRow
-        label="Validade"
-        value={check === undefined ? "—" : check.ok ? "Válido" : "Inválido"}
-        status={certStatus}
-      />
-      {days !== null && (
+    <div className="space-y-4">
+      {/* Summary */}
+      <ModalSection title="Resumo">
         <ModalRow
-          label="Dias restantes"
-          value={`${days} dias`}
-          status={days <= 7 ? "critical" : days <= 30 ? "warning" : "ok"}
+          label="Status"
+          value={check === undefined ? "—" : check.ok ? "Válido" : "Inválido"}
+          status={certStatus}
         />
+        {days !== null && (
+          <ModalRow
+            label="Dias restantes"
+            value={`${days} dias`}
+            status={days <= 7 ? "critical" : days <= 30 ? "warning" : "ok"}
+          />
+        )}
+        <ModalRow label="Última verificação" value={domain.last_check_at ? new Date(domain.last_check_at).toLocaleString("pt-BR") : "—"} />
+      </ModalSection>
+
+      {/* Certificate details */}
+      {(issuer || subject || notBefore || notAfter || serial) && (
+        <ModalSection title="Detalhes do certificado">
+          {issuer && <ModalRow label="Emissor (Issuer)" value={<span className="font-mono text-[11px] break-all">{issuer}</span>} />}
+          {subject && <ModalRow label="Domínio (Subject)" value={<span className="font-mono text-[11px] break-all">{subject}</span>} />}
+          {notBefore && <ModalRow label="Emitido em" value={fmtDate(notBefore)} />}
+          {notAfter && <ModalRow label="Expira em" value={fmtDate(notAfter)} status={certStatus} />}
+          {serial && <ModalRow label="Serial" value={<span className="font-mono text-[11px]">{serial}</span>} />}
+          {version !== null && <ModalRow label="Versão X.509" value={`v${version}`} />}
+          {ocsp && <ModalRow label="OCSP" value={ocsp} />}
+        </ModalSection>
       )}
-      <ModalRow
-        label="Última verificação"
-        value={
-          domain.last_check_at
-            ? new Date(domain.last_check_at).toLocaleString("pt-BR")
-            : "—"
-        }
-      />
-      <p className={cn("mt-3 text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
+
+      {/* SANs */}
+      {sanEntries.length > 0 && (
+        <ModalSection title={`SANs — ${sanEntries.length} entrada${sanEntries.length !== 1 ? "s" : ""}`}>
+          {sanEntries.map((san, i) => (
+            <ModalRow key={i} label={`SAN ${i + 1}`} value={<span className="font-mono text-[11px]">{safeStr(san) ?? "—"}</span>} />
+          ))}
+        </ModalSection>
+      )}
+
+      {/* Technical */}
+      {(protocol || cipher || chainLen !== null || selfSigned !== null) && (
+        <ModalSection title="Segurança da conexão">
+          {protocol && <ModalRow label="Protocolo" value={<span className="font-mono text-[11px]">{protocol}</span>} />}
+          {cipher && <ModalRow label="Cipher suite" value={<span className="font-mono text-[11px] break-all">{cipher}</span>} />}
+          {chainLen !== null && <ModalRow label="Comprimento da cadeia" value={`${chainLen} certificado${chainLen !== 1 ? "s" : ""}`} />}
+          {selfSigned !== null && (
+            <ModalRow
+              label="Self-signed"
+              value={selfSigned ? "Sim" : "Não"}
+              status={selfSigned ? "warning" : "ok"}
+            />
+          )}
+        </ModalSection>
+      )}
+
+      {/* Issues */}
+      {issues.length > 0 && (
+        <ModalSection title="Problemas detectados">
+          {issues.map((issue, i) => (
+            <ModalRow key={i} label={`#${i + 1}`} value={<span className="text-amber-600 dark:text-amber-400">{safeStr(issue) ?? String(issue)}</span>} />
+          ))}
+        </ModalSection>
+      )}
+
+      {/* Recommendation */}
+      <p className={cn("text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
         certStatus === "ok" ? "healthy" : certStatus === "warning" ? "warning" : certStatus === "critical" ? "critical" : undefined
       ))}>
-        {recommendation}
+        {certStatus === "critical" && days !== null && days <= 7
+          ? `O certificado expira em ${days} dias. Renovação imediata recomendada.`
+          : certStatus === "warning"
+            ? `O certificado expira em ${days} dias. Agende a renovação em breve.`
+            : certStatus === "ok"
+              ? "Certificado válido. Nenhuma ação necessária."
+              : certStatus === "critical"
+                ? "Certificado inválido. Verifique a configuração do servidor."
+                : "Aguardando verificação do certificado."}
       </p>
+
+      <RawCollapsible data={details} />
     </div>
   )
 }
@@ -457,40 +649,120 @@ function SslModal({ domain }: { domain: DomainHealthCheck }) {
 
 function EmailModal({ domain }: { domain: DomainHealthCheck }) {
   const check = domain.email_security
-  const status: CheckStatus = check === undefined ? "unknown" : check.ok ? "ok" : "warning"
-  const spoofingRisk = safeStr(check?.details?.["spoofing_risk"])
+  const details = safeObj(check?.details) ?? {}
+  const spf = safeObj(details["spf"]) ?? {}
+  const dmarc = safeObj(details["dmarc"]) ?? {}
+  const dkim = safeObj(details["dkim"]) ?? {}
+  const mtaSts = safeObj(details["mta_sts"]) ?? {}
+  const spoofing = safeObj(details["spoofing_risk"]) ?? {}
+  const spoofingLevel = safeStr(spoofing["level"]) ?? safeStr(details["spoofing_risk"])
+  const spoofingScore = safeNum(spoofing["score"])
+
+  const spfPresent = safeBool(spf["present"])
+  const dkimFound = safeBool(dkim["found"])
+  const dmarcPresent = safeBool(dmarc["present"])
+
+  const protocolStatus = (present: boolean | null): CheckStatus =>
+    present === null ? "unknown" : present ? "ok" : "critical"
+
+  const spfIssues = safeArr(spf["issues"])
+  const dmarcIssues = safeArr(dmarc["issues"])
+  const dkimSelectors = safeArr(dkim["selectors_found"])
+
+  const overallStatus: CheckStatus =
+    check === undefined ? "unknown"
+    : check.ok ? "ok"
+    : spoofingLevel === "alto" ? "critical"
+    : "warning"
 
   return (
-    <div className="space-y-1">
-      <ModalRow
-        label="Proteção geral"
-        value={check === undefined ? "—" : check.ok ? "Protegido" : "Atenção"}
-        status={status}
-      />
-      {spoofingRisk && (
+    <div className="space-y-4">
+      {/* Summary */}
+      <ModalSection title="Resumo">
         <ModalRow
-          label="Risco de spoofing"
-          value={spoofingRisk}
-          status={spoofingRisk === "alto" ? "critical" : spoofingRisk === "médio" ? "warning" : "ok"}
+          label="Proteção geral"
+          value={check === undefined ? "—" : check.ok ? "Protegido" : "Atenção"}
+          status={overallStatus}
         />
+        {spoofingLevel && (
+          <ModalRow
+            label="Risco de spoofing"
+            value={spoofingLevel}
+            status={spoofingLevel === "alto" ? "critical" : spoofingLevel === "médio" || spoofingLevel === "medium" || spoofingLevel === "high" ? "warning" : "ok"}
+          />
+        )}
+        {spoofingScore !== null && <ModalRow label="Score de risco" value={String(spoofingScore)} />}
+        <ModalRow label="Última verificação" value={domain.last_check_at ? new Date(domain.last_check_at).toLocaleString("pt-BR") : "—"} />
+      </ModalSection>
+
+      {/* SPF */}
+      <ModalSection title="SPF — Sender Policy Framework">
+        <ModalRow label="Configurado" value={spfPresent === null ? "—" : spfPresent ? "Sim" : "Não"} status={protocolStatus(spfPresent)} />
+        {safeStr(spf["record"]) && (
+          <ModalRow label="Registro TXT" value={<span className="font-mono text-[11px] break-all">{safeStr(spf["record"])}</span>} />
+        )}
+        {safeStr(spf["policy"]) && <ModalRow label="Política" value={safeStr(spf["policy"])} />}
+        {safeArr(spf["includes"]).length > 0 && (
+          <ModalRow label="Includes" value={<span className="font-mono text-[11px]">{safeArr(spf["includes"]).map(s => safeStr(s)).join(", ")}</span>} />
+        )}
+        {spfIssues.length > 0 && spfIssues.map((issue, i) => (
+          <ModalRow key={i} label="Problema" value={<span className="text-amber-600 dark:text-amber-400 text-[11px]">{safeStr(issue) ?? String(issue)}</span>} />
+        ))}
+      </ModalSection>
+
+      {/* DKIM */}
+      <ModalSection title="DKIM — DomainKeys Identified Mail">
+        <ModalRow label="Configurado" value={dkimFound === null ? "—" : dkimFound ? "Sim" : "Não"} status={protocolStatus(dkimFound)} />
+        {dkimSelectors.length > 0 && (
+          <ModalRow label="Seletores encontrados" value={<span className="font-mono text-[11px]">{dkimSelectors.map(s => safeStr(s)).join(", ")}</span>} />
+        )}
+        {safeArr(dkim["selectors_checked"]).length > 0 && (
+          <ModalRow label="Seletores verificados" value={<span className="font-mono text-[11px]">{safeArr(dkim["selectors_checked"]).map(s => safeStr(s)).join(", ")}</span>} />
+        )}
+      </ModalSection>
+
+      {/* DMARC */}
+      <ModalSection title="DMARC — Domain-based Message Authentication">
+        <ModalRow label="Configurado" value={dmarcPresent === null ? "—" : dmarcPresent ? "Sim" : "Não"} status={protocolStatus(dmarcPresent)} />
+        {safeStr(dmarc["record"]) && (
+          <ModalRow label="Registro TXT" value={<span className="font-mono text-[11px] break-all">{safeStr(dmarc["record"])}</span>} />
+        )}
+        {safeStr(dmarc["policy"]) && <ModalRow label="Política p=" value={safeStr(dmarc["policy"])} />}
+        {safeStr(dmarc["subdomain_policy"]) && <ModalRow label="Subdomínio sp=" value={safeStr(dmarc["subdomain_policy"])} />}
+        {safeNum(dmarc["percentage"]) !== null && <ModalRow label="Porcentagem pct=" value={`${safeNum(dmarc["percentage"])}%`} />}
+        {safeStr(dmarc["rua"]) && <ModalRow label="Relatório RUA" value={<span className="font-mono text-[11px] break-all">{safeStr(dmarc["rua"])}</span>} />}
+        {safeStr(dmarc["ruf"]) && <ModalRow label="Relatório RUF" value={<span className="font-mono text-[11px] break-all">{safeStr(dmarc["ruf"])}</span>} />}
+        {dmarcIssues.length > 0 && dmarcIssues.map((issue, i) => (
+          <ModalRow key={i} label="Problema" value={<span className="text-amber-600 dark:text-amber-400 text-[11px]">{safeStr(issue) ?? String(issue)}</span>} />
+        ))}
+      </ModalSection>
+
+      {/* MTA-STS */}
+      {Object.keys(mtaSts).length > 0 && (
+        <ModalSection title="MTA-STS — Mail Transfer Agent Strict Transport Security">
+          {safeBool(mtaSts["has_record"]) !== null && (
+            <ModalRow label="Registro DNS" value={safeBool(mtaSts["has_record"]) ? "Presente" : "Ausente"} status={safeBool(mtaSts["has_record"]) ? "ok" : "warning"} />
+          )}
+          {safeBool(mtaSts["has_policy_file"]) !== null && (
+            <ModalRow label="Arquivo de política" value={safeBool(mtaSts["has_policy_file"]) ? "Presente" : "Ausente"} status={safeBool(mtaSts["has_policy_file"]) ? "ok" : "warning"} />
+          )}
+          {safeStr(mtaSts["mode"]) && <ModalRow label="Modo" value={safeStr(mtaSts["mode"])} />}
+          {safeStr(mtaSts["policy_id"]) && <ModalRow label="Policy ID" value={<span className="font-mono text-[11px]">{safeStr(mtaSts["policy_id"])}</span>} />}
+        </ModalSection>
       )}
-      <ModalRow
-        label="Última verificação"
-        value={
-          domain.last_check_at
-            ? new Date(domain.last_check_at).toLocaleString("pt-BR")
-            : "—"
-        }
-      />
-      <p className={cn("mt-3 text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
-        status === "ok" ? "healthy" : status === "warning" ? "warning" : undefined
+
+      {/* Recommendation */}
+      <p className={cn("text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
+        overallStatus === "ok" ? "healthy" : overallStatus === "warning" ? "warning" : overallStatus === "critical" ? "critical" : undefined
       ))}>
-        {status === "ok"
+        {overallStatus === "ok"
           ? "SPF, DKIM e DMARC configurados corretamente. O domínio está protegido contra spoofing."
-          : status === "unknown"
+          : overallStatus === "unknown"
             ? "Aguardando verificação das proteções de e-mail."
             : "Revise as configurações de SPF, DKIM e DMARC no seu provedor de DNS para reduzir o risco de spoofing."}
       </p>
+
+      <RawCollapsible data={details} />
     </div>
   )
 }
@@ -499,84 +771,216 @@ function EmailModal({ domain }: { domain: DomainHealthCheck }) {
 
 function HeadersModal({ domain }: { domain: DomainHealthCheck }) {
   const check = domain.headers
-  const status: CheckStatus = check === undefined ? "unknown" : check.ok ? "ok" : "warning"
-  const score = safeStr(check?.details?.["score"])
+  const details = safeObj(check?.details) ?? {}
+  const secHeaders = safeArr(details["security_headers"])
+  const redirectChain = safeArr(details["redirect_chain"])
+  const score = safeStr(details["score"])
+  const finalUrl = safeStr(details["final_url"])
+  const httpStatus = safeNum(details["status_code"])
+  const server = safeStr(details["server"])
+  const contentType = safeStr(details["content_type"])
+
+  const present = secHeaders.filter(h => safeBool(safeObj(h)?.["present"]) === true)
+  const absent = secHeaders.filter(h => safeBool(safeObj(h)?.["present"]) !== true)
+
+  const overallStatus: CheckStatus =
+    check === undefined ? "unknown"
+    : check.ok ? "ok"
+    : score === "poor" ? "critical"
+    : "warning"
+
+  const severityBadge = (sev: string | null) => {
+    if (!sev) return null
+    const map: Record<string, string> = {
+      high: "text-red-600 dark:text-red-400",
+      medium: "text-amber-600 dark:text-amber-400",
+      low: "text-blue-600 dark:text-blue-400",
+    }
+    return <span className={cn("text-[11px] font-medium capitalize", map[sev.toLowerCase()] ?? "text-muted-foreground")}>{sev}</span>
+  }
 
   return (
-    <div className="space-y-1">
-      <ModalRow
-        label="Avaliação geral"
-        value={check === undefined ? "—" : check.ok ? "Completo" : "Parcial"}
-        status={status}
-      />
-      {score && (
+    <div className="space-y-4">
+      {/* Summary */}
+      <ModalSection title="Resumo">
         <ModalRow
-          label="Score"
-          value={score}
-          status={score === "good" ? "ok" : score === "poor" ? "critical" : "warning"}
+          label="Avaliação geral"
+          value={check === undefined ? "—" : score ?? (check.ok ? "Completo" : "Parcial")}
+          status={overallStatus}
         />
+        <ModalRow
+          label="Headers presentes"
+          value={`${present.length} de ${secHeaders.length}`}
+          status={present.length === secHeaders.length ? "ok" : present.length === 0 ? "critical" : "warning"}
+        />
+        <ModalRow label="Última verificação" value={domain.last_check_at ? new Date(domain.last_check_at).toLocaleString("pt-BR") : "—"} />
+      </ModalSection>
+
+      {/* HTTP info */}
+      {(finalUrl || httpStatus !== null || server || contentType) && (
+        <ModalSection title="Informações HTTP">
+          {finalUrl && <ModalRow label="URL final" value={<span className="font-mono text-[11px] break-all">{finalUrl}</span>} />}
+          {httpStatus !== null && <ModalRow label="Status HTTP" value={String(httpStatus)} status={httpStatus < 400 ? "ok" : "critical"} />}
+          {server && <ModalRow label="Servidor" value={<span className="font-mono text-[11px]">{server}</span>} />}
+          {contentType && <ModalRow label="Content-Type" value={<span className="font-mono text-[11px]">{contentType}</span>} />}
+        </ModalSection>
       )}
-      <ModalRow
-        label="Última verificação"
-        value={
-          domain.last_check_at
-            ? new Date(domain.last_check_at).toLocaleString("pt-BR")
-            : "—"
-        }
-      />
-      <p className={cn("mt-3 text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
-        status === "ok" ? "healthy" : status === "warning" ? "warning" : undefined
+
+      {/* Security headers */}
+      {secHeaders.length > 0 && (
+        <ModalSection title={`Headers de segurança (${present.length}/${secHeaders.length} presentes)`}>
+          {secHeaders.map((h, i) => {
+            const obj = safeObj(h) ?? {}
+            const name = safeStr(obj["name"]) ?? `Header ${i + 1}`
+            const isPresent = safeBool(obj["present"]) === true
+            const value = safeStr(obj["value"])
+            const severity = safeStr(obj["severity"])
+            return (
+              <div key={i} className="py-2 border-b last:border-0 space-y-0.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-mono">{name}</span>
+                  <div className="flex items-center gap-2">
+                    {!isPresent && severityBadge(severity)}
+                    <span className={cn("text-xs font-medium", isPresent ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                      {isPresent ? "Presente" : "Ausente"}
+                    </span>
+                  </div>
+                </div>
+                {value && (
+                  <p className="text-[11px] font-mono text-muted-foreground break-all pl-2 border-l-2 border-border/40">{value}</p>
+                )}
+              </div>
+            )
+          })}
+        </ModalSection>
+      )}
+
+      {/* Redirect chain */}
+      {redirectChain.length > 0 && (
+        <ModalSection title={`Cadeia de redirecionamentos (${redirectChain.length})`}>
+          {redirectChain.map((r, i) => {
+            const obj = safeObj(r) ?? {}
+            const url = safeStr(obj["url"]) ?? "—"
+            const code = safeNum(obj["status_code"])
+            return (
+              <div key={i} className="py-2 border-b last:border-0 flex items-start justify-between gap-2">
+                <span className="font-mono text-[11px] text-muted-foreground break-all flex-1">{url}</span>
+                {code !== null && <span className="text-xs font-medium shrink-0">{code}</span>}
+              </div>
+            )
+          })}
+        </ModalSection>
+      )}
+
+      {/* Recommendation */}
+      <p className={cn("text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
+        overallStatus === "ok" ? "healthy" : overallStatus === "warning" ? "warning" : overallStatus === "critical" ? "critical" : undefined
       ))}>
-        {status === "ok"
+        {absent.length === 0
           ? "Os headers de segurança estão presentes e protegem o site de ataques comuns."
-          : status === "unknown"
-            ? "Aguardando verificação dos headers de segurança."
-            : "Adicione os headers de segurança ausentes na configuração do seu servidor web (ex: CSP, HSTS, X-Frame-Options)."}
+          : `Adicione os headers ausentes: ${absent.map(h => safeStr(safeObj(h)?.["name"])).filter(Boolean).join(", ")}.`}
       </p>
+
+      <RawCollapsible data={details} />
     </div>
   )
 }
 
-// ── Modal: Security / Reputation ─────────────────────────
+// ── Modal: Security / Blacklist ───────────────────────────
 
 function SecurityModal({ domain }: { domain: DomainHealthCheck }) {
-  const checks: { label: string; ok: boolean | undefined; source: string }[] = [
-    { label: "Blacklist", ok: domain.blacklist?.ok, source: "Listas gerais de abuso" },
-    { label: "Safe Browsing", ok: domain.safe_browsing?.ok, source: "Google Safe Browsing" },
-    { label: "URLhaus", ok: domain.urlhaus?.ok, source: "URLhaus — malware distribuído" },
-    { label: "PhishTank", ok: domain.phishtank?.ok, source: "PhishTank — phishing" },
+  const blDetails = safeObj(domain.blacklist?.details) ?? {}
+  const sbDetails = safeObj(domain.safe_browsing?.details) ?? {}
+  const uhDetails = safeObj(domain.urlhaus?.details) ?? {}
+  const ptDetails = safeObj(domain.phishtank?.details) ?? {}
+
+  const listedCount = safeNum(blDetails["listed_count"]) ?? 0
+  const totalChecked = safeNum(blDetails["total_checked"])
+  const listings = safeArr(blDetails["listings"])
+  const riskLevel = safeStr(blDetails["risk_level"])
+
+  const sources: { label: string; source: string; ok: boolean | undefined; details: Record<string, unknown> }[] = [
+    { label: "Blacklist DNSBL", source: "Listas gerais de abuso", ok: domain.blacklist?.ok, details: blDetails },
+    { label: "Google Safe Browsing", source: "Malware e phishing", ok: domain.safe_browsing?.ok, details: sbDetails },
+    { label: "URLhaus", source: "Distribuição de malware", ok: domain.urlhaus?.ok, details: uhDetails },
+    { label: "PhishTank", source: "Campanhas de phishing", ok: domain.phishtank?.ok, details: ptDetails },
   ]
 
-  const anyFailed = checks.some((c) => c.ok === false)
-  const allUnknown = checks.every((c) => c.ok === undefined)
+  const anyFailed = sources.some((c) => c.ok === false)
+  const allUnknown = sources.every((c) => c.ok === undefined)
 
   return (
-    <div className="space-y-1">
-      {checks.map((c) => (
-        <ModalRow
-          key={c.label}
-          label={c.label}
-          value={
-            c.ok === undefined ? (
-              <span className="text-muted-foreground text-xs">Não verificado</span>
-            ) : c.ok ? (
-              "Limpo"
-            ) : (
-              "Detectado"
+    <div className="space-y-4">
+      {/* Summary */}
+      <ModalSection title="Resumo geral">
+        {totalChecked !== null && (
+          <ModalRow
+            label="Listas verificadas"
+            value={`${listedCount} ocorrência${listedCount !== 1 ? "s" : ""} em ${totalChecked}`}
+            status={listedCount > 0 ? "critical" : "ok"}
+          />
+        )}
+        {riskLevel && (
+          <ModalRow
+            label="Nível de risco"
+            value={riskLevel}
+            status={riskLevel === "high" || riskLevel === "alto" ? "critical" : riskLevel === "medium" || riskLevel === "médio" ? "warning" : "ok"}
+          />
+        )}
+        <ModalRow label="Última verificação" value={domain.last_check_at ? new Date(domain.last_check_at).toLocaleString("pt-BR") : "—"} />
+      </ModalSection>
+
+      {/* Sources overview */}
+      <ModalSection title="Fontes consultadas">
+        {sources.map((s) => (
+          <div key={s.label} className="py-2 border-b last:border-0">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-medium">{s.label}</p>
+                <p className="text-[11px] text-muted-foreground">{s.source}</p>
+              </div>
+              <span className={cn("text-xs font-semibold shrink-0",
+                s.ok === undefined ? "text-muted-foreground"
+                : s.ok ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400"
+              )}>
+                {s.ok === undefined ? "—" : s.ok ? "Limpo" : "Detectado"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </ModalSection>
+
+      {/* DNSBL listings detail */}
+      {listings.length > 0 && (
+        <ModalSection title={`Detalhes DNSBL — ${listings.length} lista${listings.length !== 1 ? "s" : ""}`}>
+          {listings.map((item, i) => {
+            const obj = safeObj(item) ?? {}
+            const name = safeStr(obj["name"]) ?? `Lista ${i + 1}`
+            const listed = safeBool(obj["listed"]) === true
+            const category = safeStr(obj["category"])
+            const zone = safeStr(obj["zone"])
+            return (
+              <div key={i} className="py-2 border-b last:border-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="text-xs font-medium">{name}</p>
+                    {(category || zone) && (
+                      <p className="text-[11px] text-muted-foreground font-mono">{[category, zone].filter(Boolean).join(" · ")}</p>
+                    )}
+                  </div>
+                  <span className={cn("text-xs font-semibold shrink-0", listed ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400")}>
+                    {listed ? "Listado" : "Limpo"}
+                  </span>
+                </div>
+              </div>
             )
-          }
-          status={c.ok === undefined ? "unknown" : c.ok ? "ok" : "critical"}
-        />
-      ))}
-      <ModalRow
-        label="Última verificação"
-        value={
-          domain.last_check_at
-            ? new Date(domain.last_check_at).toLocaleString("pt-BR")
-            : "—"
-        }
-      />
-      <p className={cn("mt-3 text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
+          })}
+        </ModalSection>
+      )}
+
+      {/* Recommendation */}
+      <p className={cn("text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
         allUnknown ? undefined : anyFailed ? "critical" : "healthy"
       ))}>
         {allUnknown
@@ -585,6 +989,8 @@ function SecurityModal({ domain }: { domain: DomainHealthCheck }) {
             ? "O domínio aparece em uma ou mais listas de abuso. Investigue imediatamente para evitar impacto na entrega de e-mails e acesso ao site."
             : "O domínio não aparece em nenhuma lista de abuso conhecida."}
       </p>
+
+      <RawCollapsible data={blDetails} />
     </div>
   )
 }
@@ -592,41 +998,57 @@ function SecurityModal({ domain }: { domain: DomainHealthCheck }) {
 // ── Modal: Integrity ─────────────────────────────────────
 
 function IntegrityModal({ domain }: { domain: DomainHealthCheck }) {
-  const checks: { label: string; ok: boolean | undefined; description: string }[] = [
-    { label: "Subdomain Takeover", ok: domain.takeover?.ok, description: "Risco de subdomínio apontando para serviço abandonado" },
-    { label: "Página suspeita", ok: domain.suspicious_page?.ok, description: "Conteúdo suspeito identificado no site ativo" },
-  ]
+  const takeoverDetails = safeObj(domain.takeover?.details) ?? {}
+  const susPageDetails = safeObj(domain.suspicious_page?.details) ?? {}
 
-  const anyFailed = checks.some((c) => c.ok === false)
-  const allUnknown = checks.every((c) => c.ok === undefined)
+  const anyFailed = domain.takeover?.ok === false || domain.suspicious_page?.ok === false
+  const allUnknown = domain.takeover === undefined && domain.suspicious_page === undefined
 
-  return (
-    <div className="space-y-1">
-      {checks.map((c) => (
+  const renderDetails = (title: string, ok: boolean | undefined, details: Record<string, unknown>) => {
+    const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined)
+    return (
+      <ModalSection title={title}>
         <ModalRow
-          key={c.label}
-          label={c.label}
-          value={
-            c.ok === undefined ? (
-              <span className="text-muted-foreground text-xs">Não verificado</span>
-            ) : c.ok ? (
-              "OK"
-            ) : (
-              "Alerta"
+          label="Status"
+          value={ok === undefined ? "—" : ok ? "OK" : "Alerta"}
+          status={ok === undefined ? "unknown" : ok ? "ok" : "critical"}
+        />
+        {entries.map(([key, value]) => {
+          const label = key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
+          if (Array.isArray(value)) {
+            if (value.length === 0) return null
+            return (
+              <ModalRow
+                key={key}
+                label={label}
+                value={
+                  <div className="flex flex-col items-end gap-0.5">
+                    {value.map((v, i) => (
+                      <span key={i} className="font-mono text-[11px] break-all">{typeof v === "string" ? v : JSON.stringify(v)}</span>
+                    ))}
+                  </div>
+                }
+              />
             )
           }
-          status={c.ok === undefined ? "unknown" : c.ok ? "ok" : "critical"}
-        />
-      ))}
-      <ModalRow
-        label="Última verificação"
-        value={
-          domain.last_check_at
-            ? new Date(domain.last_check_at).toLocaleString("pt-BR")
-            : "—"
-        }
-      />
-      <p className={cn("mt-3 text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
+          if (typeof value === "boolean") {
+            return <ModalRow key={key} label={label} value={value ? "Sim" : "Não"} status={value ? "warning" : "ok"} />
+          }
+          if (typeof value === "string" || typeof value === "number") {
+            return <ModalRow key={key} label={label} value={<span className="font-mono text-[11px] break-all">{String(value)}</span>} />
+          }
+          return null
+        })}
+      </ModalSection>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {renderDetails("Subdomain Takeover", domain.takeover?.ok, takeoverDetails)}
+      {renderDetails("Página Suspeita", domain.suspicious_page?.ok, susPageDetails)}
+
+      <p className={cn("text-xs rounded-lg px-3 py-2 border-l-2", overallBarStyle(
         allUnknown ? undefined : anyFailed ? "critical" : "healthy"
       ))}>
         {allUnknown
@@ -635,6 +1057,10 @@ function IntegrityModal({ domain }: { domain: DomainHealthCheck }) {
             ? "Foram detectados sinais de comprometimento. Verifique subdomínios e o conteúdo ativo do site."
             : "Nenhum sinal de comprometimento ou conteúdo suspeito detectado."}
       </p>
+
+      {(Object.keys(takeoverDetails).length > 0 || Object.keys(susPageDetails).length > 0) && (
+        <RawCollapsible data={{ takeover: takeoverDetails, suspicious_page: susPageDetails }} />
+      )}
     </div>
   )
 }
@@ -661,7 +1087,7 @@ function CheckDetailModal({
 }) {
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <CheckTypeIcon type={checkKey} className="text-muted-foreground" />
@@ -671,7 +1097,7 @@ function CheckDetailModal({
             </span>
           </DialogTitle>
         </DialogHeader>
-        <div className="mt-1">
+        <div className="mt-1 overflow-y-auto max-h-[calc(80vh-8rem)] pr-1">
           {checkKey === "dns" && <DnsModal domain={domain} />}
           {checkKey === "ssl" && <SslModal domain={domain} />}
           {checkKey === "email" && <EmailModal domain={domain} />}
@@ -684,26 +1110,21 @@ function CheckDetailModal({
   )
 }
 
-// ── Secondary domain row ─────────────────────────────────
+// ── Secondary domain chip ────────────────────────────────
 
-function SecondaryDomainRow({ d }: { d: DomainHealthCheck }) {
-  const domainStatus =
-    d.overall_status === "healthy"
-      ? "ok"
-      : d.overall_status === "critical"
-        ? "critical"
-        : d.overall_status === "warning"
-          ? "warning"
-          : "unknown"
+function SecondaryDomainChip({ d }: { d: DomainHealthCheck }) {
+  const domainStatus: CheckStatus =
+    d.overall_status === "healthy" ? "ok"
+    : d.overall_status === "critical" ? "critical"
+    : d.overall_status === "warning" ? "warning"
+    : "unknown"
   return (
-    <div className="flex items-center justify-between py-1.5 text-sm">
-      <span className="font-mono text-xs text-muted-foreground">{d.domain_name}</span>
-      <div className="flex items-center gap-1.5">
-        <StatusIcon status={domainStatus} />
-        <span className={cn("text-xs", statusColorText(domainStatus))}>
-          {overallLabel(d.overall_status)}
-        </span>
-      </div>
+    <div className={cn(
+      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
+      statusBgBorder(domainStatus)
+    )}>
+      <StatusIcon status={domainStatus} size="sm" />
+      <span className="font-mono">{d.domain_name}</span>
     </div>
   )
 }
@@ -774,6 +1195,18 @@ export function DomainHealthHero({ brand, health, scanning, onScan }: DomainHeal
                     Primário
                   </Badge>
                 )}
+                {/* Status badge inline — reading flow: domain → Primário → Status */}
+                {overallHealth && (
+                  <div
+                    className={cn(
+                      "flex items-center gap-1 rounded-lg border px-2 py-0.5",
+                      overallBadgeStyle(overallHealth)
+                    )}
+                  >
+                    {overallStatusIcon(overallHealth)}
+                    <span className="text-xs font-semibold">{overallLabel(overallHealth)}</span>
+                  </div>
+                )}
                 {!brand.is_active && (
                   <Badge variant="outline" className="text-[10px] py-0 h-5">
                     Inativo
@@ -797,17 +1230,8 @@ export function DomainHealthHero({ brand, health, scanning, onScan }: DomainHeal
               </div>
             </div>
 
-            {/* Right: Status + actions */}
+            {/* Right: Actions only */}
             <div className="flex flex-col items-end gap-2 shrink-0">
-              <div
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg border px-3 py-1.5",
-                  overallBadgeStyle(overallHealth)
-                )}
-              >
-                {overallStatusIcon(overallHealth)}
-                <span className="text-sm font-semibold">{overallLabel(overallHealth)}</span>
-              </div>
               <Button
                 size="sm"
                 onClick={onScan}
@@ -822,7 +1246,7 @@ export function DomainHealthHero({ brand, health, scanning, onScan }: DomainHeal
                 ) : (
                   <>
                     <RefreshCw className="h-3 w-3 mr-1.5" />
-                    Nova verificação
+                    Executar nova verificação
                   </>
                 )}
               </Button>
@@ -865,9 +1289,9 @@ export function DomainHealthHero({ brand, health, scanning, onScan }: DomainHeal
               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
                 Outros domínios monitorados
               </p>
-              <div className="divide-y">
+              <div className="flex flex-wrap gap-2">
                 {secondaryDomains.map((d) => (
-                  <SecondaryDomainRow key={d.domain_id} d={d} />
+                  <SecondaryDomainChip key={d.domain_id} d={d} />
                 ))}
               </div>
             </div>

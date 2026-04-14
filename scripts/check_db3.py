@@ -1,0 +1,47 @@
+"""Check DB active queries and ingestion run status"""
+import paramiko
+
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect("158.69.211.109", username="ubuntu", password="mls1509ti", timeout=20)
+
+PG = "observador_postgres.1.qdl4bsndspya0zr8vwjmkxsvt"
+
+def query(sql):
+    cmd = f'docker exec -i {PG} psql -U obs -d obs -c "{sql}"'
+    stdin, stdout, stderr = client.exec_command(cmd)
+    out = stdout.read().decode()
+    err = stderr.read().decode().strip()
+    if err:
+        print("STDERR:", err[:200])
+    return out
+
+print("=== Active DB queries ===")
+print(query(
+    "SELECT pid, state, wait_event_type, "
+    "left(query, 100) as q, "
+    "extract(epoch from (now()-query_start))::int as secs "
+    "FROM pg_stat_activity "
+    "WHERE state != 'idle' AND pid != pg_backend_pid() "
+    "ORDER BY secs DESC NULLS LAST LIMIT 15;"
+))
+
+print("=== Running ingestion_run ===")
+print(query(
+    "SELECT id, source, tld, status, domains_seen, domains_inserted, "
+    "started_at, updated_at "
+    "FROM ingestion_run "
+    "WHERE status = 'running' "
+    "ORDER BY started_at DESC LIMIT 10;"
+))
+
+print("=== OpenINTEL runs today ===")
+print(query(
+    "SELECT id, source, tld, status, domains_seen, domains_inserted, "
+    "started_at, finished_at, updated_at "
+    "FROM ingestion_run "
+    "WHERE source = 'openintel' AND started_at > now() - interval '8 hours' "
+    "ORDER BY started_at ASC LIMIT 40;"
+))
+
+client.close()

@@ -717,6 +717,49 @@ class SimilarityRepository:
         self.db.flush()
         return match
 
+    def mark_match_owned(
+        self,
+        match: SimilarityMatch,
+        *,
+        add_to_profile: bool = False,
+    ) -> SimilarityMatch:
+        """Mark a match as confirmed company-owned (self_owned) and dismiss it.
+
+        If ``add_to_profile`` is True the domain is appended to the brand's
+        ``trusted_registrants.confirmed_domains`` list so that future enrichment
+        auto-classifies it without requiring an analyst action.
+        Caller must commit.
+        """
+        from sqlalchemy import text as sa_text
+
+        match.self_owned = True
+        match.ownership_classification = "confirmed_owned"
+        match.auto_disposition = "self_owned"
+        match.status = "dismissed"
+        match.reviewed_at = datetime.now(timezone.utc)
+        self.db.flush()
+
+        if add_to_profile:
+            self.db.execute(
+                sa_text(
+                    """
+                    UPDATE monitored_brand
+                    SET trusted_registrants = jsonb_set(
+                        COALESCE(trusted_registrants, '{}'::jsonb),
+                        '{confirmed_domains}',
+                        COALESCE(trusted_registrants->'confirmed_domains', '[]'::jsonb)
+                            || to_jsonb(:domain::text),
+                        true
+                    )
+                    WHERE id = :brand_id
+                    """
+                ),
+                {"domain": match.domain_name, "brand_id": str(match.brand_id)},
+            )
+            self.db.flush()
+
+        return match
+
     def count_matches(
         self,
         brand_id: uuid.UUID,

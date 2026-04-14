@@ -23,6 +23,13 @@ class UpdateMatchStatusRequest(BaseModel):
     notes: str | None = None
 
 
+class MarkOwnedRequest(BaseModel):
+    add_to_profile: bool = Field(
+        False,
+        description="If true, add the domain to the brand's trusted confirmed_domains list so future WHOIS-unresolvable variants are auto-classified.",
+    )
+
+
 class SimilaritySearchRequest(BaseModel):
     query_domain: str = Field(..., min_length=3, max_length=253)
     algorithms: list[SimilarityAlgorithm] = Field(default_factory=lambda: ["hybrid"])

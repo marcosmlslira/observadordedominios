@@ -1,0 +1,2 @@
+[   13236ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ https://observadordedominios.com.br/login:0
+[   47942ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://api.observadordedominios.com.br/v1/matches?limit=50&offset=0:0

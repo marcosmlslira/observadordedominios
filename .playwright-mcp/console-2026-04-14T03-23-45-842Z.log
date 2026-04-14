@@ -1,0 +1,15 @@
+[  840034ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://observadordedominios.com.br/api/proxy?url=https%3A%2F%2Fapi.observadordedominios.com.br%2Fv1%2Fbrands%2Fa161ec7b-ce4a-439f-b301-e24be9e3bb53:0
+[  976572ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.observadordedominios.com.br/v1/brands/a161ec7b-ce4a-439f-b301-e24be9e3bb53:0
+[ 1045636ms] [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://api.observadordedominios.com.br/v1/brands/a161ec7b-ce4a-439f-b301-e24be9e3bb53:0
+[ 1317698ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://api.observadordedominios.com.br/v1/ingestion/ct-bulk/jobs:0
+[ 1330073ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://api.observadordedominios.com.br/v1/ingestion/ct-bulk/jobs:0
+[ 1631978ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://api.observadordedominios.com.br/v1/ingestion/ct-bulk/jobs:0
+[ 2148180ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2153434ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2154391ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2154801ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2191960ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2207502ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2242993ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2243861ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0
+[ 2255531ms] [WARNING] Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}. @ https://observadordedominios.com.br/_next/static/chunks/429-89d591dbc95ffa60.js:0

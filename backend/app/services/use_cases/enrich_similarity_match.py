@@ -491,7 +491,7 @@ def _bucket_after_enrichment(
     domain = str(match.get("domain_name") or "")
     label = brand.brand_label or brand.brand_name or "the brand"
 
-    if ownership_classification in {"official", "self_owned_related", "self_owned_registrant"}:
+    if ownership_classification in {"official", "self_owned_related", "self_owned_registrant", "confirmed_owned"}:
         return (
             "watchlist",
             f"{domain} appears to be an official or self-owned asset of {label}. Suppressed from frontline triage.",
@@ -568,6 +568,11 @@ def _derive_ownership(
     # misclassified as threats when WHOIS reveals the same owner.
     trusted = (getattr(brand, "trusted_registrants", None) or {}) or {}
     if trusted:
+        # ── Explicit confirmed domains (highest-priority shortcut) ──────────
+        confirmed_domains = [d.strip().lower() for d in (trusted.get("confirmed_domains") or []) if d]
+        if target_domain in confirmed_domains or str(match["domain_name"]).lower() in confirmed_domains:
+            return "confirmed_owned", True
+
         trusted_cnpjs = [
             _normalize_registrant_id(c)
             for c in (trusted.get("cnpjs") or [])

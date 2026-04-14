@@ -1,0 +1,118 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Observador de Dominios" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Admin
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e10]
+          - text: Dashboard
+        - link "Ingestion Runs" [ref=e15] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e16]
+          - text: Ingestion Runs
+        - link "Monitored Brands" [ref=e19] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e20]
+          - text: Monitored Brands
+        - link "Threats" [ref=e22] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e23]
+          - text: Threats
+        - link "Free Tools" [ref=e25] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e26]
+          - text: Free Tools
+      - button "Logout" [ref=e29]:
+        - img
+        - text: Logout
+    - main [ref=e31]:
+      - generic [ref=e159]:
+        - button "Monitoring Profiles" [ref=e160]:
+          - img
+          - text: Monitoring Profiles
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - generic [ref=e164]:
+              - generic [ref=e165]:
+                - heading "PicPay" [level=1] [ref=e166]
+                - generic [ref=e167]: unknown
+              - paragraph [ref=e168]: picpay
+            - button "Trigger Scan" [ref=e169]:
+              - img
+              - text: Trigger Scan
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - paragraph [ref=e172]: "0"
+              - paragraph [ref=e173]: Immediate
+            - generic [ref=e174]:
+              - paragraph [ref=e175]: "0"
+              - paragraph [ref=e176]: Defensive
+            - generic [ref=e177]:
+              - paragraph [ref=e178]: "0"
+              - paragraph [ref=e179]: Watchlist
+        - generic [ref=e180]:
+          - generic [ref=e182]: Domain Health
+          - table [ref=e185]:
+            - rowgroup [ref=e186]:
+              - row "Domain Status DNS SSL Email Headers Blacklist Last Check" [ref=e187]:
+                - columnheader "Domain" [ref=e188]
+                - columnheader "Status" [ref=e189]
+                - columnheader "DNS" [ref=e190]
+                - columnheader "SSL" [ref=e191]
+                - columnheader "Email" [ref=e192]
+                - columnheader "Headers" [ref=e193]
+                - columnheader "Blacklist" [ref=e194]
+                - columnheader "Last Check" [ref=e195]
+            - rowgroup [ref=e196]:
+              - row "picpay.com.br unknown —" [ref=e197]:
+                - cell "picpay.com.br" [ref=e198]
+                - cell "unknown" [ref=e199]:
+                  - generic [ref=e200]: unknown
+                - cell [ref=e201]:
+                  - img [ref=e202]
+                - cell [ref=e203]:
+                  - img [ref=e204]
+                - cell [ref=e205]:
+                  - img [ref=e206]
+                - cell [ref=e207]:
+                  - img [ref=e208]
+                - cell [ref=e209]:
+                  - img [ref=e210]
+                - cell "—" [ref=e211]
+              - row "picpay.com primary unknown —" [ref=e212]:
+                - cell "picpay.com primary" [ref=e213]:
+                  - text: picpay.com
+                  - generic [ref=e214]: primary
+                - cell "unknown" [ref=e215]:
+                  - generic [ref=e216]: unknown
+                - cell [ref=e217]:
+                  - img [ref=e218]
+                - cell [ref=e219]:
+                  - img [ref=e220]
+                - cell [ref=e221]:
+                  - img [ref=e222]
+                - cell [ref=e223]:
+                  - img [ref=e224]
+                - cell [ref=e225]:
+                  - img [ref=e226]
+                - cell "—" [ref=e227]
+        - generic [ref=e228]:
+          - generic [ref=e230]:
+            - generic [ref=e231]: Ameaças Detectadas
+            - generic [ref=e232]:
+              - button "All" [ref=e233]
+              - button "Immediate" [ref=e234]
+              - button "Defensive Gap" [ref=e235]
+              - button "Watchlist" [ref=e236]
+          - generic [ref=e238]:
+            - img [ref=e239]
+            - paragraph [ref=e242]: Nenhuma varredura realizada
+            - paragraph [ref=e243]: Inicie uma varredura para descobrir domínios suspeitos registrados com nomes parecidos ao da sua marca.
+            - button "Iniciar Varredura" [ref=e244]
+        - generic [ref=e247] [cursor=pointer]:
+          - generic [ref=e248]: Brand Configuration
+          - img [ref=e249]
