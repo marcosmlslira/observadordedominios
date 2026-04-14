@@ -634,6 +634,9 @@ export interface MatchSnapshot {
   auto_disposition_reason: string | null
   first_detected_at: string
   domain_first_seen: string
+  status: string | null
+  self_owned: boolean | null
+  ownership_classification: string | null
   derived_score: number | null
   derived_bucket: string | null
   derived_risk: string | null

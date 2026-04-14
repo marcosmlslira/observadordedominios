@@ -18,13 +18,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { MatchDrawer } from "@/components/monitoring/match-drawer"
-import { AlertTriangle, Shield, Eye, Inbox } from "lucide-react"
+import { AlertTriangle, Shield, Eye, Inbox, CheckCircle2 } from "lucide-react"
 
 const BUCKETS = [
   { value: "", label: "Todas as Ameaças", icon: null },
   { value: "immediate_attention", label: "Imediato", icon: AlertTriangle },
   { value: "defensive_gap", label: "Gap Defensivo", icon: Shield },
   { value: "watchlist", label: "Watchlist", icon: Eye },
+  { value: "verified", label: "Verificados", icon: CheckCircle2 },
 ]
 
 function bucketVariant(bucket: string | null) {
@@ -73,7 +74,8 @@ export default function MatchesPage() {
     setLoading(true)
     try {
       const result = await monitoringApi.listAllMatches({
-        bucket: selectedBucket || undefined,
+        bucket: selectedBucket === "verified" ? undefined : (selectedBucket || undefined),
+        verifiedOnly: selectedBucket === "verified",
         limit,
         offset,
       })
@@ -126,7 +128,11 @@ export default function MatchesPage() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">
-            {selectedBucket ? bucketLabel(selectedBucket) : "Todas as Ameaças"}
+            {selectedBucket === "verified"
+              ? "Verificados — Não São Ameaças"
+              : selectedBucket
+                ? bucketLabel(selectedBucket)
+                : "Todas as Ameaças"}
             {data && (
               <span className="ml-2 font-normal text-muted-foreground">
                 ({data.total.toLocaleString()})
@@ -160,75 +166,87 @@ export default function MatchesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.items.map((snap) => (
-                  <TableRow
-                    key={snap.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedMatch(snap)}
-                  >
-                    <TableCell className="font-mono text-sm">
-                      {snap.domain_name}
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/admin/brands/${snap.brand_id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-primary hover:underline"
-                      >
-                        {brandsById[snap.brand_id]?.brand_name ?? snap.brand_id.slice(0, 8) + "…"}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={bucketVariant(snap.derived_bucket)}
-                        className="text-[11px]"
-                      >
-                        {bucketLabel(snap.derived_bucket)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="tabular-nums text-sm">
-                      {snap.derived_score != null
-                        ? `${(snap.derived_score * 100).toFixed(0)}%`
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {snap.derived_risk && (
-                        <Badge
-                          variant={
-                            snap.derived_risk === "critical" ||
-                            snap.derived_risk === "high"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className="text-[11px]"
+                {data.items.map((snap) => {
+                  const isVerified = snap.auto_disposition === "self_owned"
+                  return (
+                    <TableRow
+                      key={snap.id}
+                      className={`cursor-pointer hover:bg-muted/50 ${isVerified ? "bg-green-50/40 dark:bg-green-950/20" : ""}`}
+                      onClick={() => setSelectedMatch(snap)}
+                    >
+                      <TableCell className="font-mono text-sm">
+                        <div className="flex items-center gap-1.5">
+                          {isVerified && <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />}
+                          <span className={isVerified ? "text-muted-foreground" : ""}>{snap.domain_name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/admin/brands/${snap.brand_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-primary hover:underline"
                         >
-                          {snap.derived_risk}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {snap.signal_codes.slice(0, 3).map((code) => (
-                          <Badge
-                            key={code}
-                            variant="outline"
-                            className="text-[10px] font-mono"
-                          >
-                            {code}
+                          {brandsById[snap.brand_id]?.brand_name ?? snap.brand_id.slice(0, 8) + "…"}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        {isVerified ? (
+                          <Badge variant="outline" className="text-[11px] border-green-400 text-green-700">
+                            Verificado
                           </Badge>
-                        ))}
-                        {snap.signal_codes.length > 3 && (
-                          <Badge variant="outline" className="text-[10px]">
-                            +{snap.signal_codes.length - 3}
+                        ) : (
+                          <Badge
+                            variant={bucketVariant(snap.derived_bucket)}
+                            className="text-[11px]"
+                          >
+                            {bucketLabel(snap.derived_bucket)}
                           </Badge>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {new Date(snap.first_detected_at).toLocaleDateString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell className="tabular-nums text-sm">
+                        {snap.derived_score != null
+                          ? `${(snap.derived_score * 100).toFixed(0)}%`
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {snap.derived_risk && !isVerified && (
+                          <Badge
+                            variant={
+                              snap.derived_risk === "critical" ||
+                              snap.derived_risk === "high"
+                                ? "destructive"
+                                : "secondary"
+                            }
+                            className="text-[11px]"
+                          >
+                            {snap.derived_risk}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {snap.signal_codes.slice(0, 3).map((code) => (
+                            <Badge
+                              key={code}
+                              variant="outline"
+                              className="text-[10px] font-mono"
+                            >
+                              {code}
+                            </Badge>
+                          ))}
+                          {snap.signal_codes.length > 3 && (
+                            <Badge variant="outline" className="text-[10px]">
+                              +{snap.signal_codes.length - 3}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(snap.first_detected_at).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

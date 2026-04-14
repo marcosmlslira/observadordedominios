@@ -230,15 +230,22 @@ export const monitoringApi = {
       notes: notes ?? null,
     }),
 
+  markOwned: (matchId: string, addToProfile = false) =>
+    api.post<import("./types").SimilarityMatch>(`/v1/matches/${matchId}/mark-owned`, {
+      add_to_profile: addToProfile,
+    }),
+
   listAllMatches: (params?: {
     bucket?: string
     brandId?: string
+    verifiedOnly?: boolean
     limit?: number
     offset?: number
   }) => {
     const qs = new URLSearchParams()
     if (params?.bucket) qs.set("bucket", params.bucket)
     if (params?.brandId) qs.set("brand_id", params.brandId)
+    if (params?.verifiedOnly) qs.set("verified_only", "true")
     if (params?.limit != null) qs.set("limit", String(params.limit))
     if (params?.offset != null) qs.set("offset", String(params.offset))
     const q = qs.toString()

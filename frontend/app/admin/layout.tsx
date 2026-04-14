@@ -6,6 +6,7 @@ import { useEffect } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { ThemeToggle } from "@/components/theme-toggle"
 import {
   LayoutDashboard,
   Download,
@@ -77,11 +78,12 @@ export default function AdminLayout({
           })}
         </nav>
         <Separator />
-        <div className="p-2">
+        <div className="p-2 flex items-center gap-1">
+          <ThemeToggle />
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start text-muted-foreground"
+            className="flex-1 justify-start text-muted-foreground"
             onClick={handleLogout}
           >
             <LogOut className="h-4 w-4 mr-2" />
@@ -115,6 +117,7 @@ export default function AdminLayout({
                 </Link>
               )
             })}
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
             </Button>

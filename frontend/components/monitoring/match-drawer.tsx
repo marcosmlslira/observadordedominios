@@ -79,6 +79,7 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
   const [editStatus, setEditStatus] = useState("new")
   const [editNotes, setEditNotes] = useState("")
   const [saving, setSaving] = useState(false)
+  const [markingOwned, setMarkingOwned] = useState(false)
 
   useEffect(() => {
     if (!match) return
@@ -103,6 +104,20 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
       // ignore
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleMarkOwned() {
+    if (!match) return
+    setMarkingOwned(true)
+    try {
+      await monitoringApi.markOwned(match.id, true)
+      onStatusUpdated()
+      onClose()
+    } catch {
+      // ignore
+    } finally {
+      setMarkingOwned(false)
     }
   }
 
@@ -315,6 +330,16 @@ export function MatchDrawer({ match, onClose, onStatusUpdated }: Props) {
                 <Button onClick={handleSave} disabled={saving} className="w-full">
                   {saving ? "Salvando..." : "Atualizar Status"}
                 </Button>
+                {match.auto_disposition !== "self_owned" && (
+                  <Button
+                    variant="outline"
+                    onClick={handleMarkOwned}
+                    disabled={markingOwned}
+                    className="w-full border-green-400 text-green-700 hover:bg-green-50"
+                  >
+                    {markingOwned ? "Marcando..." : "✓ Este domínio é meu"}
+                  </Button>
+                )}
               </div>
             </div>
           </>
