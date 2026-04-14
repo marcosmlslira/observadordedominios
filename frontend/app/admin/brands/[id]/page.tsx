@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { api, monitoringApi } from "@/lib/api"
 import type {
@@ -9,7 +9,7 @@ import type {
   CycleListResponse,
   MatchSnapshot,
   MatchSnapshotListResponse,
-  ScanSummaryResponse,
+  ScanJobResponse,
 } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   Building2,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react"
 
 const BUCKETS = [
@@ -139,6 +141,10 @@ export default function BrandDetailPage() {
   const [loading, setLoading] = useState(true)
   const [snapshotsLoading, setSnapshotsLoading] = useState(false)
 
+  const [activeScan, setActiveScan] = useState<ScanJobResponse | null>(null)
+  const [lastScan, setLastScan] = useState<ScanJobResponse | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [selectedBucket, setSelectedBucket] = useState("")
   const [offset, setOffset] = useState(0)
   const limit = 50
@@ -168,12 +174,34 @@ export default function BrandDetailPage() {
         offset,
       })
       setSnapshots(data)
+      setActiveScan(data.active_scan ?? null)
+      setLastScan(data.last_scan ?? null)
     } catch {
       // ignore
     } finally {
       setSnapshotsLoading(false)
     }
   }, [id, selectedBucket, offset])
+
+  // Polling: when a scan is active, re-fetch every 5s; on completion also refresh brand summary
+  useEffect(() => {
+    if (!activeScan) return
+    pollTimerRef.current = setTimeout(async () => {
+      const prevActive = activeScan
+      await fetchSnapshots()
+      // If scan just finished (activeScan will be null after fetchSnapshots updates state),
+      // we need to refresh brand data too — but state update is async, so check via ref pattern below
+      setActiveScan((current) => {
+        if (!current && prevActive) {
+          fetchBrand()
+        }
+        return current
+      })
+    }, 5000)
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current)
+    }
+  }, [activeScan, fetchSnapshots, fetchBrand])
 
   useEffect(() => {
     fetchBrand().finally(() => setLoading(false))
@@ -191,7 +219,9 @@ export default function BrandDetailPage() {
   async function handleScan() {
     setScanning(true)
     try {
-      await api.post<ScanSummaryResponse>(`/v1/brands/${id}/scan`)
+      await api.post(`/v1/brands/${id}/scan`)
+      // start polling immediately after scan trigger
+      await fetchSnapshots()
     } catch {
       // ignore
     } finally {
@@ -443,7 +473,7 @@ export default function BrandDetailPage() {
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-medium">Threats</CardTitle>
+            <CardTitle className="text-sm font-medium">Ameaças Detectadas</CardTitle>
             <div className="flex gap-1">
               {BUCKETS.map((b) => (
                 <Button
@@ -459,16 +489,89 @@ export default function BrandDetailPage() {
             </div>
           </div>
         </CardHeader>
+
+        {/* Scan progress banner */}
+        {activeScan && (
+          <div className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-4 py-3">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Varredura em andamento</p>
+              <p className="text-xs text-blue-700 dark:text-blue-300 truncate">
+                {activeScan.tlds_effective?.length
+                  ? `Verificando ${activeScan.tlds_effective.length} extensões de domínio…`
+                  : "Analisando domínios similares à sua marca…"}
+              </p>
+            </div>
+            <span className="text-xs text-blue-500 shrink-0 animate-pulse">Atualização automática</span>
+          </div>
+        )}
+
         <CardContent className="p-0">
-          {snapshotsLoading ? (
+          {snapshotsLoading && !activeScan ? (
             <div className="p-6">
               <Skeleton className="h-40" />
             </div>
           ) : !snapshots || snapshots.items.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">
-              No threats found
-              {selectedBucket ? ` in "${bucketLabel(selectedBucket)}"` : ""}.
-            </p>
+            (() => {
+              // Contextual empty states
+              if (activeScan) {
+                return (
+                  <div className="flex flex-col items-center gap-3 p-10 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="text-sm font-medium">Analisando domínios…</p>
+                    <p className="text-xs text-muted-foreground max-w-xs">
+                      Estamos varrendo registros de domínios similares à sua marca. Isso pode levar alguns minutos.
+                    </p>
+                  </div>
+                )
+              }
+              if (selectedBucket) {
+                return (
+                  <p className="p-6 text-center text-sm text-muted-foreground">
+                    Nenhum resultado no filtro <strong>{bucketLabel(selectedBucket)}</strong>.{" "}
+                    <button onClick={() => setSelectedBucket("")} className="underline hover:no-underline">
+                      Ver todos
+                    </button>
+                  </p>
+                )
+              }
+              if (lastScan?.status === "failed") {
+                return (
+                  <div className="flex flex-col items-center gap-3 p-10 text-center">
+                    <AlertTriangle className="h-8 w-8 text-destructive" />
+                    <p className="text-sm font-medium">A varredura encontrou um erro</p>
+                    <p className="text-xs text-muted-foreground max-w-xs">{lastScan.last_error ?? "Erro desconhecido durante a varredura."}</p>
+                    <Button size="sm" variant="outline" onClick={handleScan} disabled={scanning}>
+                      Tentar novamente
+                    </Button>
+                  </div>
+                )
+              }
+              if (!lastScan) {
+                return (
+                  <div className="flex flex-col items-center gap-3 p-10 text-center">
+                    <Search className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm font-medium">Nenhuma varredura realizada</p>
+                    <p className="text-xs text-muted-foreground max-w-xs">
+                      Inicie uma varredura para descobrir domínios suspeitos registrados com nomes parecidos ao da sua marca.
+                    </p>
+                    <Button size="sm" onClick={handleScan} disabled={scanning}>
+                      {scanning ? <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Iniciando…</> : "Iniciar Varredura"}
+                    </Button>
+                  </div>
+                )
+              }
+              // last_scan done, zero threats
+              return (
+                <div className="flex flex-col items-center gap-3 p-10 text-center">
+                  <CheckCircle className="h-8 w-8 text-emerald-500" />
+                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Sua marca está protegida</p>
+                  <p className="text-xs text-muted-foreground max-w-xs">
+                    A última varredura não encontrou domínios suspeitos similares à sua marca.
+                  </p>
+                </div>
+              )
+            })()
           ) : (
             <Table>
               <TableHeader>

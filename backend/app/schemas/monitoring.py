@@ -5,6 +5,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from app.schemas.similarity import ScanJobResponse
 
 
 # ── Cycle ─────────────────────────────────────────────────────
@@ -137,6 +138,8 @@ class MatchSnapshotResponse(BaseModel):
 class MatchSnapshotListResponse(BaseModel):
     items: list[MatchSnapshotResponse]
     total: int
+    active_scan: ScanJobResponse | None = None
+    last_scan: ScanJobResponse | None = None
 
 
 # ── Events ────────────────────────────────────────────────────

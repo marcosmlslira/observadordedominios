@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { api } from "@/lib/api"
 import type {
   Brand,
   BrandAliasRequest,
   BrandListResponse,
-  ScanSummaryResponse,
 } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,19 +22,34 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Search, Trash2, RefreshCw, ArrowRight } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Plus, Search, Trash2, RefreshCw, ArrowRight, ChevronDown, ChevronUp } from "lucide-react"
 
-const DEFAULT_TLD_SCOPE =
-  "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun," +
-  "club,vip,icu,live,digital,world,today,email,solutions,services," +
-  "support,group,company,center,zone,agency,systems,network,works," +
-  "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
-  "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
-  "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
-  "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
-  "academy,education,school,host,hosting,domains,security,safe," +
-  "protect,chat,social,community,team,studio,design,marketing," +
-  "consulting,partners,ventures,holdings,international"
+const TLD_PRESETS = {
+  brasil: "com.br,net.br,org.br,adv.br,app.br,blog.br,dev.br,eco.br,emp.br,log.br,ong.br,srv.br",
+  internacional:
+    "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun," +
+    "club,vip,icu,live,digital,world,today,email,solutions,services," +
+    "support,group,company,center,zone,agency,systems,network,works," +
+    "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
+    "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
+    "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
+    "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
+    "academy,education,school,host,hosting,domains,security,safe," +
+    "protect,chat,social,community,team,studio,design,marketing," +
+    "consulting,partners,ventures,holdings,international",
+  completo:
+    "com,net,org,com.br,net.br,org.br,xyz,online,site,store,top,info,tech,space,website,fun," +
+    "club,vip,icu,live,digital,world,today,email,solutions,services," +
+    "support,group,company,center,zone,agency,systems,network,works," +
+    "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market," +
+    "finance,financial,money,credit,loan,bank,capital,fund,exchange," +
+    "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media," +
+    "blog,press,link,click,one,pro,name,life,plus,now,global,expert," +
+    "academy,education,school,host,hosting,domains,security,safe," +
+    "protect,chat,social,community,team,studio,design,marketing," +
+    "consulting,partners,ventures,holdings,international",
+}
 
 function splitCsv(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean)
@@ -66,6 +81,7 @@ function healthLabel(health: string | undefined) {
 }
 
 export default function BrandsPage() {
+  const router = useRouter()
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -76,7 +92,9 @@ export default function BrandsPage() {
   const [newAliases, setNewAliases] = useState("")
   const [newPhrases, setNewPhrases] = useState("")
   const [newKeywords, setNewKeywords] = useState("")
-  const [newTlds, setNewTlds] = useState(DEFAULT_TLD_SCOPE)
+  const [tldPreset, setTldPreset] = useState<keyof typeof TLD_PRESETS>("completo")
+  const [tldCustom, setTldCustom] = useState("")
+  const [showTldCustom, setShowTldCustom] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState("")
 
@@ -100,13 +118,14 @@ export default function BrandsPage() {
     setCreating(true)
     setCreateError("")
     try {
-      await api.post("/v1/brands", {
+      const effectiveTlds = showTldCustom ? tldCustom : TLD_PRESETS[tldPreset]
+      const created = await api.post<Brand>("/v1/brands", {
         brand_name: newName.trim(),
         primary_brand_name: newPrimaryBrand.trim() || undefined,
         official_domains: splitCsv(newOfficialDomains),
         aliases: buildAliasRequests(newAliases, newPhrases),
         keywords: splitCsv(newKeywords),
-        tld_scope: splitCsv(newTlds),
+        tld_scope: splitCsv(effectiveTlds),
       })
       setCreateOpen(false)
       setNewName("")
@@ -115,10 +134,18 @@ export default function BrandsPage() {
       setNewAliases("")
       setNewPhrases("")
       setNewKeywords("")
-      setNewTlds(DEFAULT_TLD_SCOPE)
-      await fetchBrands()
+      setTldPreset("completo")
+      setTldCustom("")
+      setShowTldCustom(false)
+      // Trigger first scan (best-effort) then navigate to brand detail
+      try {
+        await api.post(`/v1/brands/${created.id}/scan`)
+      } catch {
+        // scan trigger failure is non-blocking
+      }
+      router.push(`/admin/brands/${created.id}`)
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Create failed")
+      setCreateError(err instanceof Error ? err.message : "Falha ao criar perfil")
     } finally {
       setCreating(false)
     }
@@ -141,7 +168,7 @@ export default function BrandsPage() {
   async function handleScan(e: React.MouseEvent, brandId: string) {
     e.preventDefault()
     try {
-      await api.post<ScanSummaryResponse>(`/v1/brands/${brandId}/scan`)
+      await api.post(`/v1/brands/${brandId}/scan`)
     } catch {
       // ignore
     }
@@ -174,84 +201,140 @@ export default function BrandsPage() {
                 New Profile
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create Monitoring Profile</DialogTitle>
+                <DialogTitle>Criar Perfil de Monitoramento</DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 pt-2 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="brand-name">Profile Name</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="brand-name">Nome do Perfil</Label>
                   <Input
                     id="brand-name"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. Growth Suplementos"
+                    placeholder="ex: PicPay"
                     autoFocus
                   />
+                  <p className="text-xs text-muted-foreground">Identificador interno deste perfil de monitoramento.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="primary-brand-name">Primary Brand Name</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="primary-brand-name">Nome da Marca</Label>
                   <Input
                     id="primary-brand-name"
                     value={newPrimaryBrand}
                     onChange={(e) => setNewPrimaryBrand(e.target.value)}
-                    placeholder="e.g. Growth Suplementos"
+                    placeholder="ex: PicPay"
                   />
+                  <p className="text-xs text-muted-foreground">Nome que aparece nos domínios. Usado na varredura de similaridade.</p>
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="official-domains">Official Domains</Label>
+                <div className="space-y-1 md:col-span-2">
+                  <Label htmlFor="official-domains">Domínios Oficiais</Label>
                   <Input
                     id="official-domains"
                     value={newOfficialDomains}
                     onChange={(e) => setNewOfficialDomains(e.target.value)}
-                    placeholder="e.g. gsuplementos.com.br, growth.com"
+                    placeholder="ex: picpay.com, picpay.com.br"
                   />
+                  <p className="text-xs text-muted-foreground">Seus domínios legítimos, separados por vírgula. Serão excluídos dos alertas de ameaça.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="brand-aliases">Brand Aliases</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="brand-aliases">Variações do Nome</Label>
                   <Input
                     id="brand-aliases"
                     value={newAliases}
                     onChange={(e) => setNewAliases(e.target.value)}
-                    placeholder="e.g. growth, gsuplementos"
+                    placeholder="ex: pic-pay, picpay app"
                   />
+                  <p className="text-xs text-muted-foreground">Abreviações e grafias alternativas da marca.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="brand-phrases">Brand Phrases</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="brand-phrases">Frases Associadas</Label>
                   <Input
                     id="brand-phrases"
                     value={newPhrases}
                     onChange={(e) => setNewPhrases(e.target.value)}
-                    placeholder="e.g. growth suplementos"
+                    placeholder="ex: picpay carteira digital"
                   />
+                  <p className="text-xs text-muted-foreground">Frases completas que identificam a marca.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="keywords">Support Keywords</Label>
+                <div className="space-y-1 md:col-span-2">
+                  <Label htmlFor="keywords">Palavras-chave de Apoio</Label>
                   <Input
                     id="keywords"
                     value={newKeywords}
                     onChange={(e) => setNewKeywords(e.target.value)}
-                    placeholder="e.g. suplementos, whey"
+                    placeholder="ex: pagamento, carteira, pix"
                   />
+                  <p className="text-xs text-muted-foreground">Termos relacionados ao negócio para detectar domínios temáticos suspeitos.</p>
                 </div>
+
+                {/* TLD Scope — presets */}
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="tlds">TLD Scope</Label>
-                  <Input
-                    id="tlds"
-                    value={newTlds}
-                    onChange={(e) => setNewTlds(e.target.value)}
-                    placeholder={DEFAULT_TLD_SCOPE}
-                  />
+                  <Label>Cobertura de TLDs</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {(Object.keys(TLD_PRESETS) as Array<keyof typeof TLD_PRESETS>).map((key) => {
+                      const labels: Record<keyof typeof TLD_PRESETS, string> = {
+                        brasil: "🇧🇷 Apenas Brasil",
+                        internacional: "🌎 Internacional",
+                        completo: "🌐 Completo (recomendado)",
+                      }
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => { setTldPreset(key); setShowTldCustom(false) }}
+                          className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+                            !showTldCustom && tldPreset === key
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "border-border hover:bg-muted"
+                          }`}
+                        >
+                          {labels[key]}
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setShowTldCustom((v) => !v)}
+                      className={`rounded-md border px-3 py-1.5 text-xs transition-colors flex items-center gap-1 ${
+                        showTldCustom
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      Personalizar
+                      {showTldCustom ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    </button>
+                  </div>
+                  {!showTldCustom && (
+                    <p className="text-xs text-muted-foreground">
+                      {splitCsv(TLD_PRESETS[tldPreset]).length} TLDs incluídos
+                    </p>
+                  )}
+                  {showTldCustom && (
+                    <div className="space-y-1">
+                      <Textarea
+                        value={tldCustom}
+                        onChange={(e) => setTldCustom(e.target.value)}
+                        placeholder="com,net,org,com.br,net.br,..."
+                        className="font-mono text-xs h-20"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Lista de TLDs separados por vírgula. {splitCsv(tldCustom).length} TLDs definidos.
+                      </p>
+                    </div>
+                  )}
                 </div>
+
                 {createError && (
                   <p className="text-sm text-destructive md:col-span-2">{createError}</p>
                 )}
                 <Button
                   onClick={handleCreate}
-                  disabled={creating || !newName.trim()}
+                  disabled={creating || !newName.trim() || !newOfficialDomains.trim()}
                   className="w-full md:col-span-2"
                 >
-                  {creating ? "Creating..." : "Create Profile"}
+                  {creating ? "Criando e iniciando varredura..." : "Criar e Iniciar Varredura"}
                 </Button>
               </div>
             </DialogContent>

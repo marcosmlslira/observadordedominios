@@ -474,6 +474,23 @@ export interface ScanResultResponse {
   matched: number
   removed: number
   status: string
+  error_message: string | null
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface ScanJobResponse {
+  job_id: string
+  brand_id: string
+  requested_tld: string | null
+  status: string
+  queued_at: string
+  started_at: string | null
+  finished_at: string | null
+  force_full: boolean
+  tlds_effective: string[]
+  last_error: string | null
+  results: ScanResultResponse[]
 }
 
 export interface ScanSummaryResponse {
@@ -638,6 +655,8 @@ export interface MatchSnapshot {
 export interface MatchSnapshotListResponse {
   items: MatchSnapshot[]
   total: number
+  active_scan: ScanJobResponse | null
+  last_scan: ScanJobResponse | null
 }
 
 export interface MonitoringEvent {

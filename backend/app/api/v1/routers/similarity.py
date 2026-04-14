@@ -158,7 +158,15 @@ def list_matches(
             ).filter(SimilarityMatchModel.auto_disposition.is_(None))
         total = count_q.count()
 
-        return MatchSnapshotListResponse(items=items, total=total)
+        repo_legacy = SimilarityRepository(db)
+        active_job = repo_legacy.get_active_scan_job_for_brand(brand_id)
+        latest_job = repo_legacy.get_latest_scan_job_for_brand(brand_id)
+        return MatchSnapshotListResponse(
+            items=items,
+            total=total,
+            active_scan=serialize_scan_job(active_job) if active_job else None,
+            last_scan=serialize_scan_job(latest_job) if latest_job else None,
+        )
 
     # Legacy path: no snapshot data requested
     repo = SimilarityRepository(db)
