@@ -24,12 +24,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { MatchDrawer } from "@/components/monitoring/match-drawer"
+import { DomainHealthHero } from "@/components/monitoring/domain-health-hero"
 import {
   ArrowLeft,
   Search,
   CheckCircle,
-  XCircle,
-  Minus,
   ChevronDown,
   ChevronUp,
   Building2,
@@ -43,25 +42,6 @@ const BUCKETS = [
   { value: "defensive_gap", label: "Gap Defensivo" },
   { value: "watchlist", label: "Watchlist" },
 ]
-
-function healthVariant(health: string | undefined) {
-  switch (health) {
-    case "critical": return "destructive" as const
-    case "warning": return "secondary" as const
-    case "healthy": return "outline" as const
-    default: return "outline" as const
-  }
-}
-
-function healthLabel(status: string | undefined) {
-  switch (status) {
-    case "critical": return "Crítico"
-    case "warning": return "Atenção"
-    case "healthy": return "Saudável"
-    case "unknown": return "Desconhecido"
-    default: return status ?? "—"
-  }
-}
 
 function cycleStatusLabel(status: string | undefined) {
   switch (status) {
@@ -89,12 +69,6 @@ function bucketLabel(bucket: string | null) {
     case "watchlist": return "Watchlist"
     default: return bucket ?? "—"
   }
-}
-
-function CheckIcon({ ok }: { ok: boolean | undefined }) {
-  if (ok === undefined) return <Minus className="h-3 w-3 text-muted-foreground" />
-  if (ok) return <CheckCircle className="h-3 w-3 text-green-500" />
-  return <XCircle className="h-3 w-3 text-destructive" />
 }
 
 function SelfOwnedSecurityBadge({ signalCodes }: { signalCodes: string[] }) {
@@ -277,56 +251,13 @@ export default function BrandDetailPage() {
         Perfis de Monitoramento
       </Button>
 
-      {/* Header card */}
-      <Card>
-        <CardContent className="pt-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-semibold">{brand.brand_name}</h1>
-                <Badge variant={healthVariant(summary?.overall_health)}>
-                  {healthLabel(summary?.overall_health)}
-                </Badge>
-                {!brand.is_active && <Badge variant="outline">inativo</Badge>}
-              </div>
-              <p className="font-mono text-xs text-muted-foreground mt-0.5">
-                {brand.brand_label}
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleScan}
-              disabled={scanning}
-            >
-              <Search className="h-3 w-3 mr-1" />
-              {scanning ? "Aguardando..." : "Disparar Varredura"}
-            </Button>
-          </div>
-
-          {/* Threat counters */}
-          <div className="grid grid-cols-3 gap-3 mt-4 max-w-sm">
-            <div className="rounded-lg bg-destructive/10 p-3 text-center">
-              <p className="text-2xl font-bold text-destructive leading-none">
-                {threats?.immediate_attention ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Imediato</p>
-            </div>
-            <div className="rounded-lg bg-secondary/50 p-3 text-center">
-              <p className="text-2xl font-bold leading-none">
-                {threats?.defensive_gap ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Defensivo</p>
-            </div>
-            <div className="rounded-lg bg-muted p-3 text-center">
-              <p className="text-2xl font-bold leading-none">
-                {threats?.watchlist ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Watchlist</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Domain Health Hero */}
+      <DomainHealthHero
+        brand={brand}
+        health={health}
+        scanning={scanning}
+        onScan={handleScan}
+      />
 
       {/* Latest cycle status */}
       {latestCycle && (
@@ -367,79 +298,6 @@ export default function BrandDetailPage() {
                 <p className="text-xs mt-0.5">{latestCycle.new_matches_count}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Domain Health */}
-      {health && health.domains.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Saúde dos Domínios</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domínio</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-center">DNS</TableHead>
-                  <TableHead className="text-center">SSL</TableHead>
-                  <TableHead className="text-center">Email</TableHead>
-                  <TableHead className="text-center">Headers</TableHead>
-                  <TableHead className="text-center">Blacklist</TableHead>
-                  <TableHead>Última Verificação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {health.domains.map((d) => (
-                  <TableRow key={d.domain_id}>
-                    <TableCell className="font-mono text-xs">
-                      {d.domain_name}
-                      {d.is_primary && (
-                        <Badge variant="outline" className="ml-1 text-[10px]">
-                          primary
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          d.overall_status === "healthy"
-                            ? "outline"
-                            : d.overall_status === "critical"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                        className="text-[11px]"
-                      >
-                        {healthLabel(d.overall_status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <CheckIcon ok={d.dns?.ok} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <CheckIcon ok={d.ssl?.ok} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <CheckIcon ok={d.email_security?.ok} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <CheckIcon ok={d.headers?.ok} />
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <CheckIcon ok={d.blacklist?.ok} />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {d.last_check_at
-                        ? new Date(d.last_check_at).toLocaleDateString()
-                        : "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           </CardContent>
         </Card>
       )}
