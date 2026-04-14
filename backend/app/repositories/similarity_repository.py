@@ -69,9 +69,20 @@ class SimilarityRepository:
                   {wm_filter}
             """
 
-        # Dynamic threshold: short brands (<=5 chars) need higher similarity
-        # to avoid excessive false positives from trigram matching
-        sim_threshold = 0.5 if len(brand_label) <= 5 else 0.3
+        # Dynamic threshold: stricter for short brands to avoid false positives
+        # on large TLD partitions (170M+ rows for .com)
+        blen = len(brand_label)
+        if blen <= 5:
+            sim_threshold = 0.55
+        elif blen <= 8:
+            sim_threshold = 0.45
+        else:
+            sim_threshold = 0.35
+
+        # Per-query timeout — prevents single-seed queries from blocking for
+        # 10+ minutes on huge partitions (domain_com = 170M rows).
+        # SET LOCAL scopes the timeout to the current transaction only.
+        self.db.execute(text("SET LOCAL statement_timeout = '45000'"))
         self.db.execute(
             text("SET LOCAL pg_trgm.similarity_threshold = :t"),
             {"t": sim_threshold},
@@ -482,9 +493,9 @@ class SimilarityRepository:
         results[tld] = current
         job.tld_results = results
         job.status = self._derive_scan_job_status(results)
-        job.last_error = error_message if status == "failed" else job.last_error
+        job.last_error = error_message if status in {"failed", "timed_out"} else job.last_error
         job.updated_at = datetime.now(timezone.utc)
-        if job.status in {"completed", "partial", "failed"}:
+        if job.status in {"completed", "partial", "failed", "timed_out"}:
             job.finished_at = datetime.now(timezone.utc)
         self.db.flush()
 
@@ -497,21 +508,23 @@ class SimilarityRepository:
     @staticmethod
     def _derive_scan_job_status(results: dict) -> str:
         states = {str((payload or {}).get("status") or "queued") for payload in results.values()}
-        if not states:
+        # Treat timed_out as equivalent to failed for job-level status derivation
+        normalized = {("failed" if s == "timed_out" else s) for s in states}
+        if not normalized:
             return "failed"
-        if states <= {"completed"}:
+        if normalized <= {"completed"}:
             return "completed"
-        if states <= {"failed"}:
+        if normalized <= {"failed"}:
             return "failed"
-        if "running" in states:
+        if "running" in normalized:
             return "running"
-        if "queued" in states and states == {"queued"}:
+        if "queued" in normalized and normalized == {"queued"}:
             return "queued"
-        if "failed" in states and "completed" in states:
+        if "failed" in normalized and "completed" in normalized:
             return "partial"
-        if "failed" in states and "queued" in states:
+        if "failed" in normalized and "queued" in normalized:
             return "running"
-        if "completed" in states and "queued" in states:
+        if "completed" in normalized and "queued" in normalized:
             return "running"
         return "partial"
 

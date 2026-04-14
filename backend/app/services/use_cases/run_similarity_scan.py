@@ -343,6 +343,7 @@ def run_similarity_scan_all(
             )
         except Exception:
             logger.exception("Failed scan for brand=%s tld=%s", brand.brand_label, tld)
+            db.rollback()
             results[tld] = {"candidates": 0, "matched": 0, "scanned": 0, "error": True}
 
     return results
@@ -391,18 +392,29 @@ def run_similarity_scan_job(
             db.commit()
             results[tld] = metrics
         except Exception as exc:
-            logger.exception("Queued similarity scan failed for brand=%s tld=%s", brand.brand_label, tld)
+            db.rollback()
+            exc_str = str(exc).lower()
+            is_timeout = "canceling statement due to statement timeout" in exc_str
+            tld_status = "timed_out" if is_timeout else "failed"
+            if is_timeout:
+                logger.warning(
+                    "Scan timed out for brand=%s tld=%s (45s per-query limit exceeded)",
+                    brand.brand_label,
+                    tld,
+                )
+            else:
+                logger.exception("Queued similarity scan failed for brand=%s tld=%s", brand.brand_label, tld)
             repo.update_scan_job_tld(
                 job,
                 tld=tld,
-                status="failed",
+                status=tld_status,
                 started_at=started_at,
                 finished_at=datetime.now(timezone.utc),
-                error_message=str(exc),
+                error_message=str(exc) if not is_timeout else "Query timed out (large TLD partition)",
             )
             repo.heartbeat_scan_job(job)
             db.commit()
-            results[tld] = {"candidates": 0, "matched": 0, "scanned": 0, "removed": 0, "error": True}
+            results[tld] = {"candidates": 0, "matched": 0, "scanned": 0, "removed": 0, "error": True, "timed_out": is_timeout}
 
     repo.finalize_scan_job(job)
     db.commit()
