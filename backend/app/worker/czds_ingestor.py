@@ -17,7 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.infra.external.czds_client import CZDSAuthRateLimitedError
+from app.infra.external.czds_client import CZDSAuthRateLimitedError, CZDSClient
 from app.infra.db.session import SessionLocal
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.services.tld_domain_count import refresh_tld_domain_count_mv
@@ -147,12 +147,12 @@ def _get_tld_sizes() -> dict[str, int]:
         db.close()
 
 
-def _sync_single_tld(tld: str) -> None:
-    """Sync one TLD with its own DB session and CZDS client. Re-raises CZDSAuthRateLimitedError."""
+def _sync_single_tld(tld: str, czds_client: CZDSClient | None = None) -> None:
+    """Sync one TLD with its own DB session. Re-raises CZDSAuthRateLimitedError."""
     db = SessionLocal()
     try:
         logger.info("▶ Syncing TLD=%s", tld)
-        run_id = sync_czds_tld(db, tld)
+        run_id = sync_czds_tld(db, tld, czds_client=czds_client)
         logger.info("✅ TLD=%s completed: run_id=%s", tld, run_id)
     except CooldownActiveError:
         logger.info("⏭ TLD=%s skipped (cooldown active)", tld)
@@ -191,11 +191,18 @@ def _recover_stale_at_cycle_start() -> None:
 
 
 def run_sync_cycle(tlds: list[str] | None = None) -> None:
-    """Execute a sync cycle: small TLDs in parallel, large TLDs serially."""
+    """Execute a sync cycle: small TLDs in parallel, large TLDs serially.
+
+    A single CZDSClient is shared across the entire cycle so the ICANN JWT
+    is obtained once and reused, avoiding authentication rate limits (HTTP 429).
+    """
     _recover_stale_at_cycle_start()
     _reload_cron_if_changed()
     tlds = tlds or _get_enabled_tlds()
     logger.info("Starting sync cycle for TLDs: %s", tlds)
+
+    # One shared client for the whole cycle — authenticates once, reuses token
+    czds_client = CZDSClient()
 
     sizes = _get_tld_sizes()
     small_tlds = [t for t in tlds if sizes.get(t, _SIZE_THRESHOLD) < _SIZE_THRESHOLD]
@@ -210,7 +217,7 @@ def run_sync_cycle(tlds: list[str] | None = None) -> None:
         auth_throttled = False
         with ThreadPoolExecutor(max_workers=_PARALLEL_WORKERS) as pool:
             futures = {
-                pool.submit(_sync_single_tld, tld): tld
+                pool.submit(_sync_single_tld, tld, czds_client): tld
                 for tld in small_tlds
                 if not STOP_EVENT.is_set()
             }
@@ -241,7 +248,7 @@ def run_sync_cycle(tlds: list[str] | None = None) -> None:
         db = SessionLocal()
         try:
             logger.info("▶ Syncing TLD=%s", tld)
-            run_id = sync_czds_tld(db, tld)
+            run_id = sync_czds_tld(db, tld, czds_client=czds_client)
             logger.info("✅ TLD=%s completed: run_id=%s", tld, run_id)
         except CooldownActiveError:
             logger.info("⏭ TLD=%s skipped (cooldown active)", tld)

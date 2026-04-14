@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import tempfile
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,6 +17,8 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 _AUTH_URL = "https://account-api.icann.org/api/authenticate"
+# ICANN JWTs expire at 24 h; refresh proactively before expiry
+_TOKEN_MAX_AGE_SECONDS = 23 * 3600
 
 
 class CZDSAuthRateLimitedError(Exception):
@@ -31,16 +35,30 @@ class CZDSTldAccessError(Exception):
 
 
 class CZDSClient:
-    """Handles authentication and streaming zone-file downloads from CZDS."""
+    """Handles authentication and streaming zone-file downloads from CZDS.
+
+    Designed to be shared across multiple threads (parallel TLD workers).
+    A single instance per sync cycle avoids repeated ICANN auth calls that
+    trigger HTTP 429 rate limits.
+    """
 
     def __init__(self) -> None:
         self.base_url = settings.CZDS_BASE_URL.rstrip("/")
         self._token: str | None = None
+        self._token_obtained_at: datetime | None = None
         self._authorized_tlds: set[str] | None = None
+        # Serialize authentication and TLD-list fetches across threads
+        self._auth_lock = threading.Lock()
 
     # ── Authentication ──────────────────────────────────────
+    def _is_token_stale(self) -> bool:
+        if self._token is None or self._token_obtained_at is None:
+            return True
+        age = (datetime.now(timezone.utc) - self._token_obtained_at).total_seconds()
+        return age >= _TOKEN_MAX_AGE_SECONDS
+
     def _authenticate(self) -> str:
-        """Obtain a JWT from ICANN's account API."""
+        """Obtain a JWT from ICANN's account API. Caller must hold _auth_lock."""
         logger.info("Authenticating with CZDS…")
         resp = httpx.post(
             _AUTH_URL,
@@ -57,27 +75,35 @@ class CZDSClient:
         resp.raise_for_status()
         token = resp.json().get("accessToken") or resp.text
         self._token = token.strip()
+        self._token_obtained_at = datetime.now(timezone.utc)
+        # Invalidate cached TLD list — it may change after re-auth
+        self._authorized_tlds = None
         logger.info("CZDS authentication successful.")
         return self._token
 
+    def invalidate_token(self) -> None:
+        """Force re-authentication on the next token access."""
+        with self._auth_lock:
+            self._token = None
+            self._token_obtained_at = None
+            self._authorized_tlds = None
+
     @property
     def token(self) -> str:
-        if self._token is None:
-            self._authenticate()
+        if not self._is_token_stale():
+            return self._token  # type: ignore[return-value]
+        with self._auth_lock:
+            # Double-check after acquiring lock (another thread may have just authed)
+            if self._is_token_stale():
+                self._authenticate()
         return self._token  # type: ignore[return-value]
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}"}
 
     # ── Zone download ───────────────────────────────────────
-    def download_zone(self, tld: str, dest_dir: str | None = None) -> tuple[Path, str, int]:
-        """
-        Stream-download a zone file for *tld*.
-
-        Returns
-        -------
-        (local_path, sha256_hex, size_bytes)
-        """
+    def _do_download(self, tld: str, dest_dir: str | None) -> tuple[Path, str, int]:
+        """Single download attempt — may raise httpx.HTTPStatusError on 401."""
         url = f"{self.base_url}/czds/downloads/{tld}.zone"
         logger.info("Downloading zone file for TLD=%s from %s", tld, url)
 
@@ -108,6 +134,26 @@ class CZDSClient:
         )
         return local_path, sha256_hex, size
 
+    def download_zone(self, tld: str, dest_dir: str | None = None) -> tuple[Path, str, int]:
+        """
+        Stream-download a zone file for *tld*, retrying once on token expiry.
+
+        Returns
+        -------
+        (local_path, sha256_hex, size_bytes)
+        """
+        try:
+            return self._do_download(tld, dest_dir)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 401:
+                logger.warning(
+                    "Token rejected (401) while downloading TLD=%s. Refreshing token and retrying.",
+                    tld,
+                )
+                self.invalidate_token()
+                return self._do_download(tld, dest_dir)
+            raise
+
     # ── List authorised zones ───────────────────────────────
     def list_links(self) -> list[str]:
         """Return download-link URLs the current credential is authorised for."""
@@ -121,14 +167,20 @@ class CZDSClient:
         if self._authorized_tlds is not None:
             return self._authorized_tlds
 
-        tlds: set[str] = set()
-        for link in self.list_links():
-            path = urlparse(link).path
-            filename = Path(path).name
-            if not filename.endswith(".zone"):
-                continue
-            tlds.add(filename[:-5].lower())
+        with self._auth_lock:
+            # Double-check after acquiring lock
+            if self._authorized_tlds is not None:
+                return self._authorized_tlds
 
-        self._authorized_tlds = tlds
-        logger.info("Loaded %d authorized CZDS zone links.", len(tlds))
-        return tlds
+            tlds: set[str] = set()
+            for link in self.list_links():
+                path = urlparse(link).path
+                filename = Path(path).name
+                if not filename.endswith(".zone"):
+                    continue
+                tlds.add(filename[:-5].lower())
+
+            self._authorized_tlds = tlds
+            logger.info("Loaded %d authorized CZDS zone links.", len(tlds))
+
+        return self._authorized_tlds
