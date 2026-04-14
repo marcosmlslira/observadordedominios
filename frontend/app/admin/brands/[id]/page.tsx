@@ -53,6 +53,27 @@ function healthVariant(health: string | undefined) {
   }
 }
 
+function healthLabel(status: string | undefined) {
+  switch (status) {
+    case "critical": return "Crítico"
+    case "warning": return "Atenção"
+    case "healthy": return "Saudável"
+    case "unknown": return "Desconhecido"
+    default: return status ?? "—"
+  }
+}
+
+function cycleStatusLabel(status: string | undefined) {
+  switch (status) {
+    case "completed": return "Concluído"
+    case "pending": return "Aguardando"
+    case "running": return "Em execução"
+    case "failed": return "Falhou"
+    case "skipped": return "Ignorado"
+    default: return status ?? "—"
+  }
+}
+
 function bucketVariant(bucket: string | null) {
   switch (bucket) {
     case "immediate_attention": return "destructive" as const
@@ -264,7 +285,7 @@ export default function BrandDetailPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-semibold">{brand.brand_name}</h1>
                 <Badge variant={healthVariant(summary?.overall_health)}>
-                  {summary?.overall_health ?? "unknown"}
+                  {healthLabel(summary?.overall_health)}
                 </Badge>
                 {!brand.is_active && <Badge variant="outline">inativo</Badge>}
               </div>
@@ -325,7 +346,7 @@ export default function BrandDetailPage() {
                   variant={latestCycle.health_status === "completed" ? "outline" : "secondary"}
                   className="mt-0.5"
                 >
-                  {latestCycle.health_status}
+                  {cycleStatusLabel(latestCycle.health_status)}
                 </Badge>
               </div>
               <div>
@@ -334,7 +355,7 @@ export default function BrandDetailPage() {
                   variant={latestCycle.scan_status === "completed" ? "outline" : "secondary"}
                   className="mt-0.5"
                 >
-                  {latestCycle.scan_status}
+                  {cycleStatusLabel(latestCycle.scan_status)}
                 </Badge>
               </div>
               <div>
@@ -392,7 +413,7 @@ export default function BrandDetailPage() {
                         }
                         className="text-[11px]"
                       >
-                        {d.overall_status}
+                        {healthLabel(d.overall_status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
@@ -515,14 +536,11 @@ export default function BrandDetailPage() {
             (() => {
               // Contextual empty states
               if (activeScan) {
+                // Banner above already shows the spinner — just show a quiet message
                 return (
-                  <div className="flex flex-col items-center gap-3 p-10 text-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <p className="text-sm font-medium">Analisando domínios…</p>
-                    <p className="text-xs text-muted-foreground max-w-xs">
-                      Estamos varrendo registros de domínios similares à sua marca. Isso pode levar alguns minutos.
-                    </p>
-                  </div>
+                  <p className="p-6 text-center text-sm text-muted-foreground">
+                    Os resultados aparecerão aqui assim que a varredura for concluída.
+                  </p>
                 )
               }
               if (selectedBucket) {

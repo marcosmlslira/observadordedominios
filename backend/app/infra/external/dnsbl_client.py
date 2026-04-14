@@ -40,12 +40,32 @@ def _resolve_ip(domain: str) -> str | None:
         return None
 
 
+# IPs returned by blacklist services to indicate quota exceeded or access denied
+# These must NOT be treated as actual listings (false positives)
+_QUOTA_EXCEEDED_IPS = {
+    "127.255.255.252",  # Spamhaus: query refused (need license)
+    "127.255.255.253",  # Spamhaus: internal error
+    "127.255.255.254",  # Spamhaus: query volume limit exceeded
+    "127.255.255.255",  # Spamhaus: general error
+}
+
+
 def _check_dnsbl(query: str, zone: str) -> bool:
-    """Return True if query.zone resolves (i.e., listed)."""
+    """Return True if query.zone resolves with a real listing code.
+
+    Filters out quota/error response codes (127.255.255.x) that services
+    return when unauthenticated or when query limits are exceeded — these
+    must not be treated as actual blacklist hits.
+    """
     lookup = f"{query}.{zone}"
     try:
-        dns.resolver.resolve(lookup, "A", lifetime=3)
-        return True
+        answers = dns.resolver.resolve(lookup, "A", lifetime=3)
+        ips = {rdata.to_text() for rdata in answers}
+        # If every returned IP is a quota/error code, this is not a real listing
+        if ips and ips.issubset(_QUOTA_EXCEEDED_IPS):
+            logger.debug("DNSBL quota/error response from %s for %s: %s", zone, query, ips)
+            return False
+        return bool(ips)
     except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.Timeout,
             dns.resolver.NoNameservers):
         return False
