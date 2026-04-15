@@ -148,6 +148,7 @@ class MonitoredBrandRepository:
         domains: list[dict],
     ) -> list[MonitoredBrandDomain]:
         brand.domains[:] = []
+        self.db.flush()  # commit deletes before inserts to avoid unique-constraint conflicts
         now = datetime.now(timezone.utc)
         for item in domains:
             brand.domains.append(
@@ -168,6 +169,7 @@ class MonitoredBrandRepository:
         aliases: list[dict],
     ) -> list[MonitoredBrandAlias]:
         brand.aliases[:] = []
+        self.db.flush()  # commit deletes before inserts to avoid unique-constraint conflicts
         now = datetime.now(timezone.utc)
         for item in aliases:
             brand.aliases.append(
@@ -188,6 +190,7 @@ class MonitoredBrandRepository:
         seeds: list[dict],
     ) -> list[MonitoredBrandSeed]:
         brand.seeds[:] = []
+        self.db.flush()  # commit deletes before inserts to avoid unique-constraint conflicts
         now = datetime.now(timezone.utc)
         for item in seeds:
             brand.seeds.append(
