@@ -173,10 +173,10 @@ def run_unchecked_brands_health_cycle() -> None:
                 if created:
                     db.commit()
 
-                if cycle.health_status in ("completed", "running"):
+                if cycle.health_status == "running":
                     logger.debug(
-                        "Health already %s for domain=%s today — skipping",
-                        cycle.health_status, domain.domain_name,
+                        "Health check already running for domain=%s today — skipping",
+                        domain.domain_name,
                     )
                     continue
 
