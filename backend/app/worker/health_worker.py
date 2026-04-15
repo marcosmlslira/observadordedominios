@@ -127,6 +127,93 @@ def run_health_cycle(db: Session | None = None) -> None:
             db.close()
 
 
+def run_unchecked_brands_health_cycle() -> None:
+    """Run health checks for brand domains that have never been checked.
+
+    Polls every 10 minutes to ensure newly-created brands get a health
+    check immediately instead of waiting for the 06:00 UTC daily cron.
+    Only processes domains with no brand_domain_health record.
+    """
+    from sqlalchemy import text
+    from app.models.monitored_brand_domain import MonitoredBrandDomain
+
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text(
+                "SELECT mbd.id, mbd.brand_id, mb.organization_id"
+                " FROM monitored_brand_domain mbd"
+                " JOIN monitored_brand mb ON mb.id = mbd.brand_id"
+                " LEFT JOIN brand_domain_health bdh ON bdh.brand_domain_id = mbd.id"
+                " WHERE mbd.is_active = true AND mb.is_active = true AND bdh.id IS NULL"
+                " ORDER BY mbd.created_at"
+                " LIMIT 10"
+            )
+        ).fetchall()
+
+        if not rows:
+            return
+
+        logger.info(
+            "First-time health check: found %d unchecked brand domain(s)", len(rows)
+        )
+
+        for row in rows:
+            domain_id, brand_id, organization_id = row
+            try:
+                domain = db.get(MonitoredBrandDomain, domain_id)
+                if not domain:
+                    continue
+
+                cycle_repo = MonitoringCycleRepository(db)
+                cycle, created = cycle_repo.get_or_create_today(
+                    brand_id=brand_id,
+                    organization_id=organization_id,
+                )
+                if created:
+                    db.commit()
+
+                if cycle.health_status in ("completed", "running"):
+                    logger.debug(
+                        "Health already %s for domain=%s today — skipping",
+                        cycle.health_status, domain.domain_name,
+                    )
+                    continue
+
+                svc = MonitoringCycleService(db, cycle_repo=cycle_repo)
+                svc.begin_stage(cycle.id, stage="health")
+                db.commit()
+
+                summary = run_health_check_domain(
+                    db,
+                    domain,
+                    brand_id=brand_id,
+                    organization_id=organization_id,
+                    cycle_id=cycle.id,
+                )
+
+                svc.finish_stage(cycle.id, stage="health", success=True)
+                db.commit()
+
+                logger.info(
+                    "First-time health check done: domain=%s status=%s tools_failed=%d",
+                    domain.domain_name,
+                    summary["overall_status"],
+                    summary["tools_failed"],
+                )
+
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "First-time health check FAILED for domain=%s", domain_id
+                )
+
+    except Exception:
+        logger.exception("run_unchecked_brands_health_cycle failed")
+    finally:
+        db.close()
+
+
 def emit_heartbeat() -> None:
     last_ok = _last_cycle_completed_at.isoformat() if _last_cycle_completed_at else "never"
     logger.info(
@@ -142,6 +229,7 @@ def main() -> None:
 
     logger.info("Health Worker starting. Cron: %s", HEALTH_CRON)
     run_health_cycle()
+    run_unchecked_brands_health_cycle()
 
     scheduler = BlockingScheduler()
     cron_parts = HEALTH_CRON.split()
@@ -152,6 +240,12 @@ def main() -> None:
             day=cron_parts[2], month=cron_parts[3], day_of_week=cron_parts[4],
         ),
         id="health_check",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        run_unchecked_brands_health_cycle,
+        IntervalTrigger(minutes=10),
+        id="health_check_new_brands",
         replace_existing=True,
     )
     scheduler.add_job(
