@@ -107,12 +107,12 @@ function derivePhase(
   return "idle"
 }
 
-function pollIntervalMs(phase: LifecyclePhase): number | null {
+function pollIntervalMs(phase: LifecyclePhase): number {
   switch (phase) {
     case "scanning": return 5000
     case "enriching": return 8000
     case "assessing": return 20000
-    default: return null
+    default: return 60000
   }
 }
 
@@ -202,11 +202,10 @@ export default function BrandDetailPage() {
     }
   }, [id, selectedBucket, offset])
 
-  // Phase-aware polling: scanning=5s, enriching=8s, assessing=20s, idle=stop
+  // Phase-aware polling: scanning=5s, enriching=8s, assessing=20s, idle=60s baseline
   useEffect(() => {
     const phase = derivePhase(activeScan, lifecycle)
     const interval = pollIntervalMs(phase)
-    if (!interval) return
 
     pollTimerRef.current = setTimeout(async () => {
       const wasScanActive = !!activeScan

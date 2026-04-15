@@ -168,6 +168,17 @@ def run_queued_jobs_cycle() -> None:
             logger.info("Processing queued job=%s brand=%s", job.id, job.brand_id)
             try:
                 run_similarity_scan_job(db, job.id)
+                brand = db.get(MonitoredBrand, job.brand_id)
+                if brand:
+                    ranked = repo.compute_enrichment_budget_rank(brand.id, limit=50)
+                    snapshots_created = _create_initial_snapshots(db, brand)
+                    db.commit()
+                    logger.info(
+                        "Post-scan: ranked=%d snapshots_created=%d brand=%s",
+                        len(ranked) if ranked else 0,
+                        snapshots_created,
+                        brand.brand_label,
+                    )
             except Exception:
                 logger.exception("Queued job failed: %s", job.id)
             processed += 1
