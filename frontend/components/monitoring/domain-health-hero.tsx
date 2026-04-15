@@ -87,8 +87,8 @@ function StatusIcon({ status, size = "sm" }: { status: CheckStatus; size?: "sm" 
   return <Minus className={cn(cls, "text-muted-foreground")} />
 }
 
-function okToStatus(ok: boolean | undefined): CheckStatus {
-  if (ok === undefined) return "unknown"
+function okToStatus(ok: boolean | null | undefined): CheckStatus {
+  if (ok == null) return "unknown"
   return ok ? "ok" : "critical"
 }
 
@@ -187,7 +187,7 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
   // SSL + certificate validity
   const sslDays = safeNum(d.ssl?.details?.["days_remaining"])
   let sslStatus: CheckStatus
-  if (d.ssl === undefined) {
+  if (d.ssl == null) {
     sslStatus = "unknown"
   } else if (!d.ssl.ok) {
     sslStatus = "critical"
@@ -199,9 +199,9 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
     sslStatus = "ok"
   }
   const sslSummary =
-    d.ssl === undefined ? "Não verificado" : d.ssl.ok ? "Válido" : "Inválido"
+    d.ssl == null ? "Não verificado" : d.ssl.ok ? "Válido" : "Inválido"
   const sslMicrotext =
-    d.ssl === undefined
+    d.ssl == null
       ? "Aguardando verificação"
       : sslDays !== null
         ? `${sslDays} dias restantes`
@@ -212,15 +212,15 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
   // Email security
   const spoofingRisk = safeStr(d.email_security?.details?.["spoofing_risk"])
   const emailStatus: CheckStatus =
-    d.email_security === undefined ? "unknown" : d.email_security.ok ? "ok" : "warning"
+    d.email_security == null ? "unknown" : d.email_security.ok ? "ok" : "warning"
   const emailSummary =
-    d.email_security === undefined
+    d.email_security == null
       ? "Não verificado"
       : d.email_security.ok
         ? "Protegido"
         : "Atenção"
   const emailMicrotext =
-    d.email_security === undefined
+    d.email_security == null
       ? "Aguardando verificação"
       : d.email_security.ok
         ? "SPF, DKIM e DMARC ok"
@@ -231,11 +231,11 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
   // HTTP Headers
   const headersScore = safeStr(d.headers?.details?.["score"])
   const headersStatus: CheckStatus =
-    d.headers === undefined ? "unknown" : d.headers.ok ? "ok" : "warning"
+    d.headers == null ? "unknown" : d.headers.ok ? "ok" : "warning"
   const headersSummary =
-    d.headers === undefined ? "Não verificado" : d.headers.ok ? "Completo" : "Parcial"
+    d.headers == null ? "Não verificado" : d.headers.ok ? "Completo" : "Parcial"
   const headersMicrotext =
-    d.headers === undefined
+    d.headers == null
       ? "Aguardando verificação"
       : headersScore
         ? `Score: ${headersScore}`
@@ -245,7 +245,7 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
 
   // Security reputation (blacklist + safe_browsing + urlhaus + phishtank)
   const repChecks = [d.blacklist?.ok, d.safe_browsing?.ok, d.urlhaus?.ok, d.phishtank?.ok]
-  const repAllUndefined = repChecks.every((v) => v === undefined)
+  const repAllUndefined = repChecks.every((v) => v == null)
   const repAnyFailed = repChecks.some((v) => v === false)
   const securityStatus: CheckStatus = repAllUndefined ? "unknown" : repAnyFailed ? "critical" : "ok"
   const securitySummary = repAllUndefined ? "Não verificado" : repAnyFailed ? "Detectado" : "Limpo"
@@ -257,7 +257,7 @@ function buildCheckCards(d: DomainHealthCheck): CheckCardInfo[] {
 
   // Integrity (takeover + suspicious_page)
   const intChecks = [d.takeover?.ok, d.suspicious_page?.ok]
-  const intAllUndefined = intChecks.every((v) => v === undefined)
+  const intAllUndefined = intChecks.every((v) => v == null)
   const intAnyFailed = intChecks.some((v) => v === false)
   const integrityStatus: CheckStatus = intAllUndefined ? "unknown" : intAnyFailed ? "critical" : "ok"
   const integritySummary = intAllUndefined ? "Não verificado" : intAnyFailed ? "Alerta" : "OK"
@@ -548,7 +548,7 @@ function SslModal({ domain }: { domain: DomainHealthCheck }) {
   const ocsp = safeStr(cert["ocsp_status"])
 
   const certStatus: CheckStatus =
-    check === undefined ? "unknown"
+    check == null ? "unknown"
     : !check.ok ? "critical"
     : days !== null && days <= 7 ? "critical"
     : days !== null && days <= 30 ? "warning"
@@ -565,7 +565,7 @@ function SslModal({ domain }: { domain: DomainHealthCheck }) {
       <ModalSection title="Resumo">
         <ModalRow
           label="Status"
-          value={check === undefined ? "—" : check.ok ? "Válido" : "Inválido"}
+          value={check == null ? "—" : check.ok ? "Válido" : "Inválido"}
           status={certStatus}
         />
         {days !== null && (
@@ -670,7 +670,7 @@ function EmailModal({ domain }: { domain: DomainHealthCheck }) {
   const dkimSelectors = safeArr(dkim["selectors_found"])
 
   const overallStatus: CheckStatus =
-    check === undefined ? "unknown"
+    check == null ? "unknown"
     : check.ok ? "ok"
     : spoofingLevel === "alto" ? "critical"
     : "warning"
@@ -681,7 +681,7 @@ function EmailModal({ domain }: { domain: DomainHealthCheck }) {
       <ModalSection title="Resumo">
         <ModalRow
           label="Proteção geral"
-          value={check === undefined ? "—" : check.ok ? "Protegido" : "Atenção"}
+          value={check == null ? "—" : check.ok ? "Protegido" : "Atenção"}
           status={overallStatus}
         />
         {spoofingLevel && (
@@ -784,7 +784,7 @@ function HeadersModal({ domain }: { domain: DomainHealthCheck }) {
   const absent = secHeaders.filter(h => safeBool(safeObj(h)?.["present"]) !== true)
 
   const overallStatus: CheckStatus =
-    check === undefined ? "unknown"
+    check == null ? "unknown"
     : check.ok ? "ok"
     : score === "poor" ? "critical"
     : "warning"
@@ -805,7 +805,7 @@ function HeadersModal({ domain }: { domain: DomainHealthCheck }) {
       <ModalSection title="Resumo">
         <ModalRow
           label="Avaliação geral"
-          value={check === undefined ? "—" : score ?? (check.ok ? "Completo" : "Parcial")}
+          value={check == null ? "—" : score ?? (check.ok ? "Completo" : "Parcial")}
           status={overallStatus}
         />
         <ModalRow
@@ -907,7 +907,7 @@ function SecurityModal({ domain }: { domain: DomainHealthCheck }) {
   ]
 
   const anyFailed = sources.some((c) => c.ok === false)
-  const allUnknown = sources.every((c) => c.ok === undefined)
+  const allUnknown = sources.every((c) => c.ok == null)
 
   return (
     <div className="space-y-4">
@@ -940,11 +940,11 @@ function SecurityModal({ domain }: { domain: DomainHealthCheck }) {
                 <p className="text-[11px] text-muted-foreground">{s.source}</p>
               </div>
               <span className={cn("text-xs font-semibold shrink-0",
-                s.ok === undefined ? "text-muted-foreground"
+                s.ok == null ? "text-muted-foreground"
                 : s.ok ? "text-emerald-600 dark:text-emerald-400"
                 : "text-red-600 dark:text-red-400"
               )}>
-                {s.ok === undefined ? "—" : s.ok ? "Limpo" : "Detectado"}
+                {s.ok == null ? "—" : s.ok ? "Limpo" : "Detectado"}
               </span>
             </div>
           </div>
@@ -1002,7 +1002,7 @@ function IntegrityModal({ domain }: { domain: DomainHealthCheck }) {
   const susPageDetails = safeObj(domain.suspicious_page?.details) ?? {}
 
   const anyFailed = domain.takeover?.ok === false || domain.suspicious_page?.ok === false
-  const allUnknown = domain.takeover === undefined && domain.suspicious_page === undefined
+  const allUnknown = domain.takeover == null && domain.suspicious_page == null
 
   const renderDetails = (title: string, ok: boolean | undefined, details: Record<string, unknown>) => {
     const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined)
@@ -1010,8 +1010,8 @@ function IntegrityModal({ domain }: { domain: DomainHealthCheck }) {
       <ModalSection title={title}>
         <ModalRow
           label="Status"
-          value={ok === undefined ? "—" : ok ? "OK" : "Alerta"}
-          status={ok === undefined ? "unknown" : ok ? "ok" : "critical"}
+          value={ok == null ? "—" : ok ? "OK" : "Alerta"}
+          status={ok == null ? "unknown" : ok ? "ok" : "critical"}
         />
         {entries.map(([key, value]) => {
           const label = key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
