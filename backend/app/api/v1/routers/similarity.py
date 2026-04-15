@@ -162,11 +162,49 @@ def list_matches(
         repo_legacy = SimilarityRepository(db)
         active_job = repo_legacy.get_active_scan_job_for_brand(brand_id)
         latest_job = repo_legacy.get_latest_scan_job_for_brand(brand_id)
+
+        # Lifecycle status: enrichment phase from latest monitoring_cycle
+        from sqlalchemy import text as _text
+        from app.schemas.monitoring import LifecycleStatusSchema
+        cycle_row = db.execute(
+            _text(
+                "SELECT enrichment_status, enrichment_budget, enrichment_total,"
+                "       enrichment_started_at, enrichment_finished_at"
+                " FROM monitoring_cycle"
+                " WHERE brand_id = :brand_id"
+                " ORDER BY cycle_date DESC LIMIT 1"
+            ),
+            {"brand_id": brand_id},
+        ).fetchone()
+        # Assessment progress: only immediate_attention + defensive_gap are assessed
+        assessment_row = db.execute(
+            _text(
+                "SELECT"
+                "   COUNT(*) FILTER (WHERE derived_bucket IN ('immediate_attention', 'defensive_gap')) AS eligible,"
+                "   COUNT(*) FILTER ("
+                "       WHERE derived_bucket IN ('immediate_attention', 'defensive_gap')"
+                "       AND llm_assessment IS NOT NULL"
+                "       AND llm_source_fingerprint = state_fingerprint"
+                "   ) AS completed"
+                " FROM match_state_snapshot WHERE brand_id = :brand_id"
+            ),
+            {"brand_id": brand_id},
+        ).fetchone()
+        lifecycle = LifecycleStatusSchema(
+            enrichment_phase=cycle_row[0] if cycle_row else "idle",
+            enrichment_budget=cycle_row[1] if cycle_row else 0,
+            enrichment_total=cycle_row[2] if cycle_row else 0,
+            enrichment_started_at=cycle_row[3] if cycle_row else None,
+            enrichment_finished_at=cycle_row[4] if cycle_row else None,
+            assessment_eligible=assessment_row[0] if assessment_row else 0,
+            assessment_completed=assessment_row[1] if assessment_row else 0,
+        )
         return MatchSnapshotListResponse(
             items=items,
             total=total,
             active_scan=serialize_scan_job(active_job) if active_job else None,
             last_scan=serialize_scan_job(latest_job) if latest_job else None,
+            lifecycle=lifecycle,
         )
 
     # Legacy path: no snapshot data requested

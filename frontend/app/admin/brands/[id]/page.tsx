@@ -7,6 +7,7 @@ import type {
   Brand,
   BrandHealthResponse,
   CycleListResponse,
+  LifecycleStatus,
   MatchSnapshot,
   MatchSnapshotListResponse,
   ScanJobResponse,
@@ -94,6 +95,27 @@ function SelfOwnedSecurityBadge({ signalCodes }: { signalCodes: string[] }) {
   )
 }
 
+type LifecyclePhase = "scanning" | "enriching" | "assessing" | "idle"
+
+function derivePhase(
+  activeScan: ScanJobResponse | null,
+  lifecycle: LifecycleStatus | null,
+): LifecyclePhase {
+  if (activeScan) return "scanning"
+  if (lifecycle?.enrichment_phase === "running") return "enriching"
+  if (lifecycle && lifecycle.assessment_eligible > lifecycle.assessment_completed) return "assessing"
+  return "idle"
+}
+
+function pollIntervalMs(phase: LifecyclePhase): number | null {
+  switch (phase) {
+    case "scanning": return 5000
+    case "enriching": return 8000
+    case "assessing": return 20000
+    default: return null
+  }
+}
+
 function CollapsibleSection({
   title,
   defaultOpen = false,
@@ -138,6 +160,7 @@ export default function BrandDetailPage() {
 
   const [activeScan, setActiveScan] = useState<ScanJobResponse | null>(null)
   const [lastScan, setLastScan] = useState<ScanJobResponse | null>(null)
+  const [lifecycle, setLifecycle] = useState<LifecycleStatus | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [selectedBucket, setSelectedBucket] = useState("")
@@ -171,6 +194,7 @@ export default function BrandDetailPage() {
       setSnapshots(data)
       setActiveScan(data.active_scan ?? null)
       setLastScan(data.last_scan ?? null)
+      setLifecycle(data.lifecycle ?? null)
     } catch {
       // ignore
     } finally {
@@ -178,25 +202,27 @@ export default function BrandDetailPage() {
     }
   }, [id, selectedBucket, offset])
 
-  // Polling: when a scan is active, re-fetch every 5s; on completion also refresh brand summary
+  // Phase-aware polling: scanning=5s, enriching=8s, assessing=20s, idle=stop
   useEffect(() => {
-    if (!activeScan) return
+    const phase = derivePhase(activeScan, lifecycle)
+    const interval = pollIntervalMs(phase)
+    if (!interval) return
+
     pollTimerRef.current = setTimeout(async () => {
-      const prevActive = activeScan
+      const wasScanActive = !!activeScan
       await fetchSnapshots()
-      // If scan just finished (activeScan will be null after fetchSnapshots updates state),
-      // we need to refresh brand data too — but state update is async, so check via ref pattern below
-      setActiveScan((current) => {
-        if (!current && prevActive) {
-          fetchBrand()
-        }
-        return current
-      })
-    }, 5000)
+      // Refresh brand summary when scan transitions to done
+      if (wasScanActive) {
+        setActiveScan((current) => {
+          if (!current) fetchBrand()
+          return current
+        })
+      }
+    }, interval)
     return () => {
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current)
     }
-  }, [activeScan, fetchSnapshots, fetchBrand])
+  }, [activeScan, lifecycle, fetchSnapshots, fetchBrand])
 
   useEffect(() => {
     fetchBrand().finally(() => setLoading(false))
@@ -369,21 +395,51 @@ export default function BrandDetailPage() {
           </div>
         </CardHeader>
 
-        {/* Scan progress banner */}
-        {activeScan && (
-          <div className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-4 py-3">
-            <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Varredura em andamento</p>
-              <p className="text-xs text-blue-700 dark:text-blue-300 truncate">
-                {activeScan.tlds_effective?.length
-                  ? `Verificando ${activeScan.tlds_effective.length} extensões de domínio…`
-                  : "Analisando domínios similares à sua marca…"}
-              </p>
+        {/* Lifecycle progress banner — adapts to scanning / enriching / assessing phases */}
+        {(() => {
+          const phase = derivePhase(activeScan, lifecycle)
+          if (phase === "scanning") return (
+            <div className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-4 py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Varredura em andamento</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 truncate">
+                  {activeScan?.tlds_effective?.length
+                    ? `Verificando ${activeScan.tlds_effective.length} extensões de domínio…`
+                    : "Analisando domínios similares à sua marca…"}
+                </p>
+              </div>
+              <span className="text-xs text-blue-500 shrink-0 animate-pulse">Atualização automática</span>
             </div>
-            <span className="text-xs text-blue-500 shrink-0 animate-pulse">Atualização automática</span>
-          </div>
-        )}
+          )
+          if (phase === "enriching") return (
+            <div className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-4 py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-emerald-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">Enriquecimento em andamento</p>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  {lifecycle && lifecycle.enrichment_total > 0
+                    ? `${lifecycle.enrichment_total.toLocaleString("pt-BR")} domínios sendo analisados…`
+                    : "Coletando dados DNS, WHOIS e certificados…"}
+                </p>
+              </div>
+              <span className="text-xs text-emerald-500 shrink-0 animate-pulse">Atualização automática</span>
+            </div>
+          )
+          if (phase === "assessing" && lifecycle) return (
+            <div className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/30 px-4 py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-purple-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-purple-900 dark:text-purple-100">Avaliação por IA em andamento</p>
+                <p className="text-xs text-purple-700 dark:text-purple-300">
+                  {lifecycle.assessment_completed} de {lifecycle.assessment_eligible} domínios críticos avaliados
+                </p>
+              </div>
+              <span className="text-xs text-purple-500 shrink-0 animate-pulse">Atualização automática</span>
+            </div>
+          )
+          return null
+        })()}
 
         <CardContent className="p-0">
           {snapshotsLoading && !activeScan ? (

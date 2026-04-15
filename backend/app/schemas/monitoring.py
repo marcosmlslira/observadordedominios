@@ -138,11 +138,23 @@ class MatchSnapshotResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LifecycleStatusSchema(BaseModel):
+    """Live pipeline progress for a brand — enrichment + assessment phases."""
+    enrichment_phase: str = "idle"  # "pending" | "running" | "completed" | "failed" | "idle"
+    enrichment_budget: int = 0
+    enrichment_total: int = 0
+    enrichment_started_at: datetime | None = None
+    enrichment_finished_at: datetime | None = None
+    assessment_eligible: int = 0   # immediate_attention + defensive_gap snapshots
+    assessment_completed: int = 0  # eligible where llm_source_fingerprint == state_fingerprint
+
+
 class MatchSnapshotListResponse(BaseModel):
     items: list[MatchSnapshotResponse]
     total: int
     active_scan: ScanJobResponse | None = None
     last_scan: ScanJobResponse | None = None
+    lifecycle: LifecycleStatusSchema | None = None
 
 
 # ── Events ────────────────────────────────────────────────────

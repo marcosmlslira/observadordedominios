@@ -655,11 +655,22 @@ export interface MatchSnapshot {
   last_derived_at: string | null
 }
 
+export interface LifecycleStatus {
+  enrichment_phase: "pending" | "running" | "completed" | "failed" | "idle"
+  enrichment_budget: number
+  enrichment_total: number
+  enrichment_started_at: string | null
+  enrichment_finished_at: string | null
+  assessment_eligible: number
+  assessment_completed: number
+}
+
 export interface MatchSnapshotListResponse {
   items: MatchSnapshot[]
   total: number
   active_scan: ScanJobResponse | null
   last_scan: ScanJobResponse | null
+  lifecycle: LifecycleStatus | null
 }
 
 export interface MonitoringEvent {
