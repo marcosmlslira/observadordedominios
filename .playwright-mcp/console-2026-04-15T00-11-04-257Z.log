@@ -1,0 +1,11 @@
+[     660ms] TypeError: Cannot read properties of null (reading 'ok')
+    at https://observadordedominios.com.br/_next/static/chunks/app/admin/brands/%5Bid%5D/page-95e844e9ed88de6f.js:1:26002
+    at es (https://observadordedominios.com.br/_next/static/chunks/app/admin/brands/%5Bid%5D/page-95e844e9ed88de6f.js:1:28960)
+    at l9 (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:51124)
+    at o_ (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:70984)
+    at oq (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:82014)
+    at ik (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:114676)
+    at https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:114521
+    at ib (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:114529)
+    at iu (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:111612)
+    at iX (https://observadordedominios.com.br/_next/static/chunks/4bd1b696-c023c6e3521b1417.js:1:132928)

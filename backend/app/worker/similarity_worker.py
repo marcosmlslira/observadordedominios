@@ -205,7 +205,7 @@ def run_queued_jobs_cycle() -> None:
                     db.commit()
                     logger.info(
                         "Post-scan: ranked=%d snapshots_created=%d brand=%s",
-                        len(ranked) if ranked else 0,
+                        ranked or 0,
                         snapshots_created,
                         brand.brand_label,
                     )

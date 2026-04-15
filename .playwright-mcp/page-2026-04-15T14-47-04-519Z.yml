@@ -1,0 +1,36 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e15]:
+    - complementary [ref=e16]:
+      - generic [ref=e17]:
+        - heading "Observador de Dominios" [level=1] [ref=e18]
+        - paragraph [ref=e19]: Admin
+      - navigation [ref=e20]:
+        - link "Dashboard" [ref=e21] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e22]
+          - text: Dashboard
+        - link "Ingestão de Dados" [ref=e27] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e28]
+          - text: Ingestão de Dados
+        - link "Perfis de Marca" [ref=e31] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e32]
+          - text: Perfis de Marca
+        - link "Ameaças" [ref=e34] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e35]
+          - text: Ameaças
+        - link "Ferramentas" [ref=e37] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e38]
+          - text: Ferramentas
+      - generic [ref=e40]:
+        - button "Ativar modo escuro" [ref=e41]:
+          - img
+        - button "Sair" [ref=e42]:
+          - img
+          - text: Sair
+    - main [ref=e44]:
+      - heading "Dashboard" [level=1] [ref=e46]

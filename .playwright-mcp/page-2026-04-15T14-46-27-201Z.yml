@@ -1,0 +1,16 @@
+- generic [ref=e1]:
+  - alert [ref=e2]
+  - main [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]: Observador de Dominios
+        - paragraph [ref=e7]: Admin Panel
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - text: Email
+          - textbox "Email" [active] [ref=e11]:
+            - /placeholder: admin@observador.com
+        - generic [ref=e12]:
+          - text: Password
+          - textbox "Password" [ref=e13]
+        - button "Sign in" [ref=e14]

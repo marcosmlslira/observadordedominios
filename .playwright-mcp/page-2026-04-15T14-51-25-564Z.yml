@@ -1,0 +1,76 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Observador de Dominios" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Admin
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e10]
+          - text: Dashboard
+        - link "Ingestão de Dados" [ref=e15] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e16]
+          - text: Ingestão de Dados
+        - link "Perfis de Marca" [ref=e19] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e20]
+          - text: Perfis de Marca
+        - link "Ameaças" [ref=e22] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e23]
+          - text: Ameaças
+        - link "Ferramentas" [ref=e25] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e26]
+          - text: Ferramentas
+      - generic [ref=e28]:
+        - button "Ativar modo escuro" [ref=e29]:
+          - img
+        - button "Sair" [ref=e30]:
+          - img
+          - text: Sair
+    - main [ref=e32]:
+      - generic [ref=e33]:
+        - button "Perfis de Monitoramento" [ref=e37]:
+          - img
+          - text: Perfis de Monitoramento
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - paragraph [ref=e42]: GSuplementos
+              - generic [ref=e43]:
+                - heading "gsuplementos" [level=1] [ref=e44]
+                - generic [ref=e45]:
+                  - img [ref=e46]
+                  - generic [ref=e47]: Desconhecido
+              - generic [ref=e49]:
+                - img [ref=e50]
+                - text: Perfil desde abr. de 2026
+            - button "Executar nova verificação" [ref=e53]:
+              - img
+              - text: Executar nova verificação
+          - generic [ref=e54]: Aguardando primeira verificação de saúde para este domínio.
+          - generic [ref=e55]:
+            - img [ref=e56]
+            - text: Aguardando primeira verificação de saúde deste domínio.
+        - generic [ref=e57]:
+          - generic [ref=e59]:
+            - generic [ref=e60]: Ameaças Detectadas
+            - generic [ref=e61]:
+              - button "Todos" [ref=e62]
+              - button "Imediato" [ref=e63]
+              - button "Gap Defensivo" [ref=e64]
+              - button "Watchlist" [ref=e65]
+          - generic [ref=e66]:
+            - img [ref=e67]
+            - generic [ref=e69]:
+              - paragraph [ref=e70]: Varredura em andamento
+              - paragraph [ref=e71]: Verificando 4 extensões de domínio…
+            - generic [ref=e72]: Atualização automática
+          - paragraph [ref=e74]: Os resultados aparecerão aqui assim que a varredura for concluída.
+        - generic [ref=e77] [cursor=pointer]:
+          - generic [ref=e78]: Configuração do Perfil
+          - img [ref=e79]
