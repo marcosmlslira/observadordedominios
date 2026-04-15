@@ -122,6 +122,32 @@ def create_brand(
         notes=body.notes,
     )
     db.commit()
+
+    # Auto-queue an initial full similarity scan so the worker picks it up
+    # within 15 seconds instead of waiting for the 09:00 UTC daily cron.
+    if brand.seeds:
+        try:
+            similarity_repo = SimilarityRepository(db)
+            effective_tlds = resolve_effective_scan_tlds(db, brand, None)
+            if effective_tlds:
+                similarity_repo.create_scan_job(
+                    brand_id=brand.id,
+                    requested_tld=None,
+                    effective_tlds=effective_tlds,
+                    force_full=True,
+                    initiated_by="auto:brand_creation",
+                )
+                db.commit()
+                logger.info(
+                    "Auto-queued initial scan for new brand=%s tlds=%d",
+                    brand.brand_name,
+                    len(effective_tlds),
+                )
+        except Exception:
+            logger.exception(
+                "Failed to auto-queue initial scan for new brand=%s", brand.brand_name
+            )
+
     return _to_brand_response(brand)
 
 
