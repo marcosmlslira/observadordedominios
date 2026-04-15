@@ -10,15 +10,19 @@ import logging
 import signal
 import sys
 from datetime import datetime, timezone
+from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
+from app.models.monitored_brand import MonitoredBrand
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
 from app.repositories.monitoring_cycle_repository import MonitoringCycleRepository
 from app.repositories.similarity_repository import SimilarityRepository
 from app.services.monitoring_cycle_service import MonitoringCycleService
+from app.services.state_aggregator import StateAggregator
 from app.services.use_cases.run_similarity_scan import run_similarity_scan_all, run_similarity_scan_job
 
 logging.basicConfig(
@@ -80,6 +84,8 @@ def run_scan_cycle(db: Session | None = None) -> None:
                 sim_repo = SimilarityRepository(db)
                 ranked = sim_repo.compute_enrichment_budget_rank(brand.id, limit=50)
 
+                _create_initial_snapshots(db, brand)
+
                 svc.finish_stage(cycle.id, stage="scan", success=True)
                 db.commit()
 
@@ -103,6 +109,49 @@ def run_scan_cycle(db: Session | None = None) -> None:
     finally:
         if owns_session:
             db.close()
+
+
+def _create_initial_snapshots(db: Session, brand: MonitoredBrand) -> int:
+    """Create initial match_state_snapshot for any unsnapshotted matches of a brand.
+
+    Called after each scan+rank so new brands appear in the UI immediately
+    instead of waiting up to 24 h for the enrichment cycle to run.
+    Only creates snapshots for matches that do not already have one — existing
+    (possibly enriched) snapshots are never overwritten here.
+    """
+    rows = db.execute(
+        text(
+            "SELECT sm.id, sm.score_final"
+            " FROM similarity_match sm"
+            " LEFT JOIN match_state_snapshot mss ON mss.match_id = sm.id"
+            " WHERE sm.brand_id = :brand_id AND mss.id IS NULL"
+        ),
+        {"brand_id": brand.id},
+    ).fetchall()
+
+    if not rows:
+        return 0
+
+    aggregator = StateAggregator(db)
+    created = 0
+    for row in rows:
+        match_id: UUID = row[0]
+        score_final: float = float(row[1] or 0.5)
+        try:
+            aggregator.recalculate_match_snapshot(
+                match_id=match_id,
+                brand_id=brand.id,
+                organization_id=brand.organization_id,
+                base_lexical_score=score_final,
+                domain_age_days=None,
+            )
+            created += 1
+        except Exception:
+            logger.exception("Initial snapshot failed for match=%s brand=%s", match_id, brand.brand_name)
+
+    if created:
+        logger.info("Created %d initial snapshots for brand=%s", created, brand.brand_name)
+    return created
 
 
 def run_queued_jobs_cycle() -> None:

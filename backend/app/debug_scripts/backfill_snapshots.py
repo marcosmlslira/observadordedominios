@@ -69,7 +69,7 @@ def backfill_brand(db, brand_id: str) -> int:
         except Exception as e:
             logger.warning("  match %s failed: %s", match_id, e)
 
-            logger.info("Brand %s: created %d snapshots", brand.brand_name, created)
+    logger.info("Brand %s: created %d snapshots", brand.brand_name, created)
     return created
 
 

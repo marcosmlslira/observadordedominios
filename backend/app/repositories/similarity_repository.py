@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -12,6 +13,22 @@ from app.models.similarity_match import SimilarityMatch
 from app.models.similarity_scan_cursor import SimilarityScanCursor
 from app.models.similarity_scan_job import SimilarityScanJob
 
+logger = logging.getLogger(__name__)
+
+# Per-TLD query timeout (milliseconds).
+# Large partitions need more time for GIN index scans.
+# Each sub-query runs inside its own savepoint, so a timeout only skips
+# that sub-query — the overall fetch still succeeds with partial results.
+_TLD_QUERY_TIMEOUT_MS: dict[str, int] = {
+    "com": 600_000,    # 10 min — ~170M rows
+    "net": 300_000,    # 5 min
+    "org": 300_000,    # 5 min
+    "com.br": 180_000, # 3 min
+    "info": 120_000,
+    "br": 120_000,
+}
+_DEFAULT_QUERY_TIMEOUT_MS = 45_000  # 45 s for all other TLDs
+
 
 class SimilarityRepository:
     """Handles candidate fetching from domain table and match CRUD."""
@@ -20,6 +37,38 @@ class SimilarityRepository:
         self.db = db
 
     # ── Candidate Queries ──────────────────────────────────────
+
+    def _exec_candidate_part(
+        self,
+        sql: str,
+        params: dict,
+        *,
+        timeout_ms: int,
+        part_name: str,
+        tld: str,
+    ) -> list:
+        """Execute one candidate sub-query inside a savepoint.
+
+        A PostgreSQL savepoint isolates the SET LOCAL statement_timeout so that
+        a query cancellation does not abort the outer transaction.  On timeout,
+        logs a warning and returns an empty list instead of raising.
+        """
+        try:
+            sp = self.db.begin_nested()
+            self.db.execute(text(f"SET LOCAL statement_timeout = '{timeout_ms}'"))
+            rows = self.db.execute(text(sql), params).fetchall()
+            sp.commit()
+            return rows
+        except Exception as exc:
+            sp.rollback()
+            exc_str = str(exc).lower()
+            if "canceling statement" in exc_str or "statement timeout" in exc_str:
+                logger.warning(
+                    "Candidate query timed out (tld=%s part=%s timeout=%dms) — skipping this sub-query",
+                    tld, part_name, timeout_ms,
+                )
+                return []
+            raise
 
     def fetch_candidates(
         self,
@@ -31,43 +80,27 @@ class SimilarityRepository:
         include_subdomains: bool = False,
         limit: int = 5000,
     ) -> list[dict]:
-        """Unified candidate query: trigram + substring + typo exact match.
+        """Candidate query: trigram + substring + typo exact match.
+
+        Each sub-query runs in its own savepoint so a timeout on one part
+        (e.g. trigram on .com) does not abort the others.  Results are
+        deduplicated by domain name, keeping the row with the highest
+        sim_trigram score.
 
         Returns dicts with: name, tld, label, first_seen_at, sim_trigram, edit_dist.
         """
         brand_like = f"%{brand_label}%"
 
-        # Build watermark filter
-        wm_filter = ""
-        params: dict = {
+        base_params: dict = {
             "brand_label": brand_label,
             "brand_like": brand_like,
             "tld": tld,
-            "limit": limit,
         }
-
         if watermark_at:
-            wm_filter = "AND first_seen_at > :watermark_at"
-            params["watermark_at"] = watermark_at
+            base_params["watermark_at"] = watermark_at
 
+        wm_filter = "AND first_seen_at > :watermark_at" if watermark_at else ""
         subdomain_filter = "" if include_subdomains else "AND label NOT LIKE '%.%'"
-
-        # Typo candidates sub-query (only if we have candidates)
-        typo_union = ""
-        if typo_candidates:
-            params["typo_candidates"] = typo_candidates
-            typo_union = f"""
-                UNION
-
-                SELECT DISTINCT name, tld, label, first_seen_at,
-                       similarity(label, :brand_label) AS sim_trigram,
-                       levenshtein(label, :brand_label) AS edit_dist
-                FROM domain
-                WHERE tld = :tld
-                  AND label = ANY(:typo_candidates)
-                  {subdomain_filter}
-                  {wm_filter}
-            """
 
         # Dynamic threshold: stricter for short brands to avoid false positives
         # on large TLD partitions (170M+ rows for .com)
@@ -79,47 +112,82 @@ class SimilarityRepository:
         else:
             sim_threshold = 0.35
 
-        # Per-query timeout — prevents single-seed queries from blocking for
-        # 10+ minutes on huge partitions (domain_com = 170M rows).
-        # SET LOCAL scopes the timeout to the current transaction only.
-        self.db.execute(text("SET LOCAL statement_timeout = '45000'"))
+        timeout_ms = _TLD_QUERY_TIMEOUT_MS.get(tld, _DEFAULT_QUERY_TIMEOUT_MS)
+
+        # Set similarity threshold for the entire transaction (no savepoint needed,
+        # this is just a planner hint — no harm if it persists slightly longer).
         self.db.execute(
             text("SET LOCAL pg_trgm.similarity_threshold = :t"),
             {"t": sim_threshold},
         )
 
-        sql = f"""
-            WITH candidates AS (
-                -- Trigram similarity (GIN index scan via % operator)
-                SELECT DISTINCT name, tld, label, first_seen_at,
-                       similarity(label, :brand_label) AS sim_trigram,
-                       levenshtein(label, :brand_label) AS edit_dist
-                FROM domain
-                WHERE tld = :tld
-                  AND label % :brand_label
-                  {subdomain_filter}
-                  {wm_filter}
-
-                UNION
-
-                -- Substring / brand containment
-                SELECT DISTINCT name, tld, label, first_seen_at,
-                       similarity(label, :brand_label) AS sim_trigram,
-                       levenshtein(label, :brand_label) AS edit_dist
-                FROM domain
-                WHERE tld = :tld
-                  AND label LIKE :brand_like
-                  {subdomain_filter}
-                  {wm_filter}
-
-                {typo_union}
-            )
-            SELECT * FROM candidates
-            ORDER BY sim_trigram DESC
+        # ── Part 1: Trigram similarity (GIN index via % operator) ──────────
+        trigram_sql = f"""
+            SELECT DISTINCT name, tld, label, first_seen_at,
+                   similarity(label, :brand_label) AS sim_trigram,
+                   levenshtein(label, :brand_label) AS edit_dist
+            FROM domain
+            WHERE tld = :tld
+              AND label % :brand_label
+              {subdomain_filter}
+              {wm_filter}
             LIMIT :limit
         """
+        trigram_rows = self._exec_candidate_part(
+            trigram_sql, {**base_params, "limit": limit},
+            timeout_ms=timeout_ms, part_name="trigram", tld=tld,
+        )
 
-        rows = self.db.execute(text(sql), params).fetchall()
+        # ── Part 2: Substring / brand containment (LIKE, uses GIN index) ──
+        substring_sql = f"""
+            SELECT DISTINCT name, tld, label, first_seen_at,
+                   similarity(label, :brand_label) AS sim_trigram,
+                   levenshtein(label, :brand_label) AS edit_dist
+            FROM domain
+            WHERE tld = :tld
+              AND label LIKE :brand_like
+              {subdomain_filter}
+              {wm_filter}
+            LIMIT :limit
+        """
+        substring_rows = self._exec_candidate_part(
+            substring_sql, {**base_params, "limit": limit},
+            timeout_ms=timeout_ms, part_name="substring", tld=tld,
+        )
+
+        # ── Part 3: Typo exact match (equality scan, always fast) ──────────
+        typo_rows: list = []
+        if typo_candidates:
+            typo_sql = f"""
+                SELECT DISTINCT name, tld, label, first_seen_at,
+                       similarity(label, :brand_label) AS sim_trigram,
+                       levenshtein(label, :brand_label) AS edit_dist
+                FROM domain
+                WHERE tld = :tld
+                  AND label = ANY(:typo_candidates)
+                  {subdomain_filter}
+                  {wm_filter}
+                LIMIT :limit
+            """
+            typo_rows = self._exec_candidate_part(
+                typo_sql,
+                {**base_params, "typo_candidates": typo_candidates, "limit": limit},
+                timeout_ms=timeout_ms, part_name="typo", tld=tld,
+            )
+
+        # ── Merge: deduplicate by name, keep row with highest sim_trigram ──
+        best_by_name: dict[str, object] = {}
+        for r in (*trigram_rows, *substring_rows, *typo_rows):
+            existing = best_by_name.get(r.name)
+            if existing is None or float(r.sim_trigram) > float(existing.sim_trigram):
+                best_by_name[r.name] = r
+
+        sorted_rows = sorted(
+            best_by_name.values(),
+            key=lambda r: float(r.sim_trigram),
+            reverse=True,
+        )[:limit]
+
         return [
             {
                 "name": r.name,
@@ -130,7 +198,7 @@ class SimilarityRepository:
                 "sim_trigram": float(r.sim_trigram),
                 "edit_dist": int(r.edit_dist),
             }
-            for r in rows
+            for r in sorted_rows
         ]
 
     def search_candidates(
