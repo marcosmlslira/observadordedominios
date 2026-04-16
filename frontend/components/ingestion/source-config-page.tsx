@@ -109,6 +109,8 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
                 : null,
               started_at: r.started_at,
             })),
+          domains_inserted_total: p.domains_inserted ?? null,
+          last_seen_at: p.last_seen_at ?? null,
         }
       })
       // Default sort: server ordering (execution order = priority field)

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Sparkbar } from "./sparkbar"
 import type { TldMetricsRow } from "@/lib/types"
 
-type SortKey = "execution_order" | "tld" | "priority" | "last_successful_run_at" | "last_duration_seconds" | "last_domains_inserted"
+type SortKey = "execution_order" | "tld" | "priority" | "last_successful_run_at" | "last_duration_seconds" | "last_domains_inserted" | "domains_inserted_total" | "last_seen_at"
 type SortDir = "asc" | "desc"
 
 interface TldMetricsTableProps {
@@ -68,6 +68,7 @@ export function TldMetricsTable({
   onEnableAll,
   onDisableAll,
 }: TldMetricsTableProps) {
+  const isCertStream = source === "certstream"
   const [filter, setFilter] = useState("")
   const [toggling, setToggling] = useState<Set<string>>(new Set())
   const [triggering, setTriggering] = useState<Set<string>>(new Set())
@@ -110,13 +111,20 @@ export function TldMetricsTable({
         case "last_domains_inserted":
           cmp = (a.last_domains_inserted ?? -1) - (b.last_domains_inserted ?? -1)
           break
+        case "domains_inserted_total":
+          cmp = (a.domains_inserted_total ?? -1) - (b.domains_inserted_total ?? -1)
+          break
+        case "last_seen_at":
+          cmp = (a.last_seen_at ?? "").localeCompare(b.last_seen_at ?? "")
+          break
       }
       return sortDir === "asc" ? cmp : -cmp
     })
   }, [rows, filter, sortKey, sortDir])
 
   const activeCount = rows.filter((r) => r.is_enabled).length
-  const colSpan = (showPriority ? 1 : 0) + (onTrigger ? 1 : 0) + 6
+  const baseColCount = isCertStream ? 4 : 6  // TLD + Ativo + (2 certstream OR 4 run-based)
+  const colSpan = baseColCount + (showPriority ? 1 : 0) + (onTrigger ? 1 : 0)
 
   async function handleToggle(tld: string, enabled: boolean) {
     setToggling((prev) => new Set(prev).add(tld))
@@ -213,10 +221,19 @@ export function TldMetricsTable({
               {showPriority && (
                 <SortableHead col="priority" className="text-right">Prioridade</SortableHead>
               )}
-              <SortableHead col="last_duration_seconds" className="text-right">Duração</SortableHead>
-              <SortableHead col="last_domains_inserted" className="text-right">Inseridos</SortableHead>
-              <SortableHead col="last_successful_run_at" className="text-center">Última OK</SortableHead>
-              <TableHead className="text-center text-xs">Últimas 10</TableHead>
+              {isCertStream ? (
+                <>
+                  <SortableHead col="domains_inserted_total" className="text-right">Domínios inseridos</SortableHead>
+                  <SortableHead col="last_seen_at" className="text-center">Último visto</SortableHead>
+                </>
+              ) : (
+                <>
+                  <SortableHead col="last_duration_seconds" className="text-right">Duração</SortableHead>
+                  <SortableHead col="last_domains_inserted" className="text-right">Inseridos</SortableHead>
+                  <SortableHead col="last_successful_run_at" className="text-center">Última OK</SortableHead>
+                  <TableHead className="text-center text-xs">Últimas 10</TableHead>
+                </>
+              )}
               {onTrigger && <TableHead className="text-center text-xs">Trigger</TableHead>}
             </TableRow>
           </TableHeader>
@@ -247,23 +264,36 @@ export function TldMetricsTable({
                     />
                   </TableCell>
                 )}
-                <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
-                  {formatDuration(row.last_duration_seconds)}
-                </TableCell>
-                <TableCell className="text-right text-xs tabular-nums">
-                  {formatCount(row.last_domains_inserted)}
-                </TableCell>
-                <TableCell className="text-center text-xs text-muted-foreground">
-                  {formatDate(row.last_successful_run_at)}
-                </TableCell>
-                <TableCell className="text-center">
-                  <Sparkbar
-                    runs={row.recent_runs.map((r) => ({
-                      status: r.status,
-                      duration_seconds: r.duration_seconds,
-                    }))}
-                  />
-                </TableCell>
+                {isCertStream ? (
+                  <>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {formatCount(row.domains_inserted_total ?? null)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
+                      {formatDate(row.last_seen_at ?? null)}
+                    </TableCell>
+                  </>
+                ) : (
+                  <>
+                    <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                      {formatDuration(row.last_duration_seconds)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {formatCount(row.last_domains_inserted)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
+                      {formatDate(row.last_successful_run_at)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Sparkbar
+                        runs={row.recent_runs.map((r) => ({
+                          status: r.status,
+                          duration_seconds: r.duration_seconds,
+                        }))}
+                      />
+                    </TableCell>
+                  </>
+                )}
                 {onTrigger && (
                   <TableCell className="text-center">
                     <Button
@@ -297,7 +327,9 @@ export function TldMetricsTable({
         </Table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Barras: altura proporcional à duração · verde = sucesso · vermelho = erro · cinza = sem dado
+        {isCertStream
+          ? "Domínios inseridos: total acumulado desde o início da sessão · Último visto: última vez que o TLD recebeu domínios"
+          : "Barras: altura proporcional à duração · verde = sucesso · vermelho = erro · cinza = sem dado"}
         {showPriority && " · Prioridade: menor número = processado primeiro · Enter ou foco perdido para salvar"}
       </p>
     </div>

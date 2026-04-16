@@ -520,6 +520,8 @@ export interface IngestionTldPolicy {
   tld: string
   is_enabled: boolean
   priority: number | null
+  domains_inserted: number
+  last_seen_at: string | null
   updated_at: string
 }
 
@@ -535,6 +537,9 @@ export interface TldMetricsRow {
     duration_seconds: number | null
     started_at: string
   }>
+  // CertStream-specific cumulative stats (null for run-based sources)
+  domains_inserted_total: number | null
+  last_seen_at: string | null
 }
 
 export interface TriggerTldResponse {

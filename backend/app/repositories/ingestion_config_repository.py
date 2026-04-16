@@ -141,3 +141,19 @@ class IngestionConfigRepository:
             for p in self.list_tld_policies(source)
             if p.is_enabled
         ]
+
+    def increment_tld_stats(self, source: str, tld_counts: dict[str, int]) -> None:
+        """Increment domains_inserted and update last_seen_at for each TLD in the dict.
+
+        Only updates rows that exist and have count > 0. Caller owns the transaction.
+        """
+        counts = {tld: count for tld, count in tld_counts.items() if count > 0}
+        if not counts:
+            return
+        now = datetime.now(timezone.utc)
+        for tld, count in counts.items():
+            policy = self.db.get(IngestionTldPolicy, (source, tld))
+            if policy is not None:
+                policy.domains_inserted = (policy.domains_inserted or 0) + count
+                policy.last_seen_at = now
+        self.db.flush()

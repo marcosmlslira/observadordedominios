@@ -132,6 +132,11 @@ def _ingest_certstream_batch(
             domains_inserted_delta=total_inserted,
         )
 
+    # 6. Persist per-TLD stats (cumulative counters on ingestion_tld_policy)
+    if by_tld:
+        config_repo = IngestionConfigRepository(db)
+        config_repo.increment_tld_stats("certstream", dict(by_tld))
+
     logger.info(
         "certstream batch: source=certstream raw=%d normalized=%d "
         "enabled=%d disabled_tlds=%s partition_failed_tlds=%s upserted=%d",

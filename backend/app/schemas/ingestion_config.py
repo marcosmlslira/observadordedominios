@@ -67,6 +67,8 @@ class TldPolicyResponse(BaseModel):
     tld: str
     is_enabled: bool
     priority: int | None = None
+    domains_inserted: int = 0
+    last_seen_at: datetime | None = None
     updated_at: datetime
 
     model_config = {"from_attributes": True}
