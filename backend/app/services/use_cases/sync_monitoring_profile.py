@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
+
+from sqlalchemy import text
 
 from app.models.monitored_brand import MonitoredBrand
 from app.repositories.monitored_brand_repository import MonitoredBrandRepository
@@ -19,6 +22,8 @@ from app.services.monitoring_profile import (
     resolve_official_domains,
     resolve_primary_brand_name,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def create_monitoring_profile(
@@ -85,6 +90,9 @@ def update_monitoring_profile(
     effective_primary = primary_brand_name if primary_brand_name is not None else brand.primary_brand_name
     effective_noise_mode = noise_mode if noise_mode is not None else brand.noise_mode
 
+    # Snapshot current domain names before the update so we can detect changes
+    old_domain_names: frozenset[str] = frozenset(item.domain_name for item in brand.domains)
+
     prepared = _prepare_profile_components(
         display_name=effective_display_name,
         primary_brand_name=effective_primary,
@@ -113,6 +121,28 @@ def update_monitoring_profile(
         trusted_registrants=trusted_registrants,
     )
     _apply_profile_components(repo, brand, prepared)
+
+    # When official domains are explicitly updated and the set changed, reset all
+    # similarity scan cursors to initial phase so the next scan performs a full
+    # rescan instead of a delta from a watermark that may predate the new domain.
+    if official_domains is not None:
+        new_domain_names = frozenset(d["domain_name"] for d in prepared["domains"])
+        if new_domain_names != old_domain_names:
+            repo.db.execute(
+                text(
+                    "UPDATE similarity_scan_cursor"
+                    " SET scan_phase = 'initial', watermark_at = NULL, updated_at = NOW()"
+                    " WHERE brand_id = :brand_id"
+                ),
+                {"brand_id": brand.id},
+            )
+            logger.info(
+                "Reset scan cursors to initial for brand=%s (official domains changed: %s → %s)",
+                brand.brand_name,
+                sorted(old_domain_names),
+                sorted(new_domain_names),
+            )
+
     return brand
 
 

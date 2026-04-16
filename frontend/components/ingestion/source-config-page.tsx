@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CronConfigCard } from "./cron-config-card"
 import { TldMetricsTable } from "./tld-metrics-table"
+import { OrderingModeSelector } from "./ordering-mode-selector"
+import type { OrderingMode } from "./ordering-mode-selector"
 import {
   getIngestionConfigs,
   getTldPolicies,
   updateIngestionCron,
   patchTldPolicy,
+  patchIngestionConfig,
   bulkSetTldPolicies,
   triggerTldIngestion,
   ingestionApi,
@@ -28,6 +31,12 @@ const SOURCE_LABELS: Record<string, string> = {
   openintel: "OpenINTEL",
 }
 
+// Sources where ordering_mode can be configured
+const ORDERING_MODE_SOURCES = new Set(["czds"])
+
+// Sources where individual TLD priority editing is supported
+const PRIORITY_SOURCES = new Set(["czds", "openintel"])
+
 interface SourceConfigPageProps {
   source: string
 }
@@ -41,6 +50,8 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
 
   const label = SOURCE_LABELS[source] ?? source.toUpperCase()
   const isContinuousStream = source === "certstream"
+  const supportsOrderingMode = ORDERING_MODE_SOURCES.has(source)
+  const supportsPriority = PRIORITY_SOURCES.has(source)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -67,6 +78,10 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
       const metricsMap = Object.fromEntries(
         tldRunMetrics.map((m) => [m.tld, m.runs])
       )
+      // Policy priority map (generic table covers both czds and openintel)
+      const priorityMap = Object.fromEntries(
+        tldPolicies.map((p) => [p.tld, p.priority])
+      )
 
       const rows: TldMetricsRow[] = tldPolicies.map((p): TldMetricsRow => {
         const runs = metricsMap[p.tld] ?? []
@@ -79,6 +94,7 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
         return {
           tld: p.tld,
           is_enabled: p.is_enabled,
+          priority: priorityMap[p.tld] ?? null,
           last_duration_seconds: durationSeconds,
           last_domains_inserted: lastRun?.domains_inserted ?? null,
           last_successful_run_at: checkpointMap[p.tld] ?? null,
@@ -94,11 +110,7 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
             })),
         }
       })
-      // Sort: enabled first, then alphabetically
-      rows.sort((a, b) => {
-        if (a.is_enabled !== b.is_enabled) return a.is_enabled ? -1 : 1
-        return a.tld.localeCompare(b.tld)
-      })
+      // Default sort: server ordering (execution order = priority field)
       setMetricsRows(rows)
     } catch (e) {
       setError("Erro ao carregar dados. Tente novamente.")
@@ -117,13 +129,28 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
     setConfig((prev) => prev ? { ...prev, cron_expression: cron } : prev)
   }
 
+  async function handleSaveOrderingMode(mode: OrderingMode) {
+    await patchIngestionConfig(source, mode)
+    setConfig((prev) => prev ? { ...prev, ordering_mode: mode } : prev)
+  }
+
   async function handleToggleTld(tld: string, enabled: boolean) {
-    await patchTldPolicy(source, tld, enabled)
+    await patchTldPolicy(source, tld, { is_enabled: enabled })
     setMetricsRows((prev) =>
       prev.map((r) => (r.tld === tld ? { ...r, is_enabled: enabled } : r))
     )
     setPolicies((prev) =>
       prev.map((p) => (p.tld === tld ? { ...p, is_enabled: enabled } : p))
+    )
+  }
+
+  async function handlePatchPriority(tld: string, priority: number) {
+    await patchTldPolicy(source, tld, { priority })
+    setMetricsRows((prev) =>
+      prev.map((r) => (r.tld === tld ? { ...r, priority } : r))
+    )
+    setPolicies((prev) =>
+      prev.map((p) => (p.tld === tld ? { ...p, priority } : p))
     )
   }
 
@@ -175,18 +202,30 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
       ) : (
         <>
           {config && (
-            <CronConfigCard
-              source={source}
-              initialCron={config.cron_expression}
-              isContinuousStream={isContinuousStream}
-              onSave={handleSaveCron}
-            />
+            <>
+              <CronConfigCard
+                source={source}
+                initialCron={config.cron_expression}
+                isContinuousStream={isContinuousStream}
+                onSave={handleSaveCron}
+              />
+              {supportsOrderingMode && (
+                <div className="rounded-xl border p-4">
+                  <OrderingModeSelector
+                    value={(config.ordering_mode as OrderingMode) || "corpus_first"}
+                    onSave={handleSaveOrderingMode}
+                  />
+                </div>
+              )}
+            </>
           )}
 
           <TldMetricsTable
             rows={metricsRows}
             source={source}
+            showPriority={supportsPriority}
             onToggle={handleToggleTld}
+            onPatchPriority={supportsPriority ? handlePatchPriority : undefined}
             onTrigger={canTrigger ? handleTriggerTld : undefined}
             onEnableAll={handleEnableAll}
             onDisableAll={handleDisableAll}

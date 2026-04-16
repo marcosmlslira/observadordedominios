@@ -10,3 +10,5 @@ class IngestionSourceConfig(Base, TimestampMixin):
 
     source = Column(String(32), primary_key=True)  # "czds" | "certstream" | "openintel"
     cron_expression = Column(String(64), nullable=False)
+    # Controls processing order. Valid: corpus_first | priority_first | alphabetical
+    ordering_mode = Column(String(32), nullable=False, server_default="corpus_first")

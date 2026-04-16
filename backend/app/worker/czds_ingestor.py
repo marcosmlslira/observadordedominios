@@ -90,21 +90,37 @@ def _wait_or_stop(seconds: int) -> bool:
 def _get_enabled_tlds() -> list[str]:
     """
     Read enabled TLDs from the admin UI configuration (czds_tld_policy), ordered
-    by corpus size ascending (smallest first).
+    by the ordering_mode configured for the czds source.
+
+    Modes:
+      corpus_first   — smallest corpus first (default, preserves current behaviour)
+      priority_first — explicit priority column first, then corpus size
+      alphabetical   — TLD name ASC
 
     Returns an empty list if the DB is unavailable — never falls back to hardcoded
     lists so the admin UI remains the single source of truth.
     """
+    _ORDER_BY = {
+        "corpus_first":   "COALESCE(m.count, 999999999) ASC, p.priority ASC, p.tld ASC",
+        "priority_first": "p.priority ASC, COALESCE(m.count, 999999999) ASC, p.tld ASC",
+        "alphabetical":   "p.tld ASC",
+    }
+
     db = SessionLocal()
     try:
-        result = db.execute(text("""
+        from app.repositories.ingestion_config_repository import IngestionConfigRepository
+        cfg = IngestionConfigRepository(db).get_config("czds")
+        ordering_mode = (cfg.ordering_mode if cfg else None) or "corpus_first"
+        order_clause = _ORDER_BY.get(ordering_mode, _ORDER_BY["corpus_first"])
+
+        result = db.execute(text(f"""
             SELECT p.tld
             FROM czds_tld_policy p
             LEFT JOIN tld_domain_count_mv m ON p.tld = m.tld
             LEFT JOIN ingestion_tld_policy itp
                    ON itp.source = 'czds' AND itp.tld = p.tld
             WHERE COALESCE(itp.is_enabled, p.is_enabled) = true
-            ORDER BY COALESCE(m.count, 999999999) ASC, p.priority ASC, p.tld ASC
+            ORDER BY {order_clause}
         """))
         return [row[0] for row in result]
     except Exception:

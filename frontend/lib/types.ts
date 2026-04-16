@@ -511,6 +511,7 @@ export interface CheckpointResponse {
 export interface IngestionSourceConfig {
   source: string
   cron_expression: string
+  ordering_mode: string
   updated_at: string
 }
 
@@ -518,12 +519,14 @@ export interface IngestionTldPolicy {
   source: string
   tld: string
   is_enabled: boolean
+  priority: number | null
   updated_at: string
 }
 
 export interface TldMetricsRow {
   tld: string
   is_enabled: boolean
+  priority: number | null
   last_duration_seconds: number | null   // finished_at - started_at of last run
   last_domains_inserted: number | null
   last_successful_run_at: string | null

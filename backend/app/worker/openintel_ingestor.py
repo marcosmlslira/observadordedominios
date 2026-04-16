@@ -39,22 +39,17 @@ _scheduler_ref: BlockingScheduler | None = None
 
 
 def _get_enabled_tlds() -> list[str]:
-    """Read enabled TLDs from DB; fall back to env if table is empty."""
+    """Read enabled TLDs from DB. Admin UI is the single source of truth — no fallback."""
     db = SessionLocal()
     try:
         from app.repositories.ingestion_config_repository import IngestionConfigRepository
         repo = IngestionConfigRepository(db)
-        db_tlds = repo.list_enabled_tlds("openintel")
-        if db_tlds:
-            return db_tlds
+        return repo.list_enabled_tlds("openintel")
     except Exception:
-        logger.exception("Failed to read OpenINTEL TLDs from DB, falling back to env")
+        logger.exception("Failed to read OpenINTEL TLDs from DB; skipping cycle")
+        return []
     finally:
         db.close()
-    raw = settings.OPENINTEL_ENABLED_TLDS
-    if not raw:
-        return []
-    return [t.strip().lower() for t in raw.split(",") if t.strip()]
 
 
 def _reload_cron_if_changed() -> None:

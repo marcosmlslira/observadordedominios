@@ -161,10 +161,21 @@ export function getTldPolicies(source: string) {
   return api.get<import("./types").IngestionTldPolicy[]>(`/v1/ingestion/tld-policy/${source}`)
 }
 
-export function patchTldPolicy(source: string, tld: string, is_enabled: boolean) {
+export function patchTldPolicy(
+  source: string,
+  tld: string,
+  patch: { is_enabled?: boolean; priority?: number }
+) {
   return api.patch<import("./types").IngestionTldPolicy>(
     `/v1/ingestion/tld-policy/${source}/${tld}`,
-    { is_enabled }
+    patch
+  )
+}
+
+export function patchIngestionConfig(source: string, ordering_mode: string) {
+  return api.patch<import("./types").IngestionSourceConfig>(
+    `/v1/ingestion/config/${source}`,
+    { ordering_mode }
   )
 }
 

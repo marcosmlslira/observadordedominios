@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
 from app.services.ingestion_config_service import InvalidCronError, validate_cron_expression
+
+OrderingMode = Literal["corpus_first", "priority_first", "alphabetical"]
+
+# Sources that support ordering_mode configuration
+ORDERING_MODE_SOURCES = {"czds"}
 
 
 # ── Requests ─────────────────────────────────────────────────
@@ -23,8 +29,13 @@ class CronUpdateRequest(BaseModel):
             raise ValueError(str(exc)) from exc
 
 
+class IngestionConfigPatchRequest(BaseModel):
+    ordering_mode: OrderingMode | None = None
+
+
 class TldPolicyPatchRequest(BaseModel):
-    is_enabled: bool
+    is_enabled: bool | None = None
+    priority: int | None = None
 
 
 class TldPolicyBulkItem(BaseModel):
@@ -45,6 +56,7 @@ class TriggerTldRequest(BaseModel):
 class SourceConfigResponse(BaseModel):
     source: str
     cron_expression: str
+    ordering_mode: str
     updated_at: datetime
 
     model_config = {"from_attributes": True}
@@ -54,6 +66,7 @@ class TldPolicyResponse(BaseModel):
     source: str
     tld: str
     is_enabled: bool
+    priority: int | None = None
     updated_at: datetime
 
     model_config = {"from_attributes": True}

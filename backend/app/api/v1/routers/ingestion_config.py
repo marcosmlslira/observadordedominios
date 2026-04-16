@@ -14,6 +14,8 @@ from app.repositories.ingestion_config_repository import IngestionConfigReposito
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.schemas.ingestion_config import (
     CronUpdateRequest,
+    IngestionConfigPatchRequest,
+    ORDERING_MODE_SOURCES,
     SourceConfigResponse,
     TldPolicyBulkRequest,
     TldPolicyPatchRequest,
@@ -61,6 +63,23 @@ def get_config(source: str, db: Session = Depends(get_db)):
     return cfg
 
 
+@router.patch("/config/{source}", response_model=SourceConfigResponse)
+def patch_config(source: str, body: IngestionConfigPatchRequest, db: Session = Depends(get_db)):
+    """Patch ordering_mode for a source. Only supported for CZDS."""
+    _validate_source_or_404(source)
+    if body.ordering_mode is not None and source not in ORDERING_MODE_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"ordering_mode is not supported for source '{source}'",
+        )
+    repo = IngestionConfigRepository(db)
+    cfg = repo.patch_config(source, ordering_mode=body.ordering_mode)
+    if cfg is None:
+        raise HTTPException(status_code=404, detail=f"No config found for source '{source}'")
+    db.commit()
+    return cfg
+
+
 @router.put("/config/{source}", response_model=SourceConfigResponse)
 def update_config(source: str, body: CronUpdateRequest, db: Session = Depends(get_db)):
     """Update (upsert) cron expression for a source."""
@@ -92,7 +111,7 @@ def patch_tld_policy(
     """Enable or disable a single TLD for a source."""
     _validate_source_or_404(source)
     repo = IngestionConfigRepository(db)
-    policy = repo.patch_tld(source, tld.lower(), is_enabled=body.is_enabled)
+    policy = repo.patch_tld(source, tld.lower(), is_enabled=body.is_enabled, priority=body.priority)
     db.commit()
     return policy
 

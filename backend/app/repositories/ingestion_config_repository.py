@@ -83,12 +83,33 @@ class IngestionConfigRepository:
             self.db.flush()
         return policy
 
-    def patch_tld(self, source: str, tld: str, *, is_enabled: bool) -> IngestionTldPolicy:
+    def patch_tld(
+        self,
+        source: str,
+        tld: str,
+        *,
+        is_enabled: bool | None = None,
+        priority: int | None = None,
+    ) -> IngestionTldPolicy:
         policy = self.ensure_tld(source, tld)
-        policy.is_enabled = is_enabled
+        if is_enabled is not None:
+            policy.is_enabled = is_enabled
+        if priority is not None:
+            policy.priority = priority
         policy.updated_at = datetime.now(timezone.utc)
         self.db.flush()
         return policy
+
+    def patch_config(self, source: str, *, ordering_mode: str | None = None) -> IngestionSourceConfig | None:
+        """Update optional fields of the source config row."""
+        cfg = self.get_config(source)
+        if cfg is None:
+            return None
+        if ordering_mode is not None:
+            cfg.ordering_mode = ordering_mode
+        cfg.updated_at = datetime.now(timezone.utc)
+        self.db.flush()
+        return cfg
 
     def bulk_upsert_tlds(
         self,
