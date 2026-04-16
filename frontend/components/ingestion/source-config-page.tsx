@@ -6,6 +6,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CronConfigCard } from "./cron-config-card"
+import { CertStreamSessionCard } from "./certstream-session-card"
 import { TldMetricsTable } from "./tld-metrics-table"
 import { OrderingModeSelector } from "./ordering-mode-selector"
 import type { OrderingMode } from "./ordering-mode-selector"
@@ -219,6 +220,8 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
               )}
             </>
           )}
+
+          {isContinuousStream && <CertStreamSessionCard />}
 
           <TldMetricsTable
             rows={metricsRows}
