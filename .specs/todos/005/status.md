@@ -1,6 +1,6 @@
 # Status — 005
 
-**Status atual:** `todo`
+**Status atual:** `done`
 
 **Criado em:** 2026-04-16
 
@@ -11,3 +11,4 @@
 | Data | Status | Observação |
 |------|--------|------------|
 | 2026-04-16 | `todo` | Especificação criada |
+| 2026-04-16 | `done` | Implementado e deployado em produção (migration 028 aplicada) |
