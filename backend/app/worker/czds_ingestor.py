@@ -89,8 +89,11 @@ def _wait_or_stop(seconds: int) -> bool:
 
 def _get_enabled_tlds() -> list[str]:
     """
-    Read enabled TLDs ordered by corpus size ascending (smallest first).
-    Falls back to env var if DB is unavailable.
+    Read enabled TLDs from the admin UI configuration (czds_tld_policy), ordered
+    by corpus size ascending (smallest first).
+
+    Returns an empty list if the DB is unavailable — never falls back to hardcoded
+    lists so the admin UI remains the single source of truth.
     """
     db = SessionLocal()
     try:
@@ -103,20 +106,12 @@ def _get_enabled_tlds() -> list[str]:
             WHERE COALESCE(itp.is_enabled, p.is_enabled) = true
             ORDER BY COALESCE(m.count, 999999999) ASC, p.priority ASC, p.tld ASC
         """))
-        tlds = [row[0] for row in result]
-        if tlds:
-            return tlds
+        return [row[0] for row in result]
     except Exception:
-        logger.warning("Could not read czds_tld_policy, falling back to env.")
+        logger.warning("Could not read czds_tld_policy from DB; skipping cycle.")
+        return []
     finally:
         db.close()
-
-    # Fallback to env
-    raw = settings.CZDS_ENABLED_TLDS
-    if raw:
-        return [t.strip().lower() for t in raw.split(",") if t.strip()]
-
-    return ["net", "org", "info"]
 
 
 def _get_missing_bootstrap_tlds() -> list[str]:

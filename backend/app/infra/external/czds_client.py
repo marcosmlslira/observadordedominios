@@ -47,8 +47,10 @@ class CZDSClient:
         self._token: str | None = None
         self._token_obtained_at: datetime | None = None
         self._authorized_tlds: set[str] | None = None
-        # Serialize authentication and TLD-list fetches across threads
-        self._auth_lock = threading.Lock()
+        # Serialize authentication and TLD-list fetches across threads.
+        # Must be reentrant: list_authorized_tlds() holds this lock while calling
+        # list_links() → token, which also tries to acquire the lock on a stale token.
+        self._auth_lock = threading.RLock()
 
     # ── Authentication ──────────────────────────────────────
     def _is_token_stale(self) -> bool:
