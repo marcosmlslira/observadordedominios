@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
 from app.repositories.ingestion_run_repository import IngestionRunRepository
-from app.services.tld_coverage import resolve_certstream_suffixes
 from app.services.use_cases.ingest_ct_batch import ingest_ct_batch
 
 logging.basicConfig(
@@ -31,34 +30,6 @@ logger = logging.getLogger("ct_ingestor")
 
 _active_crtsh_cron: str = settings.CT_CRTSH_SYNC_CRON
 _crtsh_scheduler_ref = None  # set to BackgroundScheduler in main()
-
-
-def _extract_tld(domain: str) -> str:
-    """Extract the TLD (last label) from a domain name."""
-    parts = domain.rsplit(".", 1)
-    return parts[-1].lower() if len(parts) > 1 else domain.lower()
-
-
-def _is_tld_enabled_certstream(tld: str) -> bool:
-    """
-    Check if a TLD is enabled for CertStream ingestion.
-    Auto-creates the row with is_enabled=True if it doesn't exist yet.
-    """
-    db = SessionLocal()
-    try:
-        from app.repositories.ingestion_config_repository import IngestionConfigRepository
-        repo = IngestionConfigRepository(db)
-        policy = repo.get_tld_policy("certstream", tld)
-        if policy is None:
-            repo.ensure_tld("certstream", tld, is_enabled=True)
-            db.commit()
-            return True
-        return policy.is_enabled
-    except Exception:
-        logger.exception("TLD policy check failed for tld=%s, allowing through", tld)
-        return True
-    finally:
-        db.close()
 
 
 def _reload_crtsh_cron_if_changed() -> None:
@@ -157,13 +128,6 @@ def _flush_loop(
         if not domains:
             continue
 
-        # Filter to enabled TLDs only
-        filtered = [d for d in domains if _is_tld_enabled_certstream(_extract_tld(d))]
-        if not filtered:
-            logger.debug("All %d domains filtered out by TLD policy", len(domains))
-            continue
-        domains = filtered
-
         db = SessionLocal()
         try:
             metrics = ingest_ct_batch(
@@ -184,8 +148,6 @@ def _flush_loop(
 
     # Final flush on shutdown
     domains = buffer.drain()
-    if domains:
-        domains = [d for d in domains if _is_tld_enabled_certstream(_extract_tld(d))]
     if domains:
         db = SessionLocal()
         try:
@@ -274,14 +236,8 @@ def main() -> None:
     # 2. Recover orphaned runs from previous worker sessions
     _recover_orphaned_certstream_runs()
 
-    db = SessionLocal()
-    try:
-        certstream_suffixes = resolve_certstream_suffixes(db)
-    finally:
-        db.close()
-    run_tld = "multi" if len(certstream_suffixes) > 1 else certstream_suffixes[0].lstrip(".")
-
-    logger.info("Resolved CertStream suffixes: %s", certstream_suffixes)
+    run_tld = "multi"
+    logger.info("CertStream multi-TLD mode: all TLDs accepted, policy enforced per batch")
 
     # 3. Create daily ingestion run
     run_id = _create_daily_run(run_tld)
@@ -370,7 +326,7 @@ def main() -> None:
 
             certstream_client = CertStreamClient(
                 on_domains_callback=buffer.add,
-                filter_suffixes=certstream_suffixes,
+                filter_suffixes=[],  # empty = accept all TLDs; policy enforced in ingest_ct_batch
             )
             logger.info("Starting CertStream client...")
             certstream_client.start()  # Blocks until stop() is called

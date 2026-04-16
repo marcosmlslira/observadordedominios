@@ -40,7 +40,7 @@ class CertStreamClient:
             },
             key=len,
             reverse=True,
-        ) or [".br"]
+        )  # empty list = accept all TLDs
         self._url = url or settings.CT_CERTSTREAM_URL
         self._max_backoff = max_backoff or settings.CT_CERTSTREAM_RECONNECT_MAX_BACKOFF
         self._ws_app: websocket.WebSocketApp | None = None
@@ -51,7 +51,8 @@ class CertStreamClient:
         """Connect and listen. Blocks the calling thread. Auto-reconnects on failure."""
         logger.info(
             "CertStream client starting: url=%s filters=%s",
-            self._url, ",".join(self._filter_suffixes),
+            self._url,
+            ",".join(self._filter_suffixes) if self._filter_suffixes else "ALL",
         )
 
         while self._running:
@@ -104,12 +105,15 @@ class CertStreamClient:
         if not all_domains:
             return
 
-        # Filter for .br domains at the earliest stage
-        matched_domains = [
-            d for d in all_domains
-            if isinstance(d, str)
-            and any(d.lower().endswith(suffix) for suffix in self._filter_suffixes)
-        ]
+        # Filter domains: when _filter_suffixes is empty, accept all TLDs
+        if self._filter_suffixes:
+            matched_domains = [
+                d for d in all_domains
+                if isinstance(d, str)
+                and any(d.lower().endswith(suffix) for suffix in self._filter_suffixes)
+            ]
+        else:
+            matched_domains = [d for d in all_domains if isinstance(d, str)]
 
         if matched_domains:
             self._callback(matched_domains)

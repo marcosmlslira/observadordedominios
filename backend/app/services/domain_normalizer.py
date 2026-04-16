@@ -37,7 +37,7 @@ _SECOND_LEVEL_CCTLD_PREFIXES = {"ac", "co", "com", "edu", "gov", "net", "org"}
 def normalize_ct_domains(
     raw_names: list[str],
     *,
-    filter_suffix: str = "br",
+    filter_suffix: str | None = "br",
 ) -> list[tuple[str, str, str]]:
     """Normalize raw domain names from CT sources.
 
@@ -47,6 +47,7 @@ def normalize_ct_domains(
     Args:
         raw_names: Raw domain names (may include wildcards, subdomains).
         filter_suffix: Only keep domains whose TLD ends with this suffix.
+            Pass None to accept all TLDs (used by CertStream multi-TLD path).
 
     Returns:
         List of (name, tld, label) tuples ready for DB insert.
@@ -74,7 +75,7 @@ def normalize_ct_domains(
 
 def _normalize_single(
     raw: str,
-    filter_suffix: str,
+    filter_suffix: str | None,
 ) -> tuple[str, str, str] | None:
     """Normalize a single raw domain name. Returns None if invalid."""
     # Lowercase and strip whitespace
@@ -91,9 +92,10 @@ def _normalize_single(
     if not cleaned or len(cleaned) > 253:
         return None
 
-    # Quick check: must end with filter suffix
-    if not cleaned.endswith(f".{filter_suffix}") and cleaned != filter_suffix:
-        return None
+    # Quick pre-filter by suffix (skip when filter_suffix is None = accept all TLDs)
+    if filter_suffix is not None:
+        if not cleaned.endswith(f".{filter_suffix}") and cleaned != filter_suffix:
+            return None
 
     # Parse with tldextract
     if _extractor is not None:
@@ -128,8 +130,8 @@ def _normalize_single(
     if not tld:
         return None
 
-    # Reject if TLD doesn't match filter
-    if not tld.endswith(filter_suffix):
+    # Post-filter by TLD (skip when filter_suffix is None = accept all TLDs)
+    if filter_suffix is not None and not tld.endswith(filter_suffix):
         return None
 
     # Reject if registered_domain is empty
