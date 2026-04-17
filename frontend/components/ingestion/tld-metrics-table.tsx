@@ -203,7 +203,7 @@ export function TldMetricsTable({
   }, [rows, filter, sortKey, sortDir])
 
   const activeCount = rows.filter((r) => r.is_enabled).length
-  const baseColCount = isCertStream ? 4 : isOpenintel ? 6 : 6  // TLD + Ativo + source-specific columns
+  const baseColCount = isCertStream ? 4 : isOpenintel ? 7 : 6  // TLD + Ativo + source-specific columns
   const colSpan = baseColCount + (showPriority ? 1 : 0) + (onTrigger ? 1 : 0)
 
   async function handleToggle(tld: string, enabled: boolean) {
@@ -308,6 +308,7 @@ export function TldMetricsTable({
                 </>
               ) : isOpenintel ? (
                 <>
+                  <SortableHead col="last_domains_inserted" className="text-right">Inseridos</SortableHead>
                   <SortableHead col="openintel_last_verification_at" className="text-center">Última verificação</SortableHead>
                   <SortableHead col="openintel_last_available_snapshot_date" className="text-center">Último snapshot disponível</SortableHead>
                   <SortableHead col="openintel_last_ingested_snapshot_date" className="text-center">Último snapshot ingerido</SortableHead>
@@ -362,6 +363,9 @@ export function TldMetricsTable({
                   </>
                 ) : isOpenintel ? (
                   <>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {formatCount(row.last_domains_inserted)}
+                    </TableCell>
                     <TableCell className="text-center text-xs text-muted-foreground">
                       {formatUtcDateTime(row.openintel_last_verification_at)}
                     </TableCell>
@@ -441,7 +445,7 @@ export function TldMetricsTable({
         {isCertStream
           ? "Domínios inseridos: total acumulado desde o início da sessão · Último visto: última vez que o TLD recebeu domínios"
           : isOpenintel
-            ? "Última verificação exibida em UTC · Azul = em dia sem novo arquivo · Verde = novo arquivo ingerido · Amarelo = atrasado · Vermelho = falha"
+            ? "Inseridos: quantidade da última execução do TLD · Última verificação exibida em UTC · Azul = em dia sem novo arquivo · Verde = novo arquivo ingerido · Amarelo = atrasado · Vermelho = falha"
           : "Barras: altura proporcional à duração · verde = sucesso · vermelho = erro · cinza = sem dado"}
         {showPriority && " · Prioridade: menor número = processado primeiro · Enter ou foco perdido para salvar"}
       </p>
