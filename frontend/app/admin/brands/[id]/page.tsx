@@ -6,6 +6,8 @@ import { api, monitoringApi } from "@/lib/api"
 import type {
   Brand,
   BrandHealthResponse,
+  BrandSeed,
+  BrandSeedListResponse,
   CycleListResponse,
   LifecycleStatus,
   MatchSnapshot,
@@ -35,6 +37,8 @@ import {
   Building2,
   Loader2,
   AlertTriangle,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react"
 
 const BUCKETS = [
@@ -97,6 +101,33 @@ function SelfOwnedSecurityBadge({ signalCodes }: { signalCodes: string[] }) {
 
 type LifecyclePhase = "scanning" | "enriching" | "assessing" | "idle"
 
+function seedFamilyLabel(seedType: string): string {
+  if (seedType === "brand_primary") return "Principal"
+  if (seedType.startsWith("typo")) return "Variação Tipográfica"
+  if (seedType.startsWith("homograph")) return "Homógrafo"
+  if (seedType.startsWith("combo")) return "Combinação"
+  if (seedType.startsWith("llm")) return "IA"
+  return seedType
+}
+
+function seedFamilyBadgeClass(seedType: string): string {
+  if (seedType === "brand_primary") return "bg-blue-50 text-blue-700 border-blue-200"
+  if (seedType.startsWith("typo")) return "bg-orange-50 text-orange-700 border-orange-200"
+  if (seedType.startsWith("homograph")) return "bg-purple-50 text-purple-700 border-purple-200"
+  if (seedType.startsWith("combo")) return "bg-amber-50 text-amber-700 border-amber-200"
+  if (seedType.startsWith("llm")) return "bg-green-50 text-green-700 border-green-200"
+  return "bg-muted text-muted-foreground border-border"
+}
+
+function groupSeedsByType(seeds: BrandSeed[]): Record<string, BrandSeed[]> {
+  return seeds.reduce<Record<string, BrandSeed[]>>((acc, seed) => {
+    const k = seed.seed_type
+    if (!acc[k]) acc[k] = []
+    acc[k].push(seed)
+    return acc
+  }, {})
+}
+
 function derivePhase(
   activeScan: ScanJobResponse | null,
   lifecycle: LifecycleStatus | null,
@@ -157,6 +188,9 @@ export default function BrandDetailPage() {
   const [selfOwned, setSelfOwned] = useState<MatchSnapshotListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [snapshotsLoading, setSnapshotsLoading] = useState(false)
+  const [seeds, setSeeds] = useState<BrandSeedListResponse | null>(null)
+  const [seedsLoading, setSeedsLoading] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
 
   const [activeScan, setActiveScan] = useState<ScanJobResponse | null>(null)
   const [lastScan, setLastScan] = useState<ScanJobResponse | null>(null)
@@ -181,6 +215,18 @@ export default function BrandDetailPage() {
     setHealth(h)
     setCycles(c)
     setSelfOwned(so)
+  }, [id])
+
+  const fetchSeeds = useCallback(async () => {
+    setSeedsLoading(true)
+    try {
+      const data = await monitoringApi.getSeeds(id)
+      setSeeds(data)
+    } catch {
+      // ignore
+    } finally {
+      setSeedsLoading(false)
+    }
   }, [id])
 
   const fetchSnapshots = useCallback(async () => {
@@ -228,6 +274,10 @@ export default function BrandDetailPage() {
   }, [fetchBrand])
 
   useEffect(() => {
+    fetchSeeds()
+  }, [fetchSeeds])
+
+  useEffect(() => {
     fetchSnapshots()
   }, [fetchSnapshots])
 
@@ -246,6 +296,20 @@ export default function BrandDetailPage() {
       // ignore
     } finally {
       setScanning(false)
+    }
+  }
+
+  async function handleRegenerateSeeds() {
+    setRegenerating(true)
+    try {
+      const result = await monitoringApi.regenerateSeeds(id)
+      // Convert by_family response to flat list for display
+      const items: BrandSeed[] = Object.values(result.by_family).flat()
+      setSeeds({ items, total: items.length })
+    } catch {
+      // ignore
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -609,6 +673,72 @@ export default function BrandDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Seeds de Monitoramento */}
+      <CollapsibleSection
+        title={`Seeds de Monitoramento${seeds ? ` (${seeds.total})` : ""}`}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              Termos usados para varredura de similaridade. Seeds IA são gerados na criação da marca ou por regeneração manual.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={regenerating || seedsLoading}
+              onClick={handleRegenerateSeeds}
+              className="ml-4 shrink-0"
+            >
+              {regenerating ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Regenerar Seeds
+            </Button>
+          </div>
+
+          {seedsLoading ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Carregando seeds…
+            </div>
+          ) : !seeds || seeds.total === 0 ? (
+            <p className="text-xs text-muted-foreground py-4">Nenhum seed gerado ainda.</p>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(groupSeedsByType(seeds.items))
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([seedType, items]) => (
+                  <div key={seedType}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {seedType.startsWith("llm") && (
+                        <Sparkles className="h-3.5 w-3.5 text-green-600" />
+                      )}
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${seedFamilyBadgeClass(seedType)}`}>
+                        {seedFamilyLabel(seedType)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {seedType} · {items.length} seed{items.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {items.map((seed) => (
+                        <span
+                          key={seed.id}
+                          className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border"
+                        >
+                          {seed.seed_value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      </CollapsibleSection>
 
       {/* Brand Configuration (collapsible) */}
       <CollapsibleSection title="Configuração do Perfil">

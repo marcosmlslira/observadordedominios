@@ -45,12 +45,7 @@ services:
       - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - MATCH_LLM_ASSESSMENT_ENABLED=false
-      - SEED_LLM_GENERATION_ENABLED=false
-    networks:
-      - app-network
-    depends_on:
-      - postgres
-      - minio
+      - SEED_LLM_GENERATION_ENABLED=true
     deploy:
       replicas: 1
       restart_policy:

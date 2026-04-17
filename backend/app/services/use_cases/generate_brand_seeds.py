@@ -92,7 +92,7 @@ def _call_openrouter(
     )
 
     payload = {
-        "model": "anthropic/claude-sonnet-4-20250514",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 2048,
         "temperature": 0.7,

@@ -123,6 +123,10 @@ export interface BrandSeedListResponse {
   total: number
 }
 
+export interface BrandSeedsByFamily {
+  by_family: Record<string, BrandSeed[]>
+}
+
 // ── CZDS Ingestion ──────────────────────────────────────
 
 export interface IngestionRun {

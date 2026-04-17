@@ -60,7 +60,7 @@ def create_monitoring_profile(
         noise_mode=prepared["noise_mode"],
         notes=notes,
     )
-    _apply_profile_components(repo, brand, prepared)
+    _apply_profile_components(repo, brand, prepared, run_llm=True)
     return brand
 
 
@@ -120,7 +120,7 @@ def update_monitoring_profile(
         is_active=is_active,
         trusted_registrants=trusted_registrants,
     )
-    _apply_profile_components(repo, brand, prepared)
+    _apply_profile_components(repo, brand, prepared, run_llm=False)
 
     # When official domains are explicitly updated and the set changed, reset all
     # similarity scan cursors to initial phase so the next scan performs a full
@@ -165,7 +165,7 @@ def regenerate_seeds_for_brand(
         keywords=list(brand.keywords or []),
         noise_mode=brand.noise_mode,
     )
-    _apply_profile_components(repo, brand, prepared)
+    _apply_profile_components(repo, brand, prepared, run_llm=True)
     return brand
 
 
@@ -270,6 +270,8 @@ def _apply_profile_components(
     repo: MonitoredBrandRepository,
     brand: MonitoredBrand,
     prepared: dict,
+    *,
+    run_llm: bool = False,
 ) -> None:
     domains = repo.replace_domains(brand, prepared["domains"])
     aliases = repo.replace_aliases(brand, prepared["aliases"])
@@ -297,9 +299,9 @@ def _apply_profile_components(
         brand_keywords=brand_keywords,
     )
 
-    # ── LLM seed generation (Fase 2) ──
+    # ── LLM seed generation (Fase 2) — only on brand creation or manual regenerate ──
     from app.core.config import settings
-    if settings.SEED_LLM_GENERATION_ENABLED:
+    if run_llm and settings.SEED_LLM_GENERATION_ENABLED:
         from app.services.use_cases.generate_brand_seeds import generate_llm_seeds
         llm_seeds = generate_llm_seeds(
             brand_name=brand.brand_name,

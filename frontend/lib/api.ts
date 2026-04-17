@@ -267,4 +267,15 @@ export const monitoringApi = {
       `/v1/matches${q ? `?${q}` : ""}`
     )
   },
+
+  getSeeds: (brandId: string, limit = 200) =>
+    api.get<import("./types").BrandSeedListResponse>(
+      `/v1/brands/${brandId}/seeds?limit=${limit}`
+    ),
+
+  regenerateSeeds: (brandId: string) =>
+    api.post<import("./types").BrandSeedsByFamily>(
+      `/v1/brands/${brandId}/seeds/regenerate`,
+      {}
+    ),
 }
