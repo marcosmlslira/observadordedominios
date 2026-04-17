@@ -6,6 +6,7 @@ from app.models.czds_tld_policy import CzdsTldPolicy
 from app.models.domain import Domain
 from app.models.ingestion_checkpoint import IngestionCheckpoint
 from app.models.ingestion_run import IngestionRun
+from app.models.openintel_tld_status import OpenintelTldStatus
 from app.models.match_state_snapshot import MatchStateSnapshot
 from app.models.monitored_brand_alias import MonitoredBrandAlias
 from app.models.monitored_brand import MonitoredBrand
@@ -27,6 +28,7 @@ __all__ = [
     "Domain",
     "IngestionCheckpoint",
     "IngestionRun",
+    "OpenintelTldStatus",
     "MatchStateSnapshot",
     "MonitoredBrandAlias",
     "MonitoredBrand",

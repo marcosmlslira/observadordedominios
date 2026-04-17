@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react"
 import { ArrowLeft, RefreshCw } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CronConfigCard } from "./cron-config-card"
 import { CertStreamSessionCard } from "./certstream-session-card"
@@ -23,6 +25,7 @@ import {
 import type {
   IngestionSourceConfig,
   IngestionTldPolicy,
+  OpenintelStatusResponse,
   TldMetricsRow,
 } from "@/lib/types"
 
@@ -42,10 +45,38 @@ interface SourceConfigPageProps {
   source: string
 }
 
+function formatUtcDateTime(iso: string | null): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)
+}
+
+function overallBadgeLabel(status: OpenintelStatusResponse["overall_status"]): string {
+  if (status === "healthy") return "Operando normalmente"
+  if (status === "warning") return "Atenção"
+  return "Falha"
+}
+
+function overallBadgeClass(status: OpenintelStatusResponse["overall_status"]): string {
+  if (status === "healthy") return "border-emerald-200 bg-emerald-50 text-emerald-700"
+  if (status === "warning") return "border-amber-200 bg-amber-50 text-amber-700"
+  return "border-red-200 bg-red-50 text-red-700"
+}
+
 export function SourceConfigPage({ source }: SourceConfigPageProps) {
   const [config, setConfig] = useState<IngestionSourceConfig | null>(null)
   const [policies, setPolicies] = useState<IngestionTldPolicy[]>([])
   const [metricsRows, setMetricsRows] = useState<TldMetricsRow[]>([])
+  const [openintelStatus, setOpenintelStatus] = useState<OpenintelStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,16 +89,18 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
     setLoading(true)
     setError(null)
     try {
-      const [configs, tldPolicies, checkpoints, tldRunMetrics] = await Promise.all([
+      const [configs, tldPolicies, checkpoints, tldRunMetrics, openintelStatusResponse] = await Promise.all([
         getIngestionConfigs(),
         getTldPolicies(source),
         ingestionApi.getCheckpoints(source),
         ingestionApi.getTldRunMetrics(source, 10),
+        source === "openintel" ? ingestionApi.getOpenintelStatus() : Promise.resolve(null),
       ])
 
       const sourceConfig = configs.find((c) => c.source === source) ?? null
       setConfig(sourceConfig)
       setPolicies(tldPolicies)
+      setOpenintelStatus(openintelStatusResponse)
 
       // Build lookup maps
       const checkpointMap = Object.fromEntries(
@@ -83,10 +116,14 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
       const priorityMap = Object.fromEntries(
         tldPolicies.map((p) => [p.tld, p.priority])
       )
+      const openintelMap = openintelStatusResponse
+        ? Object.fromEntries(openintelStatusResponse.items.map((item) => [item.tld, item]))
+        : {}
 
       const rows: TldMetricsRow[] = tldPolicies.map((p): TldMetricsRow => {
         const runs = metricsMap[p.tld] ?? []
         const lastRun = runs[0] ?? null
+        const openintelItem = openintelMap[p.tld]
         const durationSeconds =
           lastRun?.finished_at && lastRun?.started_at
             ? (new Date(lastRun.finished_at).getTime() - new Date(lastRun.started_at).getTime()) / 1000
@@ -111,6 +148,12 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
             })),
           domains_inserted_total: p.domains_inserted ?? null,
           last_seen_at: p.last_seen_at ?? null,
+          openintel_last_verification_at: openintelItem?.last_verification_at ?? null,
+          openintel_last_available_snapshot_date: openintelItem?.last_available_snapshot_date ?? null,
+          openintel_last_ingested_snapshot_date: openintelItem?.last_ingested_snapshot_date ?? null,
+          openintel_status: openintelItem?.status ?? "no_data",
+          openintel_status_reason: openintelItem?.status_reason ?? "Sem dados ainda",
+          openintel_last_error_message: openintelItem?.last_error_message ?? null,
         }
       })
       // Default sort: server ordering (execution order = priority field)
@@ -224,6 +267,39 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
           )}
 
           {isContinuousStream && <CertStreamSessionCard />}
+
+          {source === "openintel" && openintelStatus && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <span>Status de verificação OpenINTEL</span>
+                  <Badge variant="outline" className={overallBadgeClass(openintelStatus.overall_status)}>
+                    {overallBadgeLabel(openintelStatus.overall_status)}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  Última verificação: {formatUtcDateTime(openintelStatus.last_verification_at)} (UTC)
+                </p>
+                <p>{openintelStatus.overall_message}</p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+                    Em dia: {openintelStatus.status_counts.up_to_date_no_new_snapshot}
+                  </Badge>
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                    Novo ingerido: {openintelStatus.status_counts.new_snapshot_ingested}
+                  </Badge>
+                  <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+                    Atrasado: {openintelStatus.status_counts.delayed}
+                  </Badge>
+                  <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
+                    Falha: {openintelStatus.status_counts.failed}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <TldMetricsTable
             rows={metricsRows}

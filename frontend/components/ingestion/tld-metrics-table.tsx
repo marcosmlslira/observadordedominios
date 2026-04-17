@@ -5,13 +5,26 @@ import { Play, Loader2, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-re
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Sparkbar } from "./sparkbar"
 import type { TldMetricsRow } from "@/lib/types"
 
-type SortKey = "execution_order" | "tld" | "priority" | "last_successful_run_at" | "last_duration_seconds" | "last_domains_inserted" | "domains_inserted_total" | "last_seen_at"
+type SortKey =
+  | "execution_order"
+  | "tld"
+  | "priority"
+  | "last_successful_run_at"
+  | "last_duration_seconds"
+  | "last_domains_inserted"
+  | "domains_inserted_total"
+  | "last_seen_at"
+  | "openintel_last_verification_at"
+  | "openintel_last_available_snapshot_date"
+  | "openintel_last_ingested_snapshot_date"
+  | "openintel_status"
 type SortDir = "asc" | "desc"
 
 interface TldMetricsTableProps {
@@ -51,6 +64,60 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString("pt-BR")
 }
 
+function formatUtcDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(d)
+}
+
+function formatSnapshotDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—"
+  const parts = dateStr.split("-")
+  if (parts.length !== 3) return dateStr
+  return `${parts[2]}/${parts[1]}/${parts[0]}`
+}
+
+function openintelStatusLabel(status: TldMetricsRow["openintel_status"]): string {
+  switch (status) {
+    case "new_snapshot_ingested":
+      return "Novo arquivo ingerido"
+    case "up_to_date_no_new_snapshot":
+      return "Em dia (sem novo arquivo)"
+    case "delayed":
+      return "Atrasado"
+    case "failed":
+      return "Falha na execução"
+    case "no_data":
+      return "Sem dados ainda"
+    default:
+      return "Sem dados ainda"
+  }
+}
+
+function openintelStatusClass(status: TldMetricsRow["openintel_status"]): string {
+  switch (status) {
+    case "new_snapshot_ingested":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700"
+    case "up_to_date_no_new_snapshot":
+      return "border-blue-200 bg-blue-50 text-blue-700"
+    case "delayed":
+      return "border-amber-200 bg-amber-50 text-amber-700"
+    case "failed":
+      return "border-red-200 bg-red-50 text-red-700"
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-700"
+  }
+}
+
 function SortIcon({ col, sortKey, dir }: { col: SortKey; sortKey: SortKey; dir: SortDir }) {
   if (col !== sortKey) return <ChevronsUpDown className="ml-1 h-3 w-3 opacity-40 inline-block" />
   return dir === "asc"
@@ -69,6 +136,7 @@ export function TldMetricsTable({
   onDisableAll,
 }: TldMetricsTableProps) {
   const isCertStream = source === "certstream"
+  const isOpenintel = source === "openintel"
   const [filter, setFilter] = useState("")
   const [toggling, setToggling] = useState<Set<string>>(new Set())
   const [triggering, setTriggering] = useState<Set<string>>(new Set())
@@ -117,13 +185,25 @@ export function TldMetricsTable({
         case "last_seen_at":
           cmp = (a.last_seen_at ?? "").localeCompare(b.last_seen_at ?? "")
           break
+        case "openintel_last_verification_at":
+          cmp = (a.openintel_last_verification_at ?? "").localeCompare(b.openintel_last_verification_at ?? "")
+          break
+        case "openintel_last_available_snapshot_date":
+          cmp = (a.openintel_last_available_snapshot_date ?? "").localeCompare(b.openintel_last_available_snapshot_date ?? "")
+          break
+        case "openintel_last_ingested_snapshot_date":
+          cmp = (a.openintel_last_ingested_snapshot_date ?? "").localeCompare(b.openintel_last_ingested_snapshot_date ?? "")
+          break
+        case "openintel_status":
+          cmp = (a.openintel_status ?? "").localeCompare(b.openintel_status ?? "")
+          break
       }
       return sortDir === "asc" ? cmp : -cmp
     })
   }, [rows, filter, sortKey, sortDir])
 
   const activeCount = rows.filter((r) => r.is_enabled).length
-  const baseColCount = isCertStream ? 4 : 6  // TLD + Ativo + (2 certstream OR 4 run-based)
+  const baseColCount = isCertStream ? 4 : isOpenintel ? 6 : 6  // TLD + Ativo + source-specific columns
   const colSpan = baseColCount + (showPriority ? 1 : 0) + (onTrigger ? 1 : 0)
 
   async function handleToggle(tld: string, enabled: boolean) {
@@ -226,6 +306,13 @@ export function TldMetricsTable({
                   <SortableHead col="domains_inserted_total" className="text-right">Domínios inseridos</SortableHead>
                   <SortableHead col="last_seen_at" className="text-center">Último visto</SortableHead>
                 </>
+              ) : isOpenintel ? (
+                <>
+                  <SortableHead col="openintel_last_verification_at" className="text-center">Última verificação</SortableHead>
+                  <SortableHead col="openintel_last_available_snapshot_date" className="text-center">Último snapshot disponível</SortableHead>
+                  <SortableHead col="openintel_last_ingested_snapshot_date" className="text-center">Último snapshot ingerido</SortableHead>
+                  <SortableHead col="openintel_status" className="text-center">Situação</SortableHead>
+                </>
               ) : (
                 <>
                   <SortableHead col="last_duration_seconds" className="text-right">Duração</SortableHead>
@@ -271,6 +358,30 @@ export function TldMetricsTable({
                     </TableCell>
                     <TableCell className="text-center text-xs text-muted-foreground">
                       {formatDate(row.last_seen_at ?? null)}
+                    </TableCell>
+                  </>
+                ) : isOpenintel ? (
+                  <>
+                    <TableCell className="text-center text-xs text-muted-foreground">
+                      {formatUtcDateTime(row.openintel_last_verification_at)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
+                      {formatSnapshotDate(row.openintel_last_available_snapshot_date)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs text-muted-foreground">
+                      {formatSnapshotDate(row.openintel_last_ingested_snapshot_date)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="space-y-1">
+                        <Badge variant="outline" className={openintelStatusClass(row.openintel_status)}>
+                          {openintelStatusLabel(row.openintel_status)}
+                        </Badge>
+                        {row.openintel_status === "failed" && row.openintel_last_error_message && (
+                          <p className="max-w-[220px] truncate text-[11px] text-red-600 mx-auto" title={row.openintel_last_error_message}>
+                            {row.openintel_last_error_message}
+                          </p>
+                        )}
+                      </div>
                     </TableCell>
                   </>
                 ) : (
@@ -329,6 +440,8 @@ export function TldMetricsTable({
       <p className="text-xs text-muted-foreground">
         {isCertStream
           ? "Domínios inseridos: total acumulado desde o início da sessão · Último visto: última vez que o TLD recebeu domínios"
+          : isOpenintel
+            ? "Última verificação exibida em UTC · Azul = em dia sem novo arquivo · Verde = novo arquivo ingerido · Amarelo = atrasado · Vermelho = falha"
           : "Barras: altura proporcional à duração · verde = sucesso · vermelho = erro · cinza = sem dado"}
         {showPriority && " · Prioridade: menor número = processado primeiro · Enter ou foco perdido para salvar"}
       </p>

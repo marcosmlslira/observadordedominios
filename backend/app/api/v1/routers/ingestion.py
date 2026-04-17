@@ -15,6 +15,8 @@ from app.core.dependencies import get_current_admin
 from app.infra.db.session import SessionLocal, get_db
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.czds_policy_repository import CzdsPolicyRepository
+from app.repositories.ingestion_config_repository import IngestionConfigRepository
+from app.repositories.openintel_tld_status_repository import OpenintelTldStatusRepository
 from app.schemas.czds_ingestion import (
     CheckpointResponse,
     CycleStatusResponse,
@@ -27,6 +29,10 @@ from app.schemas.czds_ingestion import (
     SourceSummaryResponse,
     TldRunMetricsResponse,
     TldRunMetricItem,
+    OpenintelStatusResponse,
+    OpenintelTldStatusItem,
+    OpenintelGlobalCounts,
+    OpenintelVisualStatus,
 )
 from app.services.tld_coverage import get_target_tlds, resolve_tld_coverages
 
@@ -37,6 +43,60 @@ router = APIRouter(
 )
 
 SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh", "openintel")
+
+
+def _build_openintel_visual_status(
+    *,
+    last_verification_at: datetime | None,
+    last_available_snapshot_date,
+    last_ingested_snapshot_date,
+    last_probe_outcome: str | None,
+) -> tuple[OpenintelVisualStatus, str]:
+    if last_verification_at is None:
+        return "no_data", "Sem dados ainda"
+
+    if last_probe_outcome == "verification_failed":
+        return "failed", "Falha na execução"
+
+    if (
+        last_available_snapshot_date is not None
+        and (
+            last_ingested_snapshot_date is None
+            or last_ingested_snapshot_date < last_available_snapshot_date
+        )
+    ):
+        return "delayed", "Atrasado"
+
+    if last_probe_outcome == "ingested_new_snapshot":
+        return "new_snapshot_ingested", "Novo arquivo ingerido"
+
+    if last_probe_outcome in {"already_ingested", "no_snapshot_available"}:
+        return "up_to_date_no_new_snapshot", "Em dia (sem novo arquivo)"
+
+    if (
+        last_available_snapshot_date is not None
+        and last_ingested_snapshot_date is not None
+        and last_ingested_snapshot_date >= last_available_snapshot_date
+    ):
+        return "up_to_date_no_new_snapshot", "Em dia (sem novo arquivo)"
+
+    return "up_to_date_no_new_snapshot", "Em dia (sem novo arquivo)"
+
+
+def _build_openintel_overall(
+    *, counts: OpenintelGlobalCounts, enabled_total: int
+) -> tuple[str, str]:
+    if counts.failed > 0:
+        return "failed", "Falha na execução em um ou mais TLDs."
+    if counts.delayed > 0:
+        return "warning", "Existe snapshot mais novo disponível e ainda não ingerido."
+    if enabled_total == 0:
+        return "healthy", "Nenhum TLD habilitado para OpenINTEL."
+    if counts.no_data == enabled_total:
+        return "warning", "Aguardando a primeira verificação dos TLDs habilitados."
+    if counts.new_snapshot_ingested > 0:
+        return "healthy", "OpenINTEL executado com sucesso; snapshots mais recentes já foram ingeridos."
+    return "healthy", "Sem arquivo novo no provedor. Último snapshot já ingerido."
 
 
 def _next_cron_hint(cron_expr: str) -> str | None:
@@ -422,3 +482,78 @@ def list_checkpoints(
         )
         for cp in run_repo.list_checkpoints(source=source)
     ]
+
+
+@router.get(
+    "/openintel/status",
+    response_model=OpenintelStatusResponse,
+    summary="OpenINTEL verification status by TLD",
+)
+def get_openintel_status(
+    db: Session = Depends(get_db),
+):
+    config_repo = IngestionConfigRepository(db)
+    status_repo = OpenintelTldStatusRepository(db)
+    policies = config_repo.list_tld_policies("openintel")
+    tlds = [policy.tld for policy in policies]
+    statuses = {row.tld: row for row in status_repo.list_for_tlds(tlds)}
+
+    items: list[OpenintelTldStatusItem] = []
+    counts = OpenintelGlobalCounts()
+    last_verification_at: datetime | None = None
+    enabled_total = 0
+
+    for policy in policies:
+        row = statuses.get(policy.tld)
+        status, status_reason = _build_openintel_visual_status(
+            last_verification_at=row.last_verification_at if row else None,
+            last_available_snapshot_date=row.last_available_snapshot_date if row else None,
+            last_ingested_snapshot_date=row.last_ingested_snapshot_date if row else None,
+            last_probe_outcome=row.last_probe_outcome if row else None,
+        )
+
+        if row and row.last_verification_at and (
+            last_verification_at is None or row.last_verification_at > last_verification_at
+        ):
+            last_verification_at = row.last_verification_at
+
+        if policy.is_enabled:
+            enabled_total += 1
+            if status == "up_to_date_no_new_snapshot":
+                counts.up_to_date_no_new_snapshot += 1
+            elif status == "new_snapshot_ingested":
+                counts.new_snapshot_ingested += 1
+            elif status == "delayed":
+                counts.delayed += 1
+            elif status == "failed":
+                counts.failed += 1
+            elif status == "no_data":
+                counts.no_data += 1
+
+        items.append(
+            OpenintelTldStatusItem(
+                tld=policy.tld,
+                is_enabled=policy.is_enabled,
+                priority=policy.priority,
+                last_verification_at=row.last_verification_at if row else None,
+                last_available_snapshot_date=row.last_available_snapshot_date if row else None,
+                last_ingested_snapshot_date=row.last_ingested_snapshot_date if row else None,
+                status=status,
+                status_reason=status_reason,
+                last_error_message=row.last_error_message if row else None,
+            )
+        )
+
+    overall_status, overall_message = _build_openintel_overall(
+        counts=counts,
+        enabled_total=enabled_total,
+    )
+
+    return OpenintelStatusResponse(
+        source="openintel",
+        last_verification_at=last_verification_at,
+        overall_status=overall_status,
+        overall_message=overall_message,
+        status_counts=counts,
+        items=items,
+    )

@@ -540,6 +540,13 @@ export interface TldMetricsRow {
   // CertStream-specific cumulative stats (null for run-based sources)
   domains_inserted_total: number | null
   last_seen_at: string | null
+  // OpenINTEL verification fields
+  openintel_last_verification_at?: string | null
+  openintel_last_available_snapshot_date?: string | null
+  openintel_last_ingested_snapshot_date?: string | null
+  openintel_status?: OpenintelVisualStatus
+  openintel_status_reason?: string | null
+  openintel_last_error_message?: string | null
 }
 
 export interface TriggerTldResponse {
@@ -559,6 +566,42 @@ export interface TldRunMetricItem {
 export interface TldRunMetrics {
   tld: string
   runs: TldRunMetricItem[]
+}
+
+export type OpenintelVisualStatus =
+  | "up_to_date_no_new_snapshot"
+  | "new_snapshot_ingested"
+  | "delayed"
+  | "failed"
+  | "no_data"
+
+export interface OpenintelGlobalCounts {
+  up_to_date_no_new_snapshot: number
+  new_snapshot_ingested: number
+  delayed: number
+  failed: number
+  no_data: number
+}
+
+export interface OpenintelTldStatusItem {
+  tld: string
+  is_enabled: boolean
+  priority: number | null
+  last_verification_at: string | null
+  last_available_snapshot_date: string | null
+  last_ingested_snapshot_date: string | null
+  status: OpenintelVisualStatus
+  status_reason: string
+  last_error_message: string | null
+}
+
+export interface OpenintelStatusResponse {
+  source: string
+  last_verification_at: string | null
+  overall_status: "healthy" | "warning" | "failed"
+  overall_message: string
+  status_counts: OpenintelGlobalCounts
+  items: OpenintelTldStatusItem[]
 }
 
 // ── Monitoring Pipeline ─────────────────────────────

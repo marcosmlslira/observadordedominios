@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.infra.external.openintel_client import OpenIntelClient, OpenIntelCctldClient
 from app.repositories.domain_repository import ensure_partition
 from app.repositories.ingestion_run_repository import IngestionRunRepository
+from app.repositories.openintel_tld_status_repository import OpenintelTldStatusRepository
 from app.services.use_cases.apply_zone_delta import apply_domain_names_delta
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ def sync_openintel_tld(
     """
     source = "openintel"
     run_repo = IngestionRunRepository(db)
+    status_repo = OpenintelTldStatusRepository(db)
 
     # ── 1. Abort if CZDS is currently writing to the same TLD partition ──────
     if run_repo.has_running_run("czds", tld):
@@ -113,8 +115,24 @@ def sync_openintel_tld(
         else:
             client = OpenIntelCctldClient()
             logger.debug("OpenINTEL routing TLD=%s → web CSV.GZ", tld)
-        result = client.discover_snapshot(tld)
+        try:
+            result = client.discover_snapshot(tld)
+        except Exception as exc:
+            status_repo.upsert_status(
+                tld=tld,
+                last_probe_outcome="verification_failed",
+                last_error_message=str(exc),
+            )
+            db.commit()
+            raise
         if result is None:
+            status_repo.upsert_status(
+                tld=tld,
+                last_probe_outcome="no_snapshot_available",
+                last_available_snapshot_date=None,
+                last_error_message=None,
+            )
+            db.commit()
             raise SnapshotNotFoundError(
                 f"No OpenINTEL snapshot found for TLD={tld} "
                 f"within {settings.OPENINTEL_MAX_LOOKBACK_DAYS} days"
@@ -123,6 +141,13 @@ def sync_openintel_tld(
 
         # ── 8. Idempotency: skip if this snapshot was already ingested ────────
         if not force and run_repo.has_successful_run_after(source, tld, snapshot_date):
+            status_repo.upsert_status(
+                tld=tld,
+                last_probe_outcome="already_ingested",
+                last_available_snapshot_date=snapshot_date,
+                last_error_message=None,
+            )
+            db.commit()
             raise SnapshotAlreadyIngestedError(
                 f"OpenINTEL snapshot for TLD={tld} date={snapshot_date} "
                 f"was already successfully ingested"
@@ -155,6 +180,13 @@ def sync_openintel_tld(
             # ── 11. Finalise run ──────────────────────────────────────────────
             run_repo.finish_run(run, status="success", metrics=metrics)
             run_repo.upsert_checkpoint(source, tld, run)
+            status_repo.upsert_status(
+                tld=tld,
+                last_probe_outcome="ingested_new_snapshot",
+                last_available_snapshot_date=snapshot_date,
+                last_ingested_snapshot_date=snapshot_date,
+                last_error_message=None,
+            )
             db.commit()
 
             logger.info(
@@ -172,6 +204,12 @@ def sync_openintel_tld(
             )
             db.rollback()
             run_repo.finish_run(run, status="failed", error_message=str(exc))
+            status_repo.upsert_status(
+                tld=tld,
+                last_probe_outcome="new_snapshot_pending_or_failed",
+                last_available_snapshot_date=snapshot_date,
+                last_error_message=str(exc),
+            )
             db.commit()
             raise
 

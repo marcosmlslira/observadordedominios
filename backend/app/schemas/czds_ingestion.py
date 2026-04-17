@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -182,3 +183,42 @@ class TldRunMetricItem(BaseModel):
 class TldRunMetricsResponse(BaseModel):
     tld: str
     runs: list[TldRunMetricItem]
+
+
+OpenintelOverallStatus = Literal["healthy", "warning", "failed"]
+OpenintelVisualStatus = Literal[
+    "up_to_date_no_new_snapshot",
+    "new_snapshot_ingested",
+    "delayed",
+    "failed",
+    "no_data",
+]
+
+
+class OpenintelGlobalCounts(BaseModel):
+    up_to_date_no_new_snapshot: int = 0
+    new_snapshot_ingested: int = 0
+    delayed: int = 0
+    failed: int = 0
+    no_data: int = 0
+
+
+class OpenintelTldStatusItem(BaseModel):
+    tld: str
+    is_enabled: bool
+    priority: int | None = None
+    last_verification_at: datetime | None = None
+    last_available_snapshot_date: date | None = None
+    last_ingested_snapshot_date: date | None = None
+    status: OpenintelVisualStatus
+    status_reason: str
+    last_error_message: str | None = None
+
+
+class OpenintelStatusResponse(BaseModel):
+    source: str
+    last_verification_at: datetime | None = None
+    overall_status: OpenintelOverallStatus
+    overall_message: str
+    status_counts: OpenintelGlobalCounts
+    items: list[OpenintelTldStatusItem]

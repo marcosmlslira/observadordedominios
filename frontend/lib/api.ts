@@ -142,6 +142,9 @@ export const ingestionApi = {
     api.get<import("./types").TldRunMetrics[]>(
       `/v1/ingestion/tld-run-metrics?source=${encodeURIComponent(source)}&runs_per_tld=${runsPerTld}`
     ),
+
+  getOpenintelStatus: () =>
+    api.get<import("./types").OpenintelStatusResponse>("/v1/ingestion/openintel/status"),
 }
 
 // ── Ingestion Config API ──────────────────────────────────────
