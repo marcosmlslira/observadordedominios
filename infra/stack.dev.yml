@@ -44,6 +44,7 @@ services:
       - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
       - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - MATCH_LLM_ASSESSMENT_ENABLED=false
       - SEED_LLM_GENERATION_ENABLED=true
     deploy:
@@ -201,6 +202,7 @@ services:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - HEALTH_CHECK_CRON=0 6 * * *
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     command: ["python", "-m", "app.worker.health_worker"]
     networks:
       - app-network
@@ -221,6 +223,7 @@ services:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - SIMILARITY_SCAN_CRON=0 9 * * *
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     command: ["python", "-m", "app.worker.scan_worker"]
     networks:
       - app-network
@@ -241,6 +244,7 @@ services:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - ENRICHMENT_CRON=0 12 * * *
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
     command: ["python", "-m", "app.worker.enrichment_worker"]
     networks:
       - app-network
@@ -260,6 +264,7 @@ services:
       - ENVIRONMENT=development
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - MATCH_LLM_ASSESSMENT_ENABLED=false
       - SEED_LLM_GENERATION_ENABLED=false
     command: ["python", "-m", "app.worker.assessment_worker"]

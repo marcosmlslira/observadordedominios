@@ -147,7 +147,12 @@ class Settings(BaseSettings):
     def openintel_zonefile_tlds_set(self) -> set[str]:
         return {t.strip() for t in self.OPENINTEL_ZONEFILE_TLDS.split(",") if t.strip()}
 
-    # ── LLM / OpenRouter ──────────────────────────────────
+    # ── LLM / Groq ────────────────────────────────────────
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    # ── LLM / OpenRouter (fallback) ───────────────────────
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_TIMEOUT_SECONDS: float = 20.0
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"

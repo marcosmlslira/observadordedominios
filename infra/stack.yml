@@ -30,6 +30,7 @@ services:
       - S3_FORCE_PATH_STYLE=false
       - CORS_ORIGINS=https://observadordedominios.com.br,https://www.observadordedominios.com.br
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - MATCH_LLM_ASSESSMENT_ENABLED=false
       - SEED_LLM_GENERATION_ENABLED=true
     networks:
@@ -135,9 +136,7 @@ services:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - SIMILARITY_SCAN_CRON=0 9 * * *
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-    networks:
-      - app-network
-    depends_on:
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
       - postgres
     deploy:
       replicas: 1

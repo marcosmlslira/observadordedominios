@@ -1,6 +1,7 @@
-"""Phase 2 — LLM-powered seed generation via OpenRouter.
+"""Phase 2 — LLM-powered seed generation via Groq (primary) or OpenRouter (fallback).
 
 Gated by SEED_LLM_GENERATION_ENABLED flag. When disabled, returns [].
+Provider selection: GROQ_API_KEY takes priority; falls back to OPENROUTER_API_KEY.
 """
 
 from __future__ import annotations
@@ -47,21 +48,36 @@ def generate_llm_seeds(
 ) -> list[dict]:
     """Generate LLM-based brand abuse seeds.
 
-    Returns [] when SEED_LLM_GENERATION_ENABLED is False or OPENROUTER_API_KEY is missing.
+    Uses Groq (primary) if GROQ_API_KEY is set; falls back to OpenRouter.
+    Returns [] when SEED_LLM_GENERATION_ENABLED is False or no API key is configured.
     """
     from app.core.config import settings
     if not settings.SEED_LLM_GENERATION_ENABLED:
         return []
 
-    api_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
-    if not api_key.strip():
-        logger.warning("SEED_LLM_GENERATION_ENABLED=true but OPENROUTER_API_KEY not configured — skipping")
+    groq_key = getattr(settings, "GROQ_API_KEY", "") or ""
+    openrouter_key = getattr(settings, "OPENROUTER_API_KEY", "") or ""
+
+    if groq_key.strip():
+        api_key = groq_key.strip()
+        base_url = getattr(settings, "GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+        model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile")
+        provider = "Groq"
+    elif openrouter_key.strip():
+        api_key = openrouter_key.strip()
+        base_url = getattr(settings, "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        model = "meta-llama/llama-3.3-70b-instruct:free"
+        provider = "OpenRouter"
+    else:
+        logger.warning("SEED_LLM_GENERATION_ENABLED=true but no API key configured — skipping")
         return []
 
     try:
-        return _call_openrouter(
+        return _call_llm_api(
             api_key=api_key,
-            base_url=getattr(settings, "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+            base_url=base_url,
+            model=model,
+            provider=provider,
             brand_name=brand_name,
             official_domain=official_domain,
             segment=segment or "geral",
@@ -73,9 +89,11 @@ def generate_llm_seeds(
         return []
 
 
-def _call_openrouter(
+def _call_llm_api(
     api_key: str,
     base_url: str,
+    model: str,
+    provider: str,
     brand_name: str,
     official_domain: str,
     segment: str,
@@ -93,7 +111,7 @@ def _call_openrouter(
     )
 
     payload = {
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 2048,
         "temperature": 0.7,
@@ -102,23 +120,25 @@ def _call_openrouter(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://observadordedominios.com.br",
-        "X-Title": "Observador de Dominios - Seed Generator",
     }
+    # OpenRouter-specific headers (ignored by Groq)
+    if "openrouter" in base_url:
+        headers["HTTP-Referer"] = "https://observadordedominios.com.br"
+        headers["X-Title"] = "Observador de Dominios - Seed Generator"
 
     with httpx.Client(timeout=60.0) as client:
         for attempt in range(3):
             resp = client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
             if resp.status_code == 429:
                 wait = 2 ** attempt * 10  # 10s, 20s, 40s
-                logger.warning("OpenRouter 429 rate limit — retrying in %ds (attempt %d/3)", wait, attempt + 1)
+                logger.warning("%s 429 rate limit — retrying in %ds (attempt %d/3)", provider, wait, attempt + 1)
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
             break
         else:
             raise httpx.HTTPStatusError(
-                "OpenRouter rate limit after 3 attempts",
+                f"{provider} rate limit after 3 attempts",
                 request=resp.request,
                 response=resp,
             )
