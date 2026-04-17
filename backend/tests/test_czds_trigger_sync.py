@@ -52,8 +52,11 @@ def test_trigger_sync_recovers_stale_runs_before_queueing(monkeypatch) -> None:
         return run
 
     class DummyThread:
-        def __init__(self, *, target, args, daemon):
-            observed["thread_args"] = {"args": args, "daemon": daemon}
+        def __init__(self, *args, **kwargs):
+            observed["thread_args"] = {
+                "args": kwargs.get("args"),
+                "daemon": kwargs.get("daemon"),
+            }
 
         def start(self):
             observed["thread_started"] = True
@@ -61,7 +64,7 @@ def test_trigger_sync_recovers_stale_runs_before_queueing(monkeypatch) -> None:
     monkeypatch.setattr(IngestionRunRepository, "recover_stale_runs", fake_recover)
     monkeypatch.setattr(IngestionRunRepository, "has_running_run", fake_has_running)
     monkeypatch.setattr(IngestionRunRepository, "create_run", fake_create_run)
-    monkeypatch.setattr(czds_ingestion.threading, "Thread", DummyThread)
+    monkeypatch.setattr(czds_ingestion, "threading", SimpleNamespace(Thread=DummyThread))
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_admin] = override_admin
 

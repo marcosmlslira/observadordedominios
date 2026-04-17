@@ -32,6 +32,8 @@ from app.services.use_cases.sync_czds_tld import (
 from app.services.use_cases.sync_openintel_tld import (
     CooldownActiveError as OpenintelCooldownError,
     CzdsRunningError,
+    SnapshotAlreadyIngestedError,
+    SnapshotNotFoundError,
     SyncAlreadyRunningError as OpenintelSyncRunningError,
     sync_openintel_tld,
 )
@@ -181,11 +183,20 @@ def trigger_tld(
     def _background() -> None:
         bg_db = SessionLocal()
         failure_reason: str | None = None
+        skip_reason: str | None = None
         try:
             if source == "czds":
                 sync_czds_tld(bg_db, tld, force=body.force, run_id=run_id)
             else:
                 sync_openintel_tld(bg_db, tld, force=body.force, run_id=run_id)
+        except (SnapshotAlreadyIngestedError, SnapshotNotFoundError) as exc:
+            logger.info(
+                "OpenINTEL manual trigger skipped for %s/%s: %s",
+                source,
+                tld,
+                exc,
+            )
+            skip_reason = str(exc)
         except (CzdsCooldownError, OpenintelCooldownError) as exc:
             logger.warning("Cooldown active for %s/%s: %s", source, tld, exc)
             failure_reason = str(exc)
@@ -199,13 +210,16 @@ def trigger_tld(
             logger.exception("Background trigger failed for %s/%s", source, tld)
             failure_reason = "Unexpected error during background trigger"
         finally:
-            if failure_reason is not None:
-                # Mark the pre-created run as failed so it doesn't stay orphaned in "running"
+            if failure_reason is not None or skip_reason is not None:
+                # Finalize the pre-created run so it doesn't stay orphaned in "running".
                 try:
                     run_repo = IngestionRunRepository(bg_db)
                     orphan = run_repo.get_run(run_id)
                     if orphan and orphan.status == "running":
-                        run_repo.finish_run(orphan, status="failed", error_message=failure_reason)
+                        if failure_reason is not None:
+                            run_repo.finish_run(orphan, status="failed", error_message=failure_reason)
+                        else:
+                            run_repo.finish_run(orphan, status="success", error_message=skip_reason)
                         bg_db.commit()
                 except Exception:
                     logger.exception("Failed to mark orphaned run %s as failed", run_id)
