@@ -102,7 +102,7 @@ def _call_openrouter(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://observadordedominios.com.br",
-        "X-Title": "Observador de Domínios — Seed Generator",
+        "X-Title": "Observador de Dominios - Seed Generator",
     }
 
     with httpx.Client(timeout=60.0) as client:
