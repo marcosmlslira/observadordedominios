@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +107,21 @@ def _call_openrouter(
     }
 
     with httpx.Client(timeout=60.0) as client:
-        resp = client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
-        resp.raise_for_status()
+        for attempt in range(3):
+            resp = client.post(f"{base_url}/chat/completions", json=payload, headers=headers)
+            if resp.status_code == 429:
+                wait = 2 ** attempt * 10  # 10s, 20s, 40s
+                logger.warning("OpenRouter 429 rate limit — retrying in %ds (attempt %d/3)", wait, attempt + 1)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            break
+        else:
+            raise httpx.HTTPStatusError(
+                "OpenRouter rate limit after 3 attempts",
+                request=resp.request,
+                response=resp,
+            )
 
     content = resp.json()["choices"][0]["message"]["content"]
 
