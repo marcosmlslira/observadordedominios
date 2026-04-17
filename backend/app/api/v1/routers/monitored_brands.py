@@ -18,9 +18,11 @@ from app.schemas.monitored_brand import (
     BrandDomainResponse,
     BrandListResponse,
     BrandResponse,
+    BrandSeedGroupedResponse,
     BrandSeedListResponse,
     BrandSeedResponse,
     CreateBrandRequest,
+    SeedPreviewResponse,
     UpdateBrandRequest,
 )
 from app.repositories.brand_domain_health_repository import BrandDomainHealthRepository
@@ -42,6 +44,7 @@ from app.services.similarity_scan_jobs import resolve_effective_scan_tlds, seria
 from app.services.use_cases.sync_monitoring_profile import (
     create_monitoring_profile,
     ensure_monitoring_profile_integrity,
+    regenerate_seeds_for_brand,
     update_monitoring_profile,
 )
 
@@ -411,3 +414,81 @@ def trigger_scan(
         tlds_effective=serialized.tlds_effective,
         results=serialized.results,
     )
+
+
+def _group_seeds_by_family(seeds: list) -> dict[str, list[BrandSeedResponse]]:
+    """Group seed ORM objects by seed_type family for grouped response."""
+    families: dict[str, list[BrandSeedResponse]] = {}
+    for seed in seeds:
+        family = seed.seed_type
+        if family not in families:
+            families[family] = []
+        families[family].append(BrandSeedResponse.model_validate(seed))
+    return families
+
+
+@router.post(
+    "/{brand_id}/seeds/regenerate",
+    response_model=BrandSeedGroupedResponse,
+    status_code=200,
+    summary="Regenerate monitoring seeds for a brand (re-syncs profile)",
+)
+def regenerate_brand_seeds(
+    brand_id: UUID,
+    include_llm: bool = Query(True, description="Include LLM-generated seeds if enabled"),
+    db: Session = Depends(get_db),
+):
+    repo = MonitoredBrandRepository(db)
+    brand = repo.get(brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    regenerate_seeds_for_brand(repo, brand)
+    db.commit()
+
+    # Reload to get fresh seeds
+    db.refresh(brand)
+    by_family = _group_seeds_by_family(list(brand.seeds or []))
+    return BrandSeedGroupedResponse(by_family=by_family, total=sum(len(v) for v in by_family.values()))
+
+
+@router.get(
+    "/{brand_id}/seeds/preview",
+    response_model=SeedPreviewResponse,
+    summary="Preview deterministic seeds for a brand without persisting",
+)
+def preview_brand_seeds(
+    brand_id: UUID,
+    db: Session = Depends(get_db),
+):
+    repo = MonitoredBrandRepository(db)
+    brand = repo.get(brand_id)
+    if not brand:
+        raise HTTPException(status_code=404, detail="Brand not found")
+
+    from app.services.seed_generation import generate_deterministic_seeds
+
+    brand_label = brand.brand_label or ""
+    brand_aliases = [
+        a.alias_normalized for a in (brand.aliases or [])
+        if a.alias_type in ("brand_primary", "brand_alias")
+    ]
+    brand_keywords = [
+        a.alias_normalized for a in (brand.aliases or [])
+        if a.alias_type == "support_keyword"
+    ]
+
+    seeds = generate_deterministic_seeds(
+        brand_label=brand_label,
+        brand_aliases=brand_aliases,
+        brand_keywords=brand_keywords,
+    )
+
+    families: dict[str, list[str]] = {}
+    for s in seeds:
+        family = s["seed_type"]
+        if family not in families:
+            families[family] = []
+        families[family].append(s["seed_value"])
+
+    return SeedPreviewResponse(families=families, total=len(seeds))

@@ -44,6 +44,8 @@ services:
       - JWT_SECRET_KEY=2bf766374633ad9e9a92e5d23497fceb12904caa608439bdc6d01b0feaae4fe7
       - CORS_ORIGINS=http://localhost:3005,http://localhost:3000
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MATCH_LLM_ASSESSMENT_ENABLED=false
+      - SEED_LLM_GENERATION_ENABLED=false
     networks:
       - app-network
     depends_on:
@@ -263,6 +265,8 @@ services:
       - ENVIRONMENT=development
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MATCH_LLM_ASSESSMENT_ENABLED=false
+      - SEED_LLM_GENERATION_ENABLED=false
     command: ["python", "-m", "app.worker.assessment_worker"]
     networks:
       - app-network

@@ -146,6 +146,29 @@ def update_monitoring_profile(
     return brand
 
 
+def regenerate_seeds_for_brand(
+    repo: MonitoredBrandRepository,
+    brand: MonitoredBrand,
+) -> MonitoredBrand:
+    """Force-regenerate seeds for an existing brand using current aliases/domains."""
+    official_domains = [item.domain_name for item in brand.domains]
+    aliases = [
+        BrandAliasRequest(value=item.alias_value, type=item.alias_type)
+        for item in brand.aliases
+        if item.alias_type != "brand_primary"
+    ]
+    prepared = _prepare_profile_components(
+        display_name=brand.brand_name,
+        primary_brand_name=brand.primary_brand_name,
+        official_domains=official_domains,
+        aliases=aliases,
+        keywords=list(brand.keywords or []),
+        noise_mode=brand.noise_mode,
+    )
+    _apply_profile_components(repo, brand, prepared)
+    return brand
+
+
 def ensure_monitoring_profile_integrity(
     repo: MonitoredBrandRepository,
     brand: MonitoredBrand,
@@ -250,4 +273,41 @@ def _apply_profile_components(
 ) -> None:
     domains = repo.replace_domains(brand, prepared["domains"])
     aliases = repo.replace_aliases(brand, prepared["aliases"])
-    repo.replace_seeds(brand, build_seed_rows(domains, aliases))
+
+    base_seeds = build_seed_rows(domains, aliases)
+
+    from app.services.seed_generation import generate_deterministic_seeds, merge_seed_rows
+
+    brand_label = prepared.get("brand_label", "")
+    if not brand_label and domains:
+        brand_label = domains[0].registrable_label
+
+    brand_aliases = [
+        a.alias_normalized for a in aliases
+        if a.alias_type in ("brand_primary", "brand_alias")
+    ]
+    brand_keywords = [
+        a.alias_normalized for a in aliases
+        if a.alias_type == "support_keyword"
+    ]
+
+    expanded_seeds = generate_deterministic_seeds(
+        brand_label=brand_label,
+        brand_aliases=brand_aliases,
+        brand_keywords=brand_keywords,
+    )
+
+    # ── LLM seed generation (Fase 2) ──
+    from app.core.config import settings
+    if settings.SEED_LLM_GENERATION_ENABLED:
+        from app.services.use_cases.generate_brand_seeds import generate_llm_seeds
+        llm_seeds = generate_llm_seeds(
+            brand_name=brand.brand_name,
+            official_domain=domains[0].domain_name if domains else "",
+            segment=getattr(brand, "segment", ""),
+            keywords=brand_keywords,
+        )
+        expanded_seeds = merge_seed_rows(expanded_seeds, llm_seeds)
+
+    all_seeds = merge_seed_rows(base_seeds, expanded_seeds)
+    repo.replace_seeds(brand, all_seeds)

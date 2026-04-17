@@ -21,6 +21,7 @@ _SECOND_LEVEL_CCTLD_PREFIXES = {"ac", "co", "com", "edu", "gov", "net", "org"}
 NOISE_MODES = {"conservative", "standard", "broad"}
 ALIAS_TYPES = {"brand_alias", "brand_phrase", "support_keyword"}
 SCAN_CHANNELS_FOR_DOMAIN_TABLE = {"registrable_domain", "associated_brand", "both"}
+SYSTEM_SOURCE_REF_TYPES = {"system_rule", "combo_generator", "llm_seed"}
 
 SEED_BASE_WEIGHTS: dict[str, float] = {
     "domain_label": 1.00,
@@ -30,6 +31,16 @@ SEED_BASE_WEIGHTS: dict[str, float] = {
     "brand_phrase": 0.80,
     "brand_alias": 0.65,
     "support_keyword": 0.20,
+    # ── Novas familias ──
+    "homograph_base": 0.85,
+    "typo_base": 0.80,
+    "combo_brand_keyword": 0.75,
+    "combo_keyword_brand": 0.70,
+    "semantic_brand": 0.60,
+    # ── LLM seeds (Fase 2) ──
+    "llm_combo": 0.72,
+    "llm_semantic": 0.58,
+    "llm_social_engineering": 0.68,
 }
 
 CHANNEL_MULTIPLIERS: dict[str, float] = {
@@ -321,7 +332,12 @@ def enrich_tld_scope_for_brazil(
 
 
 def iter_scan_seeds(seeds: list[MonitoredBrandSeed]) -> list[MonitoredBrandSeed]:
-    allowed_types = {"domain_label", "brand_primary", "brand_alias", "brand_phrase"}
+    allowed_types = {
+        "domain_label", "brand_primary", "brand_alias", "brand_phrase",
+        "combo_brand_keyword", "combo_keyword_brand",
+        "typo_base", "homograph_base", "semantic_brand",
+        "llm_combo", "llm_semantic", "llm_social_engineering",
+    }
     result = [
         seed
         for seed in seeds

@@ -30,6 +30,8 @@ services:
       - S3_FORCE_PATH_STYLE=false
       - CORS_ORIGINS=https://observadordedominios.com.br,https://www.observadordedominios.com.br
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MATCH_LLM_ASSESSMENT_ENABLED=false
+      - SEED_LLM_GENERATION_ENABLED=false
     networks:
       - app-network
     deploy:

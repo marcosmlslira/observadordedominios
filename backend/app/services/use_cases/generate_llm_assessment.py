@@ -40,6 +40,10 @@ Responda APENAS com JSON válido neste formato exato:
 
 def should_generate_assessment(match: dict, api_key: str) -> bool:
     """Gate: only runs for medium+ risk matches with a configured API key."""
+    from app.core.config import settings
+    if not settings.MATCH_LLM_ASSESSMENT_ENABLED:
+        return False
+
     if not api_key or not api_key.strip():
         return False
 

@@ -201,6 +201,127 @@ class SimilarityRepository:
             for r in sorted_rows
         ]
 
+    def fetch_candidates_exact(
+        self,
+        candidate_labels: list[str],
+        brand_label: str,
+        tld: str,
+        *,
+        watermark_at: datetime | None = None,
+        limit: int = 2000,
+    ) -> list[dict]:
+        """Exact-label lookup for typo/homograph seeds via btree equality scan.
+
+        Processes candidates in chunks of 1000 to stay within pg parameter limits.
+        Returns dicts with: name, tld, label, first_seen_at, sim_trigram, edit_dist.
+        """
+        if not candidate_labels:
+            return []
+
+        wm_filter = "AND first_seen_at > :watermark_at" if watermark_at else ""
+        timeout_ms = _TLD_QUERY_TIMEOUT_MS.get(tld, _DEFAULT_QUERY_TIMEOUT_MS)
+
+        sql = f"""
+            SELECT DISTINCT name, tld, label, first_seen_at,
+                   similarity(label, :brand_label) AS sim_trigram,
+                   levenshtein(label, :brand_label) AS edit_dist
+            FROM domain
+            WHERE tld = :tld
+              AND label = ANY(:candidate_labels)
+              AND label NOT LIKE '%%.%%'
+              {wm_filter}
+            LIMIT :limit
+        """
+        all_rows: list = []
+        for i in range(0, len(candidate_labels), 1000):
+            chunk = candidate_labels[i : i + 1000]
+            params: dict = {
+                "brand_label": brand_label,
+                "tld": tld,
+                "candidate_labels": chunk,
+                "limit": limit,
+            }
+            if watermark_at:
+                params["watermark_at"] = watermark_at
+            rows = self._exec_candidate_part(
+                sql, params,
+                timeout_ms=timeout_ms,
+                part_name=f"exact_chunk_{i // 1000}",
+                tld=tld,
+            )
+            all_rows.extend(rows)
+
+        best_by_name: dict[str, object] = {}
+        for r in all_rows:
+            existing = best_by_name.get(r.name)
+            if existing is None or float(r.sim_trigram) > float(existing.sim_trigram):
+                best_by_name[r.name] = r
+
+        return [
+            {
+                "name": r.name,
+                "tld": r.tld,
+                "label": r.label,
+                "first_seen_at": r.first_seen_at,
+                "last_seen_at": getattr(r, "last_seen_at", None),
+                "sim_trigram": float(r.sim_trigram),
+                "edit_dist": int(r.edit_dist),
+            }
+            for r in sorted(best_by_name.values(), key=lambda r: float(r.sim_trigram), reverse=True)[:limit]
+        ]
+
+    def fetch_candidates_punycode(
+        self,
+        brand_label: str,
+        tld: str,
+        *,
+        watermark_at: datetime | None = None,
+        limit: int = 300,
+    ) -> list[dict]:
+        """Fetch Punycode (IDN homograph) domains for a TLD.
+
+        Uses LIKE 'xn--%' filter to pull all IDN domains, then scores them
+        against the brand label for downstream filtering.
+        Returns dicts with: name, tld, label, first_seen_at, sim_trigram, edit_dist.
+        """
+        wm_filter = "AND first_seen_at > :watermark_at" if watermark_at else ""
+        timeout_ms = _TLD_QUERY_TIMEOUT_MS.get(tld, _DEFAULT_QUERY_TIMEOUT_MS)
+
+        sql = f"""
+            SELECT DISTINCT name, tld, label, first_seen_at,
+                   similarity(label, :brand_label) AS sim_trigram,
+                   levenshtein(label, :brand_label) AS edit_dist
+            FROM domain
+            WHERE tld = :tld
+              AND label LIKE 'xn--%%'
+              AND label NOT LIKE '%%.%%'
+              {wm_filter}
+            LIMIT :limit
+        """
+        params: dict = {"brand_label": brand_label, "tld": tld, "limit": limit}
+        if watermark_at:
+            params["watermark_at"] = watermark_at
+
+        rows = self._exec_candidate_part(
+            sql, params,
+            timeout_ms=timeout_ms,
+            part_name="punycode",
+            tld=tld,
+        )
+
+        return [
+            {
+                "name": r.name,
+                "tld": r.tld,
+                "label": r.label,
+                "first_seen_at": r.first_seen_at,
+                "last_seen_at": getattr(r, "last_seen_at", None),
+                "sim_trigram": float(r.sim_trigram),
+                "edit_dist": int(r.edit_dist),
+            }
+            for r in rows
+        ]
+
     def search_candidates(
         self,
         query_label: str,

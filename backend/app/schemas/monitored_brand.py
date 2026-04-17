@@ -119,6 +119,16 @@ class BrandResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BrandSeedGroupedResponse(BaseModel):
+    by_family: dict[str, list[BrandSeedResponse]]
+    total: int
+
+
+class SeedPreviewResponse(BaseModel):
+    families: dict[str, list[str]]
+    total: int
+
+
 class BrandListResponse(BaseModel):
     items: list[BrandResponse]
     total: int

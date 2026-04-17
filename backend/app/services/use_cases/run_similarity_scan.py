@@ -2,6 +2,12 @@
 
 Orchestrates: cursor management → candidate fetching → scoring → match persistence.
 Supports both initial (full) and delta (incremental) scans via watermark.
+
+Ring-based retrieval strategy:
+  Ring A — exact btree on typo_base / homograph_base seeds (fast, precise)
+  Ring B — fuzzy trigram on domain/brand/alias/phrase seeds (existing behaviour)
+  Ring C — Punycode IDN scan (always runs, catches homograph in xn-- domains)
+  Ring D — exact btree on combo seeds (combo_brand_keyword / combo_keyword_brand)
 """
 
 from __future__ import annotations
@@ -43,6 +49,126 @@ NOISE_MODE_THRESHOLDS = {
     "standard": 0.50,
     "broad": 0.42,
 }
+
+_FUZZY_SEED_TYPES = frozenset({
+    "domain_label",
+    "brand_primary",
+    "brand_alias",
+    "brand_phrase",
+})
+
+_EXACT_SEED_TYPES = frozenset({
+    "typo_base",
+    "homograph_base",
+})
+
+_COMBO_SEED_TYPES = frozenset({
+    "combo_brand_keyword",
+    "combo_keyword_brand",
+})
+
+
+def _find_best_matching_seed(cand: dict, combo_seeds: list) -> object | None:
+    """Return the combo seed whose seed_value best matches the candidate label."""
+    exact = [s for s in combo_seeds if s.seed_value == cand["label"]]
+    if exact:
+        return max(exact, key=lambda s: s.base_weight)
+    # Fall back to highest-weight seed that is a substring match
+    substring = [s for s in combo_seeds if s.seed_value in cand["label"]]
+    if substring:
+        return max(substring, key=lambda s: s.base_weight)
+    return combo_seeds[0] if combo_seeds else None
+
+
+def _process_candidate(
+    cand: dict,
+    seed: object,
+    brand: MonitoredBrand,
+    official_domains: set[str],
+    threshold: float,
+    now: datetime,
+    best_matches_by_domain: dict[str, dict],
+    candidate_domain_names: set[str],
+    scan_seeds: list,
+) -> None:
+    """Score a single candidate against a seed and update best_matches_by_domain."""
+    if cand["name"].strip().lower() in official_domains:
+        return
+    candidate_domain_names.add(cand["name"])
+    scores = compute_seeded_scores(
+        label=cand["label"],
+        seed_value=seed.seed_value,
+        brand_keywords=brand.keywords or [],
+        trigram_sim=cand["sim_trigram"],
+        seed_weight=seed.base_weight,
+        channel_scope=seed.channel_scope,
+    )
+
+    if scores["score_final"] < threshold:
+        return
+
+    matched_channel = (
+        "registrable_domain"
+        if seed.seed_type == "domain_label"
+        else "associated_brand"
+    )
+    matched_rule = pick_matched_rule(scores["reasons"], matched_channel)
+    actionability = compute_actionability(
+        brand,
+        domain_name=cand["name"],
+        tld=cand["tld"],
+        score_final=scores["score_final"],
+        risk_level=scores["risk_level"],
+        reasons=scores["reasons"],
+        matched_rule=matched_rule,
+        matched_seed_type=seed.seed_type,
+        matched_seed_value=seed.seed_value,
+        matched_channel=matched_channel,
+        domain_first_seen=cand["first_seen_at"],
+    )
+    candidate_match = {
+        "brand_id": brand.id,
+        "domain_name": cand["name"],
+        "tld": cand["tld"],
+        "label": cand["label"],
+        "score_final": scores["score_final"],
+        "score_trigram": scores["score_trigram"],
+        "score_levenshtein": scores["score_levenshtein"],
+        "score_brand_hit": scores["score_brand_hit"],
+        "score_keyword": scores["score_keyword"],
+        "score_homograph": scores["score_homograph"],
+        "reasons": scores["reasons"],
+        "risk_level": scores["risk_level"],
+        "first_detected_at": now,
+        "domain_first_seen": cand["first_seen_at"],
+        "matched_channel": matched_channel,
+        "matched_seed_id": seed.id,
+        "matched_seed_value": seed.seed_value,
+        "matched_seed_type": seed.seed_type,
+        "matched_rule": matched_rule,
+        "source_stream": "czds",
+        "actionability_score": actionability["actionability_score"],
+        "attention_bucket": actionability["attention_bucket"],
+        "attention_reasons": actionability["attention_reasons"],
+        "recommended_action": actionability["recommended_action"],
+        "ownership_classification": "third_party_unknown",
+        "self_owned": False,
+        "disposition": _bucket_to_disposition(actionability["attention_bucket"], matched_rule),
+        "confidence": round(scores["score_final"], 4),
+        "delivery_risk": "none",
+    }
+    previous = best_matches_by_domain.get(cand["name"])
+    if not previous or (
+        candidate_match["score_final"],
+        seed.base_weight,
+    ) > (
+        previous["score_final"],
+        next(
+            (row.base_weight for row in scan_seeds if row.id == previous["matched_seed_id"]),
+            0.0,
+        ),
+    ):
+        best_matches_by_domain[cand["name"]] = candidate_match
 
 
 def run_similarity_scan(
@@ -94,21 +220,52 @@ def run_similarity_scan(
             db.commit()
             return {"candidates": 0, "matched": 0, "scanned": 0, "removed": 0}
 
-        per_seed_limit = max(250, min(1500, int(5000 / max(1, len(scan_seeds)))))
-        logger.info(
-            "Scanning brand=%s with %d seeds for tld=%s (per_seed_limit=%d)",
-            brand.brand_name,
-            len(scan_seeds),
-            tld,
-            per_seed_limit,
-        )
-
         threshold = NOISE_MODE_THRESHOLDS.get(brand.noise_mode, SCORE_THRESHOLD)
         best_matches_by_domain: dict[str, dict] = {}
         candidate_domain_names: set[str] = set()
         now = datetime.now(timezone.utc)
 
-        for seed in scan_seeds:
+        # Partition seeds by ring strategy
+        exact_seeds = [s for s in scan_seeds if s.seed_type in _EXACT_SEED_TYPES]
+        fuzzy_seeds = [s for s in scan_seeds if s.seed_type in _FUZZY_SEED_TYPES]
+        combo_seeds = [s for s in scan_seeds if s.seed_type in _COMBO_SEED_TYPES]
+
+        # Primary brand label for Punycode ring — highest-weight fuzzy seed
+        primary_brand_label = brand.brand_label
+        if fuzzy_seeds:
+            primary_brand_label = max(fuzzy_seeds, key=lambda s: s.base_weight).seed_value
+        elif exact_seeds:
+            primary_brand_label = exact_seeds[0].seed_value
+
+        # ── Ring A: Exact btree on typo / homograph seeds ──────────────────
+        if exact_seeds:
+            exact_labels = list({s.seed_value for s in exact_seeds})
+            ring_a_candidates = repo.fetch_candidates_exact(
+                candidate_labels=exact_labels,
+                brand_label=primary_brand_label,
+                tld=tld,
+                watermark_at=watermark_at,
+                limit=2000,
+            )
+            logger.info(
+                "Ring A: %d exact candidates for brand=%s tld=%s",
+                len(ring_a_candidates), brand.brand_label, tld,
+            )
+            for cand in ring_a_candidates:
+                # Find the best matching exact seed
+                matching_exact = [
+                    s for s in exact_seeds if s.seed_value == cand["label"]
+                ]
+                seed = matching_exact[0] if matching_exact else exact_seeds[0]
+                _process_candidate(
+                    cand, seed, brand, official_domains,
+                    threshold, now,
+                    best_matches_by_domain, candidate_domain_names, scan_seeds,
+                )
+
+        # ── Ring B: Fuzzy trigram on domain/brand/alias/phrase seeds ──────
+        per_seed_limit = max(250, min(1500, int(5000 / max(1, len(fuzzy_seeds or scan_seeds)))))
+        for seed in fuzzy_seeds:
             typo_candidates = list(generate_typo_candidates(seed.seed_value))
             candidates = repo.fetch_candidates(
                 brand_label=seed.seed_value,
@@ -118,91 +275,84 @@ def run_similarity_scan(
                 limit=per_seed_limit,
             )
             logger.info(
-                "Found %d candidates for brand=%s seed=%s tld=%s",
-                len(candidates),
-                brand.brand_name,
-                seed.seed_value,
-                tld,
+                "Ring B: %d fuzzy candidates for brand=%s seed=%s tld=%s",
+                len(candidates), brand.brand_name, seed.seed_value, tld,
+            )
+            for cand in candidates:
+                _process_candidate(
+                    cand, seed, brand, official_domains,
+                    threshold, now,
+                    best_matches_by_domain, candidate_domain_names, scan_seeds,
+                )
+
+        # Fallback: if no fuzzy seeds use all seeds with existing fuzzy strategy
+        if not fuzzy_seeds:
+            for seed in scan_seeds:
+                if seed.seed_type in (_EXACT_SEED_TYPES | _COMBO_SEED_TYPES):
+                    continue
+                typo_candidates = list(generate_typo_candidates(seed.seed_value))
+                candidates = repo.fetch_candidates(
+                    brand_label=seed.seed_value,
+                    tld=tld,
+                    typo_candidates=typo_candidates,
+                    watermark_at=watermark_at,
+                    limit=per_seed_limit,
+                )
+                for cand in candidates:
+                    _process_candidate(
+                        cand, seed, brand, official_domains,
+                        threshold, now,
+                        best_matches_by_domain, candidate_domain_names, scan_seeds,
+                    )
+
+        # ── Ring C: Punycode IDN scan (always) ───────────────────────────
+        ring_c_candidates = repo.fetch_candidates_punycode(
+            brand_label=primary_brand_label,
+            tld=tld,
+            watermark_at=watermark_at,
+            limit=300,
+        )
+        logger.info(
+            "Ring C: %d punycode candidates for brand=%s tld=%s",
+            len(ring_c_candidates), brand.brand_label, tld,
+        )
+        # Use the highest-weight homograph_base seed if available, else best fuzzy seed
+        homograph_seeds = [s for s in exact_seeds if s.seed_type == "homograph_base"]
+        punycode_seed = (
+            max(homograph_seeds, key=lambda s: s.base_weight)
+            if homograph_seeds
+            else (max(fuzzy_seeds, key=lambda s: s.base_weight) if fuzzy_seeds else scan_seeds[0])
+        )
+        for cand in ring_c_candidates:
+            _process_candidate(
+                cand, punycode_seed, brand, official_domains,
+                threshold, now,
+                best_matches_by_domain, candidate_domain_names, scan_seeds,
             )
 
-            for cand in candidates:
-                if cand["name"].strip().lower() in official_domains:
+        # ── Ring D: Exact btree on combo seeds ────────────────────────────
+        if combo_seeds:
+            combo_labels = list({s.seed_value for s in combo_seeds})
+            ring_d_candidates = repo.fetch_candidates_exact(
+                candidate_labels=combo_labels,
+                brand_label=primary_brand_label,
+                tld=tld,
+                watermark_at=watermark_at,
+                limit=500,
+            )
+            logger.info(
+                "Ring D: %d combo candidates for brand=%s tld=%s",
+                len(ring_d_candidates), brand.brand_label, tld,
+            )
+            for cand in ring_d_candidates:
+                best_combo_seed = _find_best_matching_seed(cand, combo_seeds)
+                if best_combo_seed is None:
                     continue
-                candidate_domain_names.add(cand["name"])
-                scores = compute_seeded_scores(
-                    label=cand["label"],
-                    seed_value=seed.seed_value,
-                    brand_keywords=brand.keywords or [],
-                    trigram_sim=cand["sim_trigram"],
-                    seed_weight=seed.base_weight,
-                    channel_scope=seed.channel_scope,
+                _process_candidate(
+                    cand, best_combo_seed, brand, official_domains,
+                    threshold, now,
+                    best_matches_by_domain, candidate_domain_names, scan_seeds,
                 )
-
-                if scores["score_final"] < threshold:
-                    continue
-
-                matched_channel = (
-                    "registrable_domain"
-                    if seed.seed_type == "domain_label"
-                    else "associated_brand"
-                )
-                matched_rule = pick_matched_rule(scores["reasons"], matched_channel)
-                actionability = compute_actionability(
-                    brand,
-                    domain_name=cand["name"],
-                    tld=cand["tld"],
-                    score_final=scores["score_final"],
-                    risk_level=scores["risk_level"],
-                    reasons=scores["reasons"],
-                    matched_rule=matched_rule,
-                    matched_seed_type=seed.seed_type,
-                    matched_seed_value=seed.seed_value,
-                    matched_channel=matched_channel,
-                    domain_first_seen=cand["first_seen_at"],
-                )
-                candidate_match = {
-                    "brand_id": brand.id,
-                    "domain_name": cand["name"],
-                    "tld": cand["tld"],
-                    "label": cand["label"],
-                    "score_final": scores["score_final"],
-                    "score_trigram": scores["score_trigram"],
-                    "score_levenshtein": scores["score_levenshtein"],
-                    "score_brand_hit": scores["score_brand_hit"],
-                    "score_keyword": scores["score_keyword"],
-                    "score_homograph": scores["score_homograph"],
-                    "reasons": scores["reasons"],
-                    "risk_level": scores["risk_level"],
-                    "first_detected_at": now,
-                    "domain_first_seen": cand["first_seen_at"],
-                    "matched_channel": matched_channel,
-                    "matched_seed_id": seed.id,
-                    "matched_seed_value": seed.seed_value,
-                    "matched_seed_type": seed.seed_type,
-                    "matched_rule": matched_rule,
-                    "source_stream": "czds",
-                    "actionability_score": actionability["actionability_score"],
-                    "attention_bucket": actionability["attention_bucket"],
-                    "attention_reasons": actionability["attention_reasons"],
-                    "recommended_action": actionability["recommended_action"],
-                    "ownership_classification": "third_party_unknown",
-                    "self_owned": False,
-                    "disposition": _bucket_to_disposition(actionability["attention_bucket"], matched_rule),
-                    "confidence": round(scores["score_final"], 4),
-                    "delivery_risk": "none",
-                }
-                previous = best_matches_by_domain.get(cand["name"])
-                if not previous or (
-                    candidate_match["score_final"],
-                    seed.base_weight,
-                ) > (
-                    previous["score_final"],
-                    next(
-                        (row.base_weight for row in scan_seeds if row.id == previous["matched_seed_id"]),
-                        0.0,
-                    ),
-                ):
-                    best_matches_by_domain[cand["name"]] = candidate_match
 
         # ── 4. Persist matches ─────────────────────────────────
         matches_to_upsert = list(best_matches_by_domain.values())

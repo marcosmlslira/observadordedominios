@@ -62,6 +62,11 @@ def _gather_tool_results(db: Session, snapshot) -> dict:
 
 def run_assessment_cycle(db: Session | None = None) -> None:
     """Run one batch of LLM assessments for snapshots that need it."""
+    from app.core.config import settings
+    if not settings.MATCH_LLM_ASSESSMENT_ENABLED:
+        logger.info("assessment_worker: MATCH_LLM_ASSESSMENT_ENABLED=false — skipping cycle")
+        return
+
     global _last_cycle_completed_at
 
     owns_session = db is None

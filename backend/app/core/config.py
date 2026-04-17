@@ -152,6 +152,10 @@ class Settings(BaseSettings):
     OPENROUTER_TIMEOUT_SECONDS: float = 20.0
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
+    # ── LLM Feature Flags ────────────────────────────────────
+    MATCH_LLM_ASSESSMENT_ENABLED: bool = False
+    SEED_LLM_GENERATION_ENABLED: bool = False
+
     model_config = {"env_file": ".env", "case_sensitive": True}
 
 
