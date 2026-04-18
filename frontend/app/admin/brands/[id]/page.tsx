@@ -134,7 +134,10 @@ function derivePhase(
 ): LifecyclePhase {
   if (activeScan) return "scanning"
   if (lifecycle?.enrichment_phase === "running") return "enriching"
-  if (lifecycle && lifecycle.assessment_eligible > lifecycle.assessment_completed) return "assessing"
+  // Bulk AI assessment is currently disabled (MATCH_LLM_ASSESSMENT_ENABLED=false).
+  // AI only runs during brand seed creation. Re-enable the line below when bulk
+  // assessment is turned back on.
+  // if (lifecycle && lifecycle.assessment_eligible > lifecycle.assessment_completed) return "assessing"
   return "idle"
 }
 
