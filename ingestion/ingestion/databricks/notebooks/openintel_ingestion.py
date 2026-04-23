@@ -22,14 +22,20 @@ import importlib
 
 _git_ref = dbutils.widgets.get("INGESTION_GIT_REF").strip() or "main"  # noqa: F821
 _pkg_url = f"git+https://github.com/marcosmlslira/observadordedominios@{_git_ref}#subdirectory=ingestion"
+
+_r1 = subprocess.run(
+    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", "--upgrade", "typing_extensions>=4.12.2"],
+    capture_output=True, text=True,
+)
+if _r1.returncode != 0:
+    dbutils.notebook.exit("TYPING_EXT_FAIL: " + _r1.stderr[-2000:])  # noqa: F821
+
 _result = subprocess.run(
     [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", _pkg_url],
     capture_output=True, text=True,
 )
 if _result.returncode != 0:
-    print("PIP STDOUT:", _result.stdout[-3000:])
-    print("PIP STDERR:", _result.stderr[-3000:])
-    raise RuntimeError(f"pip install failed (exit {_result.returncode})")
+    dbutils.notebook.exit("PIP_FAIL: stdout=" + _result.stdout[-1500:] + " stderr=" + _result.stderr[-1500:])  # noqa: F821
 importlib.invalidate_caches()
 
 # ── credentials injected by submitter ─────────────────────────────────────────
