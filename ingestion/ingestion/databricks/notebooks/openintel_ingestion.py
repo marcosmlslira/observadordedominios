@@ -22,10 +22,14 @@ import importlib
 
 _git_ref = dbutils.widgets.get("INGESTION_GIT_REF").strip() or "main"  # noqa: F821
 _pkg_url = f"git+https://github.com/marcosmlslira/observadordedominios@{_git_ref}#subdirectory=ingestion"
-subprocess.run(
-    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", "--quiet", _pkg_url],
-    check=True,
+_result = subprocess.run(
+    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", _pkg_url],
+    capture_output=True, text=True,
 )
+if _result.returncode != 0:
+    print("PIP STDOUT:", _result.stdout[-3000:])
+    print("PIP STDERR:", _result.stderr[-3000:])
+    raise RuntimeError(f"pip install failed (exit {_result.returncode})")
 importlib.invalidate_caches()
 
 # ── credentials injected by submitter ─────────────────────────────────────────
