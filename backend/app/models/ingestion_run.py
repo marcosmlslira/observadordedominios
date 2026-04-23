@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
@@ -31,6 +31,7 @@ class IngestionRun(Base, TimestampMixin):
     domains_deleted = Column(BigInteger, default=0)
 
     error_message = Column(Text, nullable=True)
+    snapshot_date = Column(Date, nullable=True)
 
     # ── Indexes ─────────────────────────────────────────────
     __table_args__ = (

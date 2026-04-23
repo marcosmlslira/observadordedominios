@@ -48,6 +48,7 @@ UPDATE ingestion_run SET
     domains_reactivated = %s,
     domains_deleted    = %s,
     error_message      = %s,
+    snapshot_date      = %s,
     updated_at         = %s
 WHERE id = %s
 """
@@ -91,6 +92,7 @@ def finish_run(
     domains_reactivated: int = 0,
     error_message: str | None = None,
     finished_at: datetime | None = None,
+    snapshot_date: str | None = None,
 ) -> None:
     """Update an existing `ingestion_run` to a terminal state (success | failed)."""
     now = datetime.now(timezone.utc)
@@ -109,6 +111,7 @@ def finish_run(
                     domains_reactivated,
                     domains_deleted,
                     error_message,
+                    snapshot_date,
                     now,
                     run_id,
                 ),

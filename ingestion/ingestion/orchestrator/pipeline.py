@@ -90,32 +90,31 @@ def check_phase(
     today: date,
 ) -> TldPhase:
     """Determine which phase to run for (source, tld, today)."""
-    today_str = today.isoformat()
-
     # Look back up to MARKER_LOOKBACK_DAYS — OpenINTEL lags behind current date
     marker_date = _find_latest_marker_date(storage, layout, source, tld, today)
 
     if marker_date is None:
         return TldPhase.FULL_RUN
 
-    # Marker exists — check if PG was already loaded successfully for the found marker
+    # Marker exists — check if PG was already loaded for this exact snapshot_date
     if db_url:
         try:
             conn = psycopg2.connect(db_url)
             try:
                 with conn.cursor() as cur:
-                    # Look for any successful run started within the lookback window.
-                    # We can't correlate by snapshot_date (column absent), so we check
-                    # for a recent success — if the marker exists and PG has a recent
-                    # success for this TLD, it was almost certainly loaded already.
+                    # Precise check: match by snapshot_date (added in migration 033).
+                    # Fall back to a time-window check for older rows that predate the column.
                     cur.execute(
                         """
                         SELECT 1 FROM ingestion_run
                         WHERE source = %s AND tld = %s AND status = 'success'
-                          AND started_at >= (NOW() - INTERVAL '8 days')
+                          AND (
+                            snapshot_date = %s::date
+                            OR (snapshot_date IS NULL AND started_at::date = %s::date)
+                          )
                         LIMIT 1
                         """,
-                        (source, tld),
+                        (source, tld, marker_date, marker_date),
                     )
                     row = cur.fetchone()
             finally:
@@ -259,6 +258,7 @@ def _process_tld_local(
                     domains_seen=domains_seen,
                     domains_inserted=domains_inserted,
                     domains_deleted=domains_deleted,
+                    snapshot_date=snap_str,
                 )
 
         return TldResult(
@@ -321,7 +321,7 @@ def _load_tld_from_r2(
             )
             added = load_result.get("added_loaded", 0)
             removed = load_result.get("removed_loaded", 0)
-            finish_run(db_url, run_id, status="success", domains_inserted=added, domains_deleted=removed)
+            finish_run(db_url, run_id, status="success", domains_inserted=added, domains_deleted=removed, snapshot_date=snap_str)
             return TldResult(
                 tld=tld, phase=TldPhase.FULL_RUN, status="ok",
                 domains_inserted=added, domains_deleted=removed,
