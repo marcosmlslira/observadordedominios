@@ -1,0 +1,2 @@
+[console_scripts]
+ingestion = ingestion.cli:main
