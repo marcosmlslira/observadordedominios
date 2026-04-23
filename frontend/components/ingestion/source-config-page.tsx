@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CronConfigCard } from "./cron-config-card"
 import { CertStreamSessionCard } from "./certstream-session-card"
 import { TldMetricsTable } from "./tld-metrics-table"
+import { TldStatusTable } from "./tld-status-table"
 import { OrderingModeSelector } from "./ordering-mode-selector"
 import type { OrderingMode } from "./ordering-mode-selector"
 import {
@@ -27,6 +28,7 @@ import type {
   IngestionTldPolicy,
   OpenintelStatusResponse,
   TldMetricsRow,
+  TldStatusResponse,
 } from "@/lib/types"
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -77,6 +79,7 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
   const [policies, setPolicies] = useState<IngestionTldPolicy[]>([])
   const [metricsRows, setMetricsRows] = useState<TldMetricsRow[]>([])
   const [openintelStatus, setOpenintelStatus] = useState<OpenintelStatusResponse | null>(null)
+  const [tldStatus, setTldStatus] = useState<TldStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,18 +92,20 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
     setLoading(true)
     setError(null)
     try {
-      const [configs, tldPolicies, checkpoints, tldRunMetrics, openintelStatusResponse] = await Promise.all([
+      const [configs, tldPolicies, checkpoints, tldRunMetrics, openintelStatusResponse, tldStatusResponse] = await Promise.all([
         getIngestionConfigs(),
         getTldPolicies(source),
         ingestionApi.getCheckpoints(source),
         ingestionApi.getTldRunMetrics(source, 10),
         source === "openintel" ? ingestionApi.getOpenintelStatus() : Promise.resolve(null),
+        ingestionApi.getTldStatus(source),
       ])
 
       const sourceConfig = configs.find((c) => c.source === source) ?? null
       setConfig(sourceConfig)
       setPolicies(tldPolicies)
       setOpenintelStatus(openintelStatusResponse)
+      setTldStatus(tldStatusResponse)
 
       // Build lookup maps
       const checkpointMap = Object.fromEntries(
@@ -297,6 +302,23 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
                     Falha: {openintelStatus.status_counts.failed}
                   </Badge>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {tldStatus && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Status dos TLDs — hoje</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TldStatusTable
+                  items={tldStatus.items}
+                  ok_count={tldStatus.ok_count}
+                  failed_count={tldStatus.failed_count}
+                  running_count={tldStatus.running_count}
+                  never_run_count={tldStatus.never_run_count}
+                />
               </CardContent>
             </Card>
           )}

@@ -608,6 +608,33 @@ export interface OpenintelStatusResponse {
   items: OpenintelTldStatusItem[]
 }
 
+// ── Unified TLD Status ────────────────────────────────
+
+export type TldStatusCategory = "ok" | "running" | "failed" | "never_run"
+
+export interface TldStatusItem {
+  tld: string
+  source: string
+  is_enabled: boolean
+  priority: number | null
+  status: TldStatusCategory
+  last_run_at: string | null
+  last_status: string | null
+  domains_inserted_today: number
+  domains_deleted_today: number
+  error_message: string | null
+}
+
+export interface TldStatusResponse {
+  source: string
+  items: TldStatusItem[]
+  total: number
+  ok_count: number
+  failed_count: number
+  running_count: number
+  never_run_count: number
+}
+
 // ── Monitoring Pipeline ─────────────────────────────
 
 export interface DomainCheckDetail {

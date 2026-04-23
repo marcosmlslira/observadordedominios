@@ -29,6 +29,8 @@ from app.schemas.czds_ingestion import (
     SourceSummaryResponse,
     TldRunMetricsResponse,
     TldRunMetricItem,
+    TldStatusItem,
+    TldStatusResponse,
     OpenintelStatusResponse,
     OpenintelTldStatusItem,
     OpenintelGlobalCounts,
@@ -556,4 +558,82 @@ def get_openintel_status(
         overall_message=overall_message,
         status_counts=counts,
         items=items,
+    )
+
+
+# ── GET /v1/ingestion/tld-status ──────────────────────────────────────────────
+
+
+@router.get("/tld-status", response_model=TldStatusResponse)
+def get_tld_status(
+    source: str = "czds",
+    db: Session = Depends(get_db),
+    _admin=Depends(get_current_admin),
+):
+    """Unified per-TLD status: last run, domains inserted/deleted today, enabled flag."""
+    valid_sources = {"czds", "openintel", "certstream"}
+    if source not in valid_sources:
+        raise HTTPException(status_code=400, detail=f"source must be one of {valid_sources}")
+
+    today_utc = datetime.now(timezone.utc).date()
+
+    rows = db.execute(
+        text("""
+            SELECT
+                p.tld,
+                p.is_enabled,
+                p.priority,
+                r.status        AS last_status,
+                r.started_at    AS last_run_at,
+                r.error_message,
+                COALESCE(r.domains_inserted, 0) AS domains_inserted_today,
+                COALESCE(r.domains_deleted, 0)  AS domains_deleted_today
+            FROM ingestion_tld_policy p
+            LEFT JOIN LATERAL (
+                SELECT status, started_at, error_message, domains_inserted, domains_deleted
+                FROM ingestion_run
+                WHERE source = p.source
+                  AND tld = p.tld
+                  AND started_at::date = :today
+                ORDER BY started_at DESC
+                LIMIT 1
+            ) r ON true
+            WHERE p.source = :source
+            ORDER BY p.priority ASC NULLS LAST, p.tld ASC
+        """),
+        {"source": source, "today": today_utc},
+    ).fetchall()
+
+    items: list[TldStatusItem] = []
+    for row in rows:
+        if row.last_status is None:
+            status = "never_run"
+        elif row.last_status == "running":
+            status = "running"
+        elif row.last_status in ("success", "ok"):
+            status = "ok"
+        else:
+            status = "failed"
+
+        items.append(TldStatusItem(
+            tld=row.tld,
+            source=source,
+            is_enabled=row.is_enabled,
+            priority=row.priority,
+            status=status,
+            last_run_at=row.last_run_at,
+            last_status=row.last_status,
+            domains_inserted_today=row.domains_inserted_today or 0,
+            domains_deleted_today=row.domains_deleted_today or 0,
+            error_message=row.error_message,
+        ))
+
+    return TldStatusResponse(
+        source=source,
+        items=items,
+        total=len(items),
+        ok_count=sum(1 for i in items if i.status == "ok"),
+        failed_count=sum(1 for i in items if i.status == "failed"),
+        running_count=sum(1 for i in items if i.status == "running"),
+        never_run_count=sum(1 for i in items if i.status == "never_run"),
     )

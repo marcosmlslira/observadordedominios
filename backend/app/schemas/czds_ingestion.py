@@ -222,3 +222,31 @@ class OpenintelStatusResponse(BaseModel):
     overall_message: str
     status_counts: OpenintelGlobalCounts
     items: list[OpenintelTldStatusItem]
+
+
+# ── Unified TLD Status (Phase 5A) ─────────────────────────────────────────────
+
+TldStatusCategory = Literal["ok", "running", "failed", "never_run"]
+
+
+class TldStatusItem(BaseModel):
+    tld: str
+    source: str
+    is_enabled: bool
+    priority: int | None = None
+    status: TldStatusCategory
+    last_run_at: datetime | None = None
+    last_status: str | None = None
+    domains_inserted_today: int = 0
+    domains_deleted_today: int = 0
+    error_message: str | None = None
+
+
+class TldStatusResponse(BaseModel):
+    source: str
+    items: list[TldStatusItem]
+    total: int
+    ok_count: int
+    failed_count: int
+    running_count: int
+    never_run_count: int

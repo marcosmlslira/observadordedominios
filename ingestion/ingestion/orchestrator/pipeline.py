@@ -463,4 +463,190 @@ def run_cycle(
     skipped = sum(1 for r in results if r.status == "skipped")
     errors = sum(1 for r in results if r.status == "error")
     log.info("run_cycle done source=%s ok=%d skipped=%d errors=%d", source, ok, skipped, errors)
+
+    # ── Post-cycle: expiration sync + similarity scan trigger ─────────────────
+    if db_url:
+        tlds_with_new = [r.tld for r in results if r.status == "ok" and r.domains_inserted > 0]
+        tlds_with_removed = [r.tld for r in results if r.status == "ok" and r.domains_deleted > 0]
+        tlds_to_sync = list(dict.fromkeys(tlds_with_new + tlds_with_removed))  # deduplicated, order preserved
+
+        for tld in tlds_to_sync:
+            _sync_expiration_for_tld(db_url, source, tld, today)
+
+        if tlds_with_new:
+            _trigger_similarity_scans(db_url, source, tlds_with_new)
+
+    # ── Post-cycle: R2 delta cleanup ──────────────────────────────────────────
+    retention_days = getattr(cfg, "r2_retention_days", 7)
+    _cleanup_r2_deltas(storage, layout, source, today, retention_days=retention_days)
+
     return results
+
+
+# ── Post-cycle helpers ────────────────────────────────────────────────────────
+
+
+def _sync_expiration_for_tld(db_url: str, source: str, tld: str, today: date) -> None:
+    """Propagate domain expiration/reactivation for one TLD into similarity_match."""
+    try:
+        today_int = int(today.strftime("%Y%m%d"))
+        conn = psycopg2.connect(db_url)
+        try:
+            with conn.cursor() as cur:
+                # Mark expired
+                cur.execute(
+                    """
+                    UPDATE similarity_match sm
+                    SET domain_expired_day = dr.removed_day
+                    FROM domain_removed dr
+                    WHERE sm.domain_name = dr.name
+                      AND sm.tld = dr.tld
+                      AND sm.tld = %s
+                      AND sm.domain_expired_day IS NULL
+                    """,
+                    (tld,),
+                )
+                expired = cur.rowcount
+                # Reactivate
+                cur.execute(
+                    """
+                    UPDATE similarity_match sm
+                    SET domain_expired_day = NULL
+                    FROM domain d
+                    WHERE sm.domain_name = d.name
+                      AND sm.tld = d.tld
+                      AND d.tld = %s
+                      AND d.added_day = %s
+                      AND sm.domain_expired_day IS NOT NULL
+                    """,
+                    (tld, today_int),
+                )
+                reactivated = cur.rowcount
+                # Clean up domain_removed for reactivated entries
+                cur.execute(
+                    """
+                    DELETE FROM domain_removed dr
+                    WHERE dr.tld = %s
+                      AND EXISTS (
+                          SELECT 1 FROM domain d
+                          WHERE d.name = dr.name AND d.tld = dr.tld
+                            AND d.added_day = %s
+                      )
+                    """,
+                    (tld, today_int),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        log.info("expiration_sync tld=%s expired=%d reactivated=%d", tld, expired, reactivated)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("expiration_sync failed tld=%s: %s", tld, exc)
+
+
+def _trigger_similarity_scans(db_url: str, source: str, tlds: list[str]) -> None:
+    """Insert delta similarity scan jobs for all active brands after new domains arrive."""
+    if not tlds:
+        return
+    import json
+    import uuid as _uuid
+
+    try:
+        conn = psycopg2.connect(db_url)
+        try:
+            with conn.cursor() as cur:
+                # Fetch all active brand IDs
+                cur.execute(
+                    "SELECT id FROM monitored_brand WHERE is_active = true"
+                )
+                brand_rows = cur.fetchall()
+                if not brand_rows:
+                    return
+
+                records = []
+                for (brand_id,) in brand_rows:
+                    for tld in tlds:
+                        records.append((
+                            str(_uuid.uuid4()),
+                            str(brand_id),
+                            tld,
+                            json.dumps([tld]),   # effective_tlds
+                            json.dumps({}),      # tld_results
+                            False,               # force_full
+                            "queued",
+                            f"ingestion_pipeline/{source}",
+                        ))
+
+                cur.executemany(
+                    """
+                    INSERT INTO similarity_scan_job
+                        (id, brand_id, requested_tld, effective_tlds, tld_results,
+                         force_full, status, initiated_by, queued_at, created_at, updated_at)
+                    VALUES
+                        (%s, %s, %s, %s, %s, %s, %s, %s, now(), now(), now())
+                    ON CONFLICT DO NOTHING
+                    """,
+                    records,
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        log.info(
+            "similarity_scan_trigger source=%s tlds=%d brands=%d jobs_enqueued=%d",
+            source, len(tlds), len(brand_rows), len(records),
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("similarity_scan_trigger failed: %s", exc)
+
+
+def _cleanup_r2_deltas(
+    storage: "R2Storage",
+    layout: "Layout",
+    source: str,
+    today: date,
+    *,
+    retention_days: int = 7,
+) -> None:
+    """Delete delta Parquet files and markers older than retention_days from R2.
+
+    Preserves:
+      - current.parquet (needed for next-day diff)
+      - today and yesterday (in case of retry)
+    """
+    from datetime import timedelta
+
+    try:
+        cutoff = today - timedelta(days=retention_days)
+        prefix = layout.prefix + "/"
+        all_keys = storage.list_keys(prefix)
+        to_delete = []
+
+        for key in all_keys:
+            # Never delete current state files
+            if "current.parquet" in key or "/current/" in key:
+                continue
+            date_str = _extract_date_from_key(key)
+            if date_str is None:
+                continue
+            try:
+                file_date = date.fromisoformat(date_str)
+            except ValueError:
+                continue
+            if file_date < cutoff:
+                to_delete.append(key)
+
+        if to_delete:
+            deleted = storage.delete_keys(to_delete)
+            log.info("r2_cleanup source=%s cutoff=%s deleted=%d", source, cutoff.isoformat(), deleted)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("r2_cleanup failed: %s", exc)
+
+
+def _extract_date_from_key(key: str) -> str | None:
+    """Extract ISO date string from an R2 key path containing snapshot_date=YYYY-MM-DD."""
+    marker = "snapshot_date="
+    idx = key.find(marker)
+    if idx == -1:
+        return None
+    start = idx + len(marker)
+    # Date is 10 chars: YYYY-MM-DD
+    return key[start:start + 10] if len(key) >= start + 10 else None

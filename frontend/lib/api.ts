@@ -145,6 +145,9 @@ export const ingestionApi = {
 
   getOpenintelStatus: () =>
     api.get<import("./types").OpenintelStatusResponse>("/v1/ingestion/openintel/status"),
+
+  getTldStatus: (source: string) =>
+    api.get<import("./types").TldStatusResponse>(`/v1/ingestion/tld-status?source=${encodeURIComponent(source)}`),
 }
 
 // ── Ingestion Config API ──────────────────────────────────────

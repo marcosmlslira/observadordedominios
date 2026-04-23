@@ -37,6 +37,15 @@ class Layout:
         d = snapshot_date.isoformat() if isinstance(snapshot_date, date) else snapshot_date
         return f"{self.prefix}/markers/source={source}/tld={tld}/snapshot_date={d}/success.json"
 
+    def delta_source_prefix(self, source: str) -> str:
+        """Prefix that covers all delta/delta_removed/marker objects for a source."""
+        return f"{self.prefix}/"
+
+    def delta_tld_date_prefix(self, kind: str, source: str, tld: str, snapshot_date: date | str) -> str:
+        """Prefix for all objects under (kind, source, tld, date) — used for cleanup."""
+        d = snapshot_date.isoformat() if isinstance(snapshot_date, date) else snapshot_date
+        return f"{self.prefix}/{kind}/source={source}/tld={tld}/snapshot_date={d}/"
+
     # ── Shards (large TLDs like .com) ─────────────────────────────────────────
 
     def shard_current_key(self, source: str, tld: str, shard_id: int) -> str:
