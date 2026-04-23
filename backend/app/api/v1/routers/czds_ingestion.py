@@ -64,13 +64,17 @@ def _run_sync_in_background(tld: str, force: bool, run_id: UUID) -> None:
     response_model=TriggerSyncResponse,
     status_code=202,
     responses={409: {"model": ErrorResponse}},
-    summary="Trigger a CZDS zone sync for a TLD",
+    summary="[DEPRECATED] Trigger a CZDS zone sync for a TLD",
+    deprecated=True,
 )
 def trigger_sync(
     body: TriggerSyncRequest,
     db: Session = Depends(get_db),
 ):
     """
+    **DEPRECATED**: Use the ingestion package orchestrator instead.
+    This endpoint uses the legacy sync pipeline and will be removed in a future release.
+
     Queue a zone file sync for the given TLD.
 
     Returns 202 with the run_id if accepted.

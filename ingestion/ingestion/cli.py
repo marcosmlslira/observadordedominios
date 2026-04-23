@@ -1,11 +1,12 @@
 """CLI entrypoint — `python -m ingestion <subcommand> [options]`
 
 Subcommands:
-  czds        Download CZDS zone files, diff, write Parquet to R2 (local)
-  openintel   Download OpenINTEL snapshots, diff, write Parquet to R2 (local)
-  load        Read delta Parquet from R2, bulk-load into PostgreSQL
-  submit      Submit ingestion jobs to Databricks (czds | openintel)
-  orchestrate Run the full daily ingestion cycle for a source (orchestrator)
+  czds           Download CZDS zone files, diff, write Parquet to R2 (local)
+  openintel      Download OpenINTEL snapshots, diff, write Parquet to R2 (local)
+  load           Read delta Parquet from R2, bulk-load into PostgreSQL
+  submit         Submit ingestion jobs to Databricks (czds | openintel)
+  orchestrate    Run the full daily ingestion cycle for a source (orchestrator)
+  seed-policies  Seed ingestion_tld_policy from CZDS API + OpenINTEL catalog
 """
 
 from __future__ import annotations
@@ -70,6 +71,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_orch.add_argument("--source", required=True, choices=["czds", "openintel"])
     p_orch.add_argument("--snapshot-date", default=None, help="Override snapshot date (YYYY-MM-DD)")
+
+    # ── seed-policies ─────────────────────────────────────────────────────────
+    p_seed = sub.add_parser(
+        "seed-policies",
+        help="Seed ingestion_tld_policy from CZDS API + OpenINTEL catalog",
+    )
+    p_seed.add_argument(
+        "--source",
+        choices=["czds", "openintel"],
+        default=None,
+        help="Seed only this source (default: both)",
+    )
+    p_seed.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would be seeded without writing to DB",
+    )
 
     return parser
 
@@ -248,6 +266,22 @@ def cmd_load(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_seed_policies(args: argparse.Namespace) -> int:
+    from ingestion.config.seed_tld_policies import run_seed
+
+    cfg = get_settings()
+    if not args.dry_run and not cfg.database_url:
+        print("ERROR: DATABASE_URL is required (or use --dry-run)", file=sys.stderr)
+        return 1
+
+    run_seed(
+        source=args.source,
+        dry_run=args.dry_run,
+        db_url=cfg.database_url or None,
+    )
+    return 0
+
+
 def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
@@ -262,6 +296,7 @@ def main() -> None:
         "load": cmd_load,
         "submit": cmd_submit,
         "orchestrate": cmd_orchestrate,
+        "seed-policies": cmd_seed_policies,
     }
     handler = dispatch.get(args.command)
     if handler is None:

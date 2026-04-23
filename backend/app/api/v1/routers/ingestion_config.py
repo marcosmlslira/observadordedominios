@@ -142,7 +142,8 @@ def bulk_upsert_tld_policy(
     "/trigger/{source}/{tld}",
     response_model=TriggerTldResponse,
     status_code=202,
-    summary="Trigger manual ingestion for a specific TLD",
+    summary="[DEPRECATED] Trigger manual ingestion for a specific TLD",
+    deprecated=True,
 )
 def trigger_tld(
     source: str,
@@ -150,7 +151,10 @@ def trigger_tld(
     body: TriggerTldRequest,
     db: Session = Depends(get_db),
 ):
-    """Queue an immediate ingestion run for a single TLD.
+    """**DEPRECATED**: Use the ingestion package orchestrator instead.
+    This endpoint uses the legacy sync pipeline and will be removed in a future release.
+
+    Queue an immediate ingestion run for a single TLD.
 
     Supported sources: czds, openintel.
     Returns 202 with run_id when accepted.
