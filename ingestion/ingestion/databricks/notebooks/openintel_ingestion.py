@@ -7,38 +7,48 @@
 # MAGIC via `base_parameters` — no secrets are hardcoded here.
 
 # COMMAND ----------
+# Cell 1: pip install — runs before restartPython so upgraded packages are available
+
+import subprocess
+import sys
+
+dbutils.widgets.text("INGESTION_GIT_REF", "main", "Git ref usado no pip install")  # noqa: F821
+_git_ref = dbutils.widgets.get("INGESTION_GIT_REF").strip() or "main"  # noqa: F821
+_pkg_url = f"git+https://github.com/marcosmlslira/observadordedominios@{_git_ref}#subdirectory=ingestion"
+
+# typing_extensions>=4.12.2 required by pydantic>=2.8 (Sentinel); upgrade first
+_r1 = subprocess.run(
+    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install",
+     "--upgrade", "typing_extensions>=4.12.2"],
+    capture_output=True, text=True,
+)
+if _r1.returncode != 0:
+    raise RuntimeError("TYPING_EXT_FAIL: " + _r1.stderr[-2000:])
+
+_r2 = subprocess.run(
+    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", _pkg_url],
+    capture_output=True, text=True,
+)
+if _r2.returncode != 0:
+    raise RuntimeError("PIP_FAIL: stdout=" + _r2.stdout[-1500:] + " stderr=" + _r2.stderr[-1500:])
+
+# COMMAND ----------
+# Cell 2: restart Python so the newly installed packages are picked up
+
+dbutils.library.restartPython()  # noqa: F821
+
+# COMMAND ----------
+# Cell 3: re-declare all widgets (values survive restart), inject env, run ingestion
 
 import os
+import json
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
 dbutils.widgets.text("TARGET_TLD", "br", "TLD sem ponto")  # noqa: F821
 dbutils.widgets.text("SNAPSHOT_DATE_OVERRIDE", "", "Data YYYY-MM-DD (vazio = hoje)")  # noqa: F821
 dbutils.widgets.text("INGESTION_GIT_REF", "main", "Git ref usado no pip install")  # noqa: F821
-
-# COMMAND ----------
-
-import subprocess
-import sys
-import importlib
-
-_git_ref = dbutils.widgets.get("INGESTION_GIT_REF").strip() or "main"  # noqa: F821
-_pkg_url = f"git+https://github.com/marcosmlslira/observadordedominios@{_git_ref}#subdirectory=ingestion"
-
-_r1 = subprocess.run(
-    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", "--upgrade", "typing_extensions>=4.12.2"],
-    capture_output=True, text=True,
-)
-if _r1.returncode != 0:
-    dbutils.notebook.exit("TYPING_EXT_FAIL: " + _r1.stderr[-2000:])  # noqa: F821
-
-_result = subprocess.run(
-    [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", _pkg_url],
-    capture_output=True, text=True,
-)
-if _result.returncode != 0:
-    dbutils.notebook.exit("PIP_FAIL: stdout=" + _result.stdout[-1500:] + " stderr=" + _result.stderr[-1500:])  # noqa: F821
-importlib.invalidate_caches()
-
-# ── credentials injected by submitter ─────────────────────────────────────────
 dbutils.widgets.text("R2_ACCOUNT_ID", "", "R2 Account ID")  # noqa: F821
 dbutils.widgets.text("R2_ACCESS_KEY_ID", "", "R2 Access Key ID")  # noqa: F821
 dbutils.widgets.text("R2_SECRET_ACCESS_KEY", "", "R2 Secret Key")  # noqa: F821
@@ -46,7 +56,6 @@ dbutils.widgets.text("R2_BUCKET", "observadordedominios", "R2 Bucket")  # noqa: 
 dbutils.widgets.text("R2_PREFIX", "lake/domain_ingestion", "R2 Prefix")  # noqa: F821
 dbutils.widgets.text("LOG_FORMAT", "text", "Log format")  # noqa: F821
 
-# Inject into env before Settings() is instantiated
 _CRED_WIDGETS = [
     "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
     "R2_BUCKET", "R2_PREFIX", "LOG_FORMAT",
@@ -59,17 +68,10 @@ for _key in _CRED_WIDGETS:
 TARGET_TLD = dbutils.widgets.get("TARGET_TLD").strip().lower()  # noqa: F821
 SNAPSHOT_DATE_OVERRIDE = dbutils.widgets.get("SNAPSHOT_DATE_OVERRIDE").strip() or None  # noqa: F821
 
-# COMMAND ----------
-
-import json
-import logging
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-
 from ingestion.config.settings import reset_settings_cache
 from ingestion.runners.openintel_runner import run_openintel_from_env
 
-reset_settings_cache()  # ensure fresh Settings() picks up injected env vars
+reset_settings_cache()
 
 results = run_openintel_from_env(tld=TARGET_TLD, snapshot_date=SNAPSHOT_DATE_OVERRIDE)
 
