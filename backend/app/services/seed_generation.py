@@ -15,6 +15,7 @@ from app.services.monitoring_profile import (
 from app.services.use_cases.compute_similarity import (
     HOMOGRAPH_REVERSE,
     RISK_KEYWORDS,
+    encode_idna_label,
     generate_typo_candidates,
 )
 
@@ -59,8 +60,14 @@ def generate_deterministic_seeds(
     seeds: list[dict] = []
     seen: set[tuple[str, str, str]] = set()
 
-    def _add(seed_value: str, seed_type: str, channel_scope: str = "registrable_domain") -> bool:
-        normalized = normalize_brand_text(seed_value)
+    def _add(
+        seed_value: str,
+        seed_type: str,
+        channel_scope: str = "registrable_domain",
+        *,
+        normalize: bool = True,
+    ) -> bool:
+        normalized = normalize_brand_text(seed_value) if normalize else seed_value.strip().lower()
         if not normalized or len(normalized) < 3:
             return False
         key = (normalized, seed_type, channel_scope)
@@ -136,8 +143,17 @@ def generate_deterministic_seeds(
             if homograph_count >= MAX_HOMOGRAPH_SEEDS:
                 break
             for variant_char in HOMOGRAPH_REVERSE.get(c, []):
+                if variant_char.isascii():
+                    continue
                 variant = core[:i] + variant_char + core[i + 1:]
-                if _add(variant, "homograph_base"):
+                punycode_variant = encode_idna_label(variant)
+                if (
+                    not punycode_variant
+                    or not punycode_variant.startswith("xn--")
+                    or punycode_variant == core
+                ):
+                    continue
+                if _add(punycode_variant, "homograph_base", normalize=False):
                     homograph_count += 1
 
     logger.info("Generated %d homograph_base seeds for brand=%s", homograph_count, brand_label)

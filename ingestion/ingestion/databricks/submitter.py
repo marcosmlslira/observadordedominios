@@ -70,6 +70,65 @@ class DatabricksSubmitter:
         self.cfg = cfg
         self.client = DatabricksClient(cfg.databricks_host, cfg.databricks_token)
 
+    def submit_batch(
+        self,
+        source: str,
+        tlds: list[str],
+        *,
+        snapshot_date: str | None = None,
+        wait: bool = True,
+        timeout_seconds: int = 14400,
+        serverless: bool = True,
+    ) -> dict[str, Any]:
+        """Upload the notebook for *source* and submit ONE job run for a batch of TLDs.
+
+        The notebook receives TLDS=tld1,tld2,... and loops with per-TLD isolation.
+        TARGET_TLD is set to the first TLD for backward compatibility.
+
+        Returns:
+            dict with run_id, tlds, status, result_state
+        """
+        if not tlds:
+            return {"run_id": None, "tlds": [], "status": "skipped"}
+
+        notebook_local = _locate_notebook(source)
+        workspace_path = self.cfg.databricks_workspace_path.rstrip("/")
+        workspace_nb = f"{workspace_path}/{source}_ingestion"
+        parent = workspace_nb.rsplit("/", 1)[0]
+
+        self.client.workspace_mkdirs(parent)
+        self.client.workspace_import(local_file=notebook_local, workspace_path=workspace_nb)
+        log.info("databricks notebook uploaded: %s → %s", notebook_local.name, workspace_nb)
+
+        # First TLD as TARGET_TLD for backward compat; TLDS drives the loop
+        base_params = _build_base_parameters(self.cfg, tlds[0], snapshot_date)
+        base_params["TLDS"] = ",".join(tlds)
+
+        today = snapshot_date or date.today().isoformat()
+        run_name = f"ingestion-{source}-batch-{len(tlds)}tlds-{today}"
+
+        run_id = self.client.submit_notebook_run(
+            run_name=run_name,
+            notebook_path=workspace_nb,
+            base_parameters=base_params,
+            serverless=serverless,
+            timeout_seconds=timeout_seconds,
+        )
+        log.info("databricks batch submitted: run_id=%d source=%s tlds=%s", run_id, source, tlds)
+
+        if not wait:
+            return {"run_id": run_id, "tlds": tlds, "status": "submitted"}
+
+        run = self.client.wait(run_id)
+        result_state = run.get("state", {}).get("result_state", "UNKNOWN")
+        ok = result_state == "SUCCESS"
+        return {
+            "run_id": run_id,
+            "tlds": tlds,
+            "status": "ok" if ok else "error",
+            "result_state": result_state,
+        }
+
     def submit(
         self,
         source: str,

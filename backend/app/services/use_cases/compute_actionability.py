@@ -30,7 +30,7 @@ def compute_actionability(
     matched_seed_type: str | None,
     matched_seed_value: str | None,
     matched_channel: str | None,
-    domain_first_seen: datetime,
+    domain_first_seen: int | None,
 ) -> dict[str, object]:
     score = score_final * 0.35
     actionability_reasons: list[str] = []
@@ -48,7 +48,17 @@ def compute_actionability(
         and seed_value != brand_label
     )
 
-    age_days = max(0, int((datetime.now(timezone.utc) - domain_first_seen).total_seconds() // 86400))
+    if domain_first_seen:
+        y = domain_first_seen // 10000
+        m = (domain_first_seen % 10000) // 100
+        d = domain_first_seen % 100
+        try:
+            first_seen_dt = datetime(y, m, d, tzinfo=timezone.utc)
+            age_days = max(0, int((datetime.now(timezone.utc) - first_seen_dt).total_seconds() // 86400))
+        except (ValueError, TypeError):
+            age_days = 999
+    else:
+        age_days = 999
     if age_days <= 30:
         score += 0.18
         actionability_reasons.append("newly_observed_domain")

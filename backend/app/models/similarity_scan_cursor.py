@@ -1,5 +1,6 @@
 """SimilarityScanCursor — tracks scan progress per brand × TLD."""
 
+import sqlalchemy as sa
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -22,6 +23,7 @@ class SimilarityScanCursor(Base):
     # pending | running | complete | failed
 
     watermark_at = Column(DateTime(timezone=True), nullable=True)
+    watermark_day = Column(sa.Integer, nullable=True)  # YYYYMMDD — ADR-001
     resume_after = Column(String(253), nullable=True)
 
     domains_scanned = Column(BigInteger, nullable=False, default=0)

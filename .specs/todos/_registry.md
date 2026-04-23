@@ -8,6 +8,7 @@
 | 005 | Ordenação e Prioridade nas Páginas de Ingestão | done | .specs/todos/005/plan.md | 2026-04-16 |
 | 006 | Acesso contínuo ao PostgreSQL via DBeaver + SSH | done | .specs/todos/006/plan.md | 2026-04-16 |
 | 007 | Seed-first candidate retrieval + pausa LLM granular | done | .specs/todos/007/implementation_plan.md | 2026-04-25 |
+| 008 | Pipeline de Ingestão Automatizado: Orquestrador + Observabilidade | todo | .specs/todos/008/plan.md | 2026-04-23 |
 
 ## Legenda de status
 

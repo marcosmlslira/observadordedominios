@@ -147,9 +147,8 @@ def _apply_via_staging(
     GIN trigram index is updated only for net-new domains (~1-2% daily).
     Subsequent runs complete in ~30-45 min for .com instead of ~74h.
 
-    Trade-off: existing domains do NOT get last_seen_at updated (skip_update
-    policy).  Disappearance detection via last_seen_at is not available for
-    large TLDs using this path.
+    Trade-off: existing domains are not re-inserted (skip_update policy).
+    Removal detection is handled via the ingestion set-diff pipeline.
     """
     ts = datetime.now(timezone.utc)
     repo = DomainRepository(db)

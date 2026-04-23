@@ -68,6 +68,30 @@ QWERTY_ADJACENT: dict[str, str] = {
 
 # ── Normalization ──────────────────────────────────────────────
 
+
+def encode_idna_label(label: str) -> str:
+    """Encode a single label to ASCII IDNA when it contains Unicode characters."""
+    normalized = label.strip().lower()
+    if not normalized:
+        return ""
+    if normalized.isascii():
+        return normalized
+    try:
+        return normalized.encode("idna").decode("ascii")
+    except UnicodeError:
+        return ""
+
+
+def decode_idna_label(label: str) -> str:
+    """Decode a punycode label back to Unicode for scoring and explainability."""
+    normalized = label.strip().lower()
+    if not normalized.startswith("xn--"):
+        return normalized
+    try:
+        return normalized.encode("ascii").decode("idna")
+    except UnicodeError:
+        return normalized
+
 def normalize_homograph(label: str) -> str:
     """Normalize a domain label by replacing confusable characters."""
     # First: NFKD unicode normalization (handles ligatures, accents)
@@ -87,29 +111,34 @@ def generate_typo_candidates(brand_label: str) -> set[str]:
     candidates: set[str] = set()
     n = len(brand_label)
 
+    def _add_candidate(value: str) -> None:
+        encoded = encode_idna_label(value)
+        if encoded:
+            candidates.add(encoded)
+
     # 1. Character omission
     for i in range(n):
-        candidates.add(brand_label[:i] + brand_label[i + 1:])
+        _add_candidate(brand_label[:i] + brand_label[i + 1:])
 
     # 2. Character duplication
     for i in range(n):
-        candidates.add(brand_label[:i] + brand_label[i] + brand_label[i:])
+        _add_candidate(brand_label[:i] + brand_label[i] + brand_label[i:])
 
     # 3. Adjacent character swap
     for i in range(n - 1):
-        candidates.add(
+        _add_candidate(
             brand_label[:i] + brand_label[i + 1] + brand_label[i] + brand_label[i + 2:]
         )
 
     # 4. QWERTY adjacent key substitution
     for i, c in enumerate(brand_label):
         for adj in QWERTY_ADJACENT.get(c, ""):
-            candidates.add(brand_label[:i] + adj + brand_label[i + 1:])
+            _add_candidate(brand_label[:i] + adj + brand_label[i + 1:])
 
     # 5. Homograph substitutions
     for i, c in enumerate(brand_label):
         for variant in HOMOGRAPH_REVERSE.get(c, []):
-            candidates.add(brand_label[:i] + variant + brand_label[i + 1:])
+            _add_candidate(brand_label[:i] + variant + brand_label[i + 1:])
 
     # Remove the original brand itself
     candidates.discard(brand_label)
@@ -147,25 +176,38 @@ def compute_scores(
     Returns:
         Dict with score_final, individual scores, risk_level, and reasons.
     """
+    decoded_label = decode_idna_label(label)
+    normalized_label = normalize_homograph(decoded_label)
+    normalized_brand = normalize_homograph(brand_label)
+
     # 1. Trigram (already computed in SQL)
     score_trigram = trigram_sim
 
     # 2. Levenshtein normalized (0-1, higher = more similar)
-    max_len = max(len(label), len(brand_label))
-    if max_len == 0:
-        score_levenshtein = 0.0
+    raw_max_len = max(len(decoded_label), len(brand_label))
+    if raw_max_len == 0:
+        raw_score_levenshtein = 0.0
     else:
-        edit_dist = _levenshtein(label, brand_label)
-        score_levenshtein = 1.0 - (edit_dist / max_len)
+        raw_edit_dist = _levenshtein(decoded_label, brand_label)
+        raw_score_levenshtein = 1.0 - (raw_edit_dist / raw_max_len)
 
-    exact_match = label == brand_label
+    normalized_max_len = max(len(normalized_label), len(normalized_brand))
+    if normalized_max_len == 0:
+        normalized_score_levenshtein = 0.0
+    else:
+        normalized_edit_dist = _levenshtein(normalized_label, normalized_brand)
+        normalized_score_levenshtein = 1.0 - (normalized_edit_dist / normalized_max_len)
+
+    score_levenshtein = max(raw_score_levenshtein, normalized_score_levenshtein)
+    exact_match = decoded_label == brand_label
 
     # 3. Brand containment (boundary-aware to avoid cases like "authority" -> "itau")
-    score_brand_hit = 1.0 if _has_brand_boundary_match(label, brand_label) else 0.0
+    score_brand_hit = (
+        1.0 if _has_brand_boundary_match(normalized_label, normalized_brand) else 0.0
+    )
 
     # 4. Keyword risk scoring
-    label_lower = label.lower()
-    residual_text = label_lower.replace(brand_label.lower(), " ")
+    residual_text = normalized_label.replace(normalized_brand, " ")
     residual_tokens = _extract_tokens(residual_text)
     risk_hits = sum(
         1 for kw in RISK_KEYWORDS
@@ -178,18 +220,14 @@ def compute_scores(
     score_keyword = min(1.0, risk_hits * 0.3 + brand_kw_hits * 0.2)
 
     # 5. Homograph similarity
-    norm_label = normalize_homograph(label)
-    norm_brand = normalize_homograph(brand_label)
-    if norm_label == norm_brand:
+    if normalized_label == normalized_brand:
         score_homograph = 1.0
     else:
-        # Use trigram as proxy for normalized similarity
-        # (actual pg_trgm would need a DB call; approximate here)
-        max_len_h = max(len(norm_label), len(norm_brand))
+        max_len_h = max(len(normalized_label), len(normalized_brand))
         if max_len_h == 0:
             score_homograph = 0.0
         else:
-            dist_h = _levenshtein(norm_label, norm_brand)
+            dist_h = _levenshtein(normalized_label, normalized_brand)
             score_homograph = 1.0 - (dist_h / max_len_h)
 
     # Composite score
@@ -303,6 +341,10 @@ def _classify_seeded_risk(
 ) -> str:
     threshold_boost = 0.02 if channel_scope == "certificate_hostname" else 0.0
     if "exact_label_match" in reasons and score_final >= 0.78:
+        return "high"
+    if "homograph_attack" in reasons and "risky_keywords" in reasons and score_final >= 0.60 + threshold_boost:
+        return "critical"
+    if "homograph_attack" in reasons and score_final >= 0.58 + threshold_boost:
         return "high"
     if "brand_containment" in reasons and "risky_keywords" in reasons and score_final >= 0.64 + threshold_boost:
         return "critical"

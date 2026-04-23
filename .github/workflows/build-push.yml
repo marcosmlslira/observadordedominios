@@ -20,6 +20,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      ingestion: ${{ steps.filter.outputs.ingestion }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -30,6 +31,8 @@ jobs:
               - 'backend/**'
             frontend:
               - 'frontend/**'
+            ingestion:
+              - 'ingestion/**'
 
   build-backend:
     needs: detect-changes
@@ -65,9 +68,26 @@ jobs:
           docker build --build-arg NEXT_PUBLIC_API_URL="$FRONTEND_API_URL" -t "$IMAGE" frontend/
           docker push "$IMAGE"
 
+  build-ingestion:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ingestion == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login "$GHCR_REGISTRY" --username "$GHCR_OWNER" --password-stdin
+      - name: Build and push ingestion
+        run: |
+          IMAGE="$GHCR_REGISTRY/$GHCR_OWNER/observador-ingestion:latest"
+          docker build -t "$IMAGE" ingestion/
+          docker push "$IMAGE"
+
   trigger-deploy:
-    needs: [build-backend, build-frontend]
-    if: always() && (needs.build-backend.result == 'success' || needs.build-frontend.result == 'success')
+    needs: [build-backend, build-frontend, build-ingestion]
+    if: always() && (needs.build-backend.result == 'success' || needs.build-frontend.result == 'success' || needs.build-ingestion.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger deploy on docker-stack-infra

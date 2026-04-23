@@ -46,7 +46,8 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
-dbutils.widgets.text("TARGET_TLD", "br", "TLD sem ponto")  # noqa: F821
+dbutils.widgets.text("TARGET_TLD", "br", "TLD sem ponto (single-TLD compat)")  # noqa: F821
+dbutils.widgets.text("TLDS", "", "TLDs separados por vírgula (batch — sobrescreve TARGET_TLD)")  # noqa: F821
 dbutils.widgets.text("SNAPSHOT_DATE_OVERRIDE", "", "Data YYYY-MM-DD (vazio = hoje)")  # noqa: F821
 dbutils.widgets.text("INGESTION_GIT_REF", "main", "Git ref usado no pip install")  # noqa: F821
 dbutils.widgets.text("R2_ACCOUNT_ID", "", "R2 Account ID")  # noqa: F821
@@ -65,29 +66,41 @@ for _key in _CRED_WIDGETS:
     if _val:
         os.environ[_key] = _val
 
+# TLDS widget (batch) takes precedence over TARGET_TLD (single-TLD compat)
+_tlds_raw = dbutils.widgets.get("TLDS").strip()  # noqa: F821
 TARGET_TLD = dbutils.widgets.get("TARGET_TLD").strip().lower()  # noqa: F821
 SNAPSHOT_DATE_OVERRIDE = dbutils.widgets.get("SNAPSHOT_DATE_OVERRIDE").strip() or None  # noqa: F821
+
+tld_list = [t.strip().lower() for t in _tlds_raw.split(",") if t.strip()] if _tlds_raw else [TARGET_TLD]
 
 from ingestion.config.settings import reset_settings_cache
 from ingestion.runners.openintel_runner import run_openintel_from_env
 
 reset_settings_cache()
 
-results = run_openintel_from_env(tld=TARGET_TLD, snapshot_date=SNAPSHOT_DATE_OVERRIDE)
+_batch_errors = []
+for _tld in tld_list:
+    print(f"=== OpenINTEL: processing TLD={_tld} ===")
+    try:
+        results = run_openintel_from_env(tld=_tld, snapshot_date=SNAPSHOT_DATE_OVERRIDE)
+        for r in results:
+            print(json.dumps({
+                "tld": r.run_key.tld,
+                "status": r.status,
+                "snapshot": r.snapshot_count,
+                "added": r.added_count,
+                "removed": r.removed_count,
+                "error": r.error_message,
+            }))
+        tld_errs = [r for r in results if r.status == "error"]
+        if tld_errs:
+            _batch_errors.append(f"tld={_tld}: {[r.error_message or 'unknown' for r in tld_errs]}")
+    except Exception as _exc:
+        _msg = f"tld={_tld} raised: {_exc}"
+        print(f"ERROR: {_msg}")
+        _batch_errors.append(_msg)
 
-for r in results:
-    print(json.dumps({
-        "tld": r.run_key.tld,
-        "status": r.status,
-        "snapshot": r.snapshot_count,
-        "added": r.added_count,
-        "removed": r.removed_count,
-        "error": r.error_message,
-    }))
-
-errors = [r for r in results if r.status == "error"]
-if errors:
-    msgs = [r.error_message or "unknown" for r in errors]
-    raise RuntimeError(f"OpenINTEL ingestion failed for TLD={TARGET_TLD}: {msgs}")
+if _batch_errors:
+    raise RuntimeError("OpenINTEL batch ingestion errors:\n" + "\n".join(_batch_errors))
 
 dbutils.notebook.exit("OK")  # noqa: F821

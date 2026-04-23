@@ -99,32 +99,33 @@ services:
       restart_policy:
         condition: on-failure
 
-  czds_ingestor:
-    image: observadordedominios-backend:dev
+  ingestion_worker:
+    image: observadordedominios-ingestion:dev
     volumes:
-      - c:\PROJETOS\observadordedominios\backend:/app
-      - zonedata:/data
+      - c:\PROJETOS\observadordedominios\ingestion:/app
     environment:
       - PYTHONUNBUFFERED=1
-      - ENVIRONMENT=development
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
-      - S3_BUCKET=observador-zones
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_ACCESS_KEY_ID=minioadmin
-      - S3_SECRET_ACCESS_KEY=minioadmin
-      - S3_FORCE_PATH_STYLE=true
-      - CZDS_USERNAME=marcosmlslira@gmail.com
-      - CZDS_PASSWORD=mls1509TI@,,2099
-      - CZDS_ENABLED_TLDS=com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,club,vip,icu,live,digital,world,today,email,solutions,services,support,group,company,center,zone,agency,systems,network,works,tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,finance,financial,money,credit,loan,bank,capital,fund,exchange,trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,blog,press,link,click,one,pro,name,life,plus,now,global,expert,academy,education,school,host,hosting,domains,security,safe,protect,chat,social,community,team,studio,design,marketing,consulting,partners,ventures,holdings,international
-      - CZDS_SYNC_CRON=0 17 * * *
-      - CZDS_FORCE_COOLDOWN_HOURS=24
-      - CZDS_RUNNING_STALE_MINUTES=480
-    command: ["python", "-m", "app.worker.czds_ingestor"]
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET=observadordedominios
+      - R2_PREFIX=lake/domain_ingestion
+      - CZDS_USERNAME=${CZDS_USERNAME:-}
+      - CZDS_PASSWORD=${CZDS_PASSWORD:-}
+      - CZDS_TLDS=all
+      - DATABRICKS_HOST=${DATABRICKS_HOST:-}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN:-}
+      - DATABRICKS_WORKSPACE_PATH=/ingestion/notebooks
+      - INGESTION_GIT_REF=main
+      - OPENINTEL_TLDS=ac,br,uk,de,fr,se,nu,ch,li,sk,ee
+      - OPENINTEL_ZONEFILE_TLDS=ch,ee,fr,li,nu,se,sk
+      - LOG_FORMAT=text
+      - LOG_LEVEL=DEBUG
     networks:
       - app-network
     depends_on:
       - postgres
-      - minio
     deploy:
       replicas: 1
       restart_policy:
@@ -166,31 +167,7 @@ services:
       restart_policy:
         condition: on-failure
 
-  openintel_ingestor:
-    image: observadordedominios-backend:dev
-    volumes:
-      - c:\PROJETOS\observadordedominios\backend:/app
-    environment:
-      - PYTHONUNBUFFERED=1
-      - ENVIRONMENT=development
-      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
-      # Controlled local testing: only fr, 1 day lookback, no CZDS conflict guard needed locally
-      - OPENINTEL_ENABLED_TLDS=fr
-      - OPENINTEL_S3_BUCKET=openintel-public
-      - OPENINTEL_S3_ENDPOINT=https://object.openintel.nl
-      - OPENINTEL_S3_PREFIX=fdns/basis=zonefile/
-      - OPENINTEL_S3_QNAME_COLUMN=query_name
-      - OPENINTEL_MAX_LOOKBACK_DAYS=1
-      - OPENINTEL_SYNC_CRON=0 13 * * *
-    command: ["python", "-m", "app.worker.openintel_ingestor"]
-    networks:
-      - app-network
-    depends_on:
-      - postgres
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
+
 
   health_worker:
     image: observadordedominios-backend:dev

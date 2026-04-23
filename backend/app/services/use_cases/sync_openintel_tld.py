@@ -1,6 +1,19 @@
-"""Use case: sync a single TLD from OpenINTEL — S3 zonefile or web CSV.GZ."""
+"""Use case: sync a single TLD from OpenINTEL — S3 zonefile or web CSV.GZ.
+
+.. deprecated::
+    This module is superseded by the ``ingestion`` package orchestrator.
+    It will be removed in a future release.
+"""
 
 from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "sync_openintel_tld is deprecated. Use the ingestion package orchestrator instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import logging
 import uuid

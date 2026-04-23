@@ -443,7 +443,7 @@ def regenerate_brand_seeds(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
 
-    regenerate_seeds_for_brand(repo, brand)
+    regenerate_seeds_for_brand(repo, brand, run_llm=include_llm)
     db.commit()
 
     # Reload to get fresh seeds

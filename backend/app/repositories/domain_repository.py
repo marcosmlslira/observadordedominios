@@ -1,10 +1,8 @@
-"""Repository for domain bulk operations — simplified upsert without staging."""
+"""Repository for domain bulk operations — ADR-001 schema (added_day INTEGER)."""
 
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
-from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,67 +11,49 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_partition(db: Session, tld: str) -> None:
-    """Create a partition for the TLD if it doesn't exist yet.
+    """Create domain and domain_removed partitions for a TLD if they don't exist.
 
-    Uses lock_timeout=1ms (non-blocking) so the DDL never queues an
-    ACCESS EXCLUSIVE lock that would cascade-block concurrent INSERTs.
-    If the lock is unavailable, rolls back cleanly and re-raises so the
-    caller can skip this TLD and retry on the next cycle.
-
-    NOTE: lock_timeout=0 would DISABLE the timeout (wait forever), which is
-    the PostgreSQL default. We use lock_timeout=1 (1ms) to fail immediately.
-
-    Handles multi-level TLDs: dots and hyphens are replaced with underscores
-    in the partition name, but the actual TLD value is preserved in FOR VALUES IN.
-
-    Examples:
-        "net"    -> partition "domain_net"    FOR VALUES IN ('net')
-        "com.br" -> partition "domain_com_br" FOR VALUES IN ('com.br')
+    Uses lock_timeout=1ms (non-blocking) to avoid queuing ACCESS EXCLUSIVE
+    locks that would cascade-block concurrent INSERTs.
     """
     safe_tld = tld.replace("-", "_").replace(".", "_")
-    partition_name = f"domain_{safe_tld}"
 
-    exists = db.execute(
-        text("SELECT 1 FROM pg_class WHERE relname = :name"),
-        {"name": partition_name},
-    ).scalar()
+    for parent, suffix in [("domain", ""), ("domain_removed", "_removed")]:
+        partition_name = f"domain{suffix}_{safe_tld}"
+        exists = db.execute(
+            text("SELECT 1 FROM pg_class WHERE relname = :name"),
+            {"name": partition_name},
+        ).scalar()
 
-    if not exists:
-        try:
-            # lock_timeout=1 (1ms) means fail immediately if ACCESS EXCLUSIVE is unavailable
-            # instead of queueing — prevents cascading stalls of concurrent INSERTs.
-            # IMPORTANT: '0' would disable the timeout (PostgreSQL default), not enable it!
-            db.execute(text("SET LOCAL lock_timeout = 1"))
-            db.execute(text(
-                f"CREATE TABLE {partition_name} PARTITION OF domain "
-                f"FOR VALUES IN ('{tld}')"
-            ))
-            db.commit()
-            logger.info("Created partition %s for TLD=%s", partition_name, tld)
-        except Exception as exc:
-            db.rollback()
-            # Re-check: another process may have created it during our attempt
-            created_by_other = db.execute(
-                text("SELECT 1 FROM pg_class WHERE relname = :name"),
-                {"name": partition_name},
-            ).scalar()
-            if created_by_other:
-                logger.info("Partition %s already created by concurrent process", partition_name)
-                return
-            logger.warning(
-                "Cannot create partition %s (lock unavailable or error): %s — "
-                "TLD will be retried on next cycle.",
-                partition_name, exc,
-            )
-            raise
+        if not exists:
+            try:
+                db.execute(text("SET LOCAL lock_timeout = 1"))
+                db.execute(
+                    text(
+                        f"CREATE TABLE {partition_name} PARTITION OF {parent} "
+                        f"FOR VALUES IN ('{tld}')"
+                    )
+                )
+                db.commit()
+                logger.info("Created partition %s for TLD=%s", partition_name, tld)
+            except Exception as exc:
+                db.rollback()
+                created_by_other = db.execute(
+                    text("SELECT 1 FROM pg_class WHERE relname = :name"),
+                    {"name": partition_name},
+                ).scalar()
+                if created_by_other:
+                    logger.info("Partition %s already created by concurrent process", partition_name)
+                    return
+                logger.warning(
+                    "Cannot create partition %s (lock unavailable or error): %s",
+                    partition_name, exc,
+                )
+                raise
 
 
 def list_partition_tlds(db: Session) -> list[str]:
-    """Discover all TLDs from domain table partitions.
-
-    Extracts the actual TLD value from the partition bound expression,
-    not from the partition name (which may have dots replaced with underscores).
-    """
+    """Discover all TLDs from domain table partitions."""
     rows = db.execute(text("""
         SELECT pg_get_expr(c.relpartbound, c.oid) AS bound_expr
         FROM pg_class c
@@ -86,36 +66,34 @@ def list_partition_tlds(db: Session) -> list[str]:
 
     tlds = []
     for (bound_expr,) in rows:
-        # bound_expr looks like: FOR VALUES IN ('com.br')
-        # Extract the TLD value between single quotes
         start = bound_expr.find("'")
         end = bound_expr.rfind("'")
         if start != -1 and end > start:
             tlds.append(bound_expr[start + 1 : end])
-
     return tlds
 
 
 class DomainRepository:
-    """Bulk operations on domains — direct upsert and staging-table merge."""
+    """Bulk operations on the domain table (ADR-001: added_day INTEGER)."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # ── Staging helpers (large-TLD incremental path) ─────────────────────
-
-    def clear_staging(self, tld: str) -> None:
-        """Remove all staging rows for a TLD before starting a new load."""
-        self.db.execute(text("DELETE FROM domain_stage WHERE tld = :tld"), {"tld": tld})
-
-    def bulk_insert_to_staging(
-        self, domain_names: list[str], tld: str, now: datetime
+    def bulk_insert(
+        self,
+        domain_names: list[str],
+        tld: str,
+        added_day: int,
     ) -> int:
-        """Bulk-insert a batch into the staging table.
+        """Bulk-insert new domain names — ON CONFLICT DO NOTHING.
 
-        Uses ON CONFLICT DO NOTHING to silently deduplicate entries that appear
-        multiple times in the zone file without raising an error.
-        Returns the number of unique names in the batch.
+        Args:
+            domain_names: Fully-qualified domain names (e.g. 'foo.com').
+            tld: TLD string (e.g. 'com').
+            added_day: YYYYMMDD integer (e.g. 20260423).
+
+        Returns:
+            Number of rows processed (before conflict resolution).
         """
         if not domain_names:
             return 0
@@ -125,99 +103,31 @@ class DomainRepository:
 
         self.db.execute(
             text("""
-                INSERT INTO domain_stage (name, tld, label, loaded_at)
-                SELECT unnest(:names), :tld, unnest(:labels), :ts
+                INSERT INTO domain (name, tld, label, added_day)
+                SELECT unnest(:names), :tld, unnest(:labels), :added_day
                 ON CONFLICT (name, tld) DO NOTHING
             """),
-            {"names": unique_names, "labels": labels, "tld": tld, "ts": now},
+            {"names": unique_names, "labels": labels, "tld": tld, "added_day": added_day},
         )
         return len(unique_names)
 
-    def merge_from_staging(self, tld: str, now: datetime) -> int:
-        """Insert into domain all rows from staging that don't already exist.
-
-        Skips existing domains entirely (skip_update policy for large TLDs).
-        GIN trigram index is only updated for net-new rows (~1-2% of zone daily).
-        Returns the count of newly inserted rows.
-        """
-        result = self.db.execute(
-            text("""
-                INSERT INTO domain (name, tld, label, first_seen_at, last_seen_at)
-                SELECT s.name, s.tld, s.label, :now, :now
-                FROM domain_stage s
-                WHERE s.tld = :tld
-                  AND NOT EXISTS (
-                      SELECT 1 FROM domain d
-                      WHERE d.name = s.name AND d.tld = s.tld
-                  )
-            """),
-            {"tld": tld, "now": now},
-        )
-        return result.rowcount
-
-    # ── Direct upsert (standard path for small/medium TLDs) ──────────────
-
-    def bulk_upsert(self, domain_names: list[str], tld: str, now: datetime) -> int:
-        """Upsert a batch into the domain table with label computation.
-
-        Returns the count of names processed.
-        """
+    def bulk_insert_removed(
+        self,
+        domain_names: list[str],
+        tld: str,
+        removed_day: int,
+    ) -> int:
+        """Bulk-insert removed domain names into domain_removed."""
         if not domain_names:
             return 0
 
         unique_names = list(set(domain_names))
-        labels = [n[:-(len(tld) + 1)] for n in unique_names]
-
-        self.db.execute(text("""
-            INSERT INTO domain (name, tld, label, first_seen_at, last_seen_at)
-            SELECT
-                unnest(:names),
-                :tld,
-                unnest(:labels),
-                :ts, :ts
-            ON CONFLICT (name, tld) DO UPDATE
-            SET last_seen_at = GREATEST(domain.last_seen_at, EXCLUDED.last_seen_at)
-        """), {"names": unique_names, "labels": labels, "tld": tld, "ts": now})
-
+        self.db.execute(
+            text("""
+                INSERT INTO domain_removed (name, tld, removed_day)
+                SELECT unnest(:names), :tld, :removed_day
+                ON CONFLICT (name, tld) DO NOTHING
+            """),
+            {"names": unique_names, "tld": tld, "removed_day": removed_day},
+        )
         return len(unique_names)
-
-    def bulk_upsert_multi_tld(
-        self,
-        domains: list[tuple[str, str, str]],
-        now: datetime,
-    ) -> dict[str, int]:
-        """Upsert domains across multiple TLDs.
-
-        Args:
-            domains: List of (name, tld, label) tuples.
-            now: Timestamp for first_seen_at / last_seen_at.
-
-        Returns:
-            Dict of {tld: count} for domains processed per TLD.
-        """
-        if not domains:
-            return {}
-
-        by_tld: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        for name, tld, label in domains:
-            by_tld[tld].append((name, label))
-
-        counts: dict[str, int] = {}
-        for tld, items in by_tld.items():
-            names = [n for n, _ in items]
-            labels = [l for _, l in items]
-
-            self.db.execute(text("""
-                INSERT INTO domain (name, tld, label, first_seen_at, last_seen_at)
-                SELECT
-                    unnest(:names),
-                    :tld,
-                    unnest(:labels),
-                    :ts, :ts
-                ON CONFLICT (name, tld) DO UPDATE
-                SET last_seen_at = GREATEST(domain.last_seen_at, EXCLUDED.last_seen_at)
-            """), {"names": names, "labels": labels, "tld": tld, "ts": now})
-
-            counts[tld] = len(names)
-
-        return counts

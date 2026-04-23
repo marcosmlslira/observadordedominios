@@ -1,10 +1,11 @@
 """CLI entrypoint — `python -m ingestion <subcommand> [options]`
 
 Subcommands:
-  czds       Download CZDS zone files, diff, write Parquet to R2 (local)
-  openintel  Download OpenINTEL snapshots, diff, write Parquet to R2 (local)
-  load       Read delta Parquet from R2, bulk-load into PostgreSQL
-  submit     Submit ingestion jobs to Databricks (czds | openintel)
+  czds        Download CZDS zone files, diff, write Parquet to R2 (local)
+  openintel   Download OpenINTEL snapshots, diff, write Parquet to R2 (local)
+  load        Read delta Parquet from R2, bulk-load into PostgreSQL
+  submit      Submit ingestion jobs to Databricks (czds | openintel)
+  orchestrate Run the full daily ingestion cycle for a source (orchestrator)
 """
 
 from __future__ import annotations
@@ -61,6 +62,14 @@ def _build_parser() -> argparse.ArgumentParser:
         _p.add_argument("--no-wait", action="store_true", help="Return immediately after submitting all runs")
         _p.add_argument("--timeout", type=int, default=7200, help="Per-run timeout in seconds (default: 7200)")
         _p.add_argument("--no-serverless", action="store_true", help="Use a new cluster instead of serverless compute")
+
+    # ── orchestrate ───────────────────────────────────────────────────────────
+    p_orch = sub.add_parser(
+        "orchestrate",
+        help="Run the full daily ingestion cycle (idempotent, error-isolated per TLD)",
+    )
+    p_orch.add_argument("--source", required=True, choices=["czds", "openintel"])
+    p_orch.add_argument("--snapshot-date", default=None, help="Override snapshot date (YYYY-MM-DD)")
 
     return parser
 
@@ -198,6 +207,26 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def cmd_orchestrate(args: argparse.Namespace) -> int:
+    from ingestion.orchestrator.pipeline import run_cycle
+
+    cfg = get_settings()
+    snapshot_date = args.snapshot_date or None
+    results = run_cycle(args.source, cfg, snapshot_date=snapshot_date)
+    for r in results:
+        print(json.dumps({
+            "tld": r.tld,
+            "phase": r.phase.value,
+            "status": r.status,
+            "domains_inserted": r.domains_inserted,
+            "domains_deleted": r.domains_deleted,
+            "domains_seen": r.domains_seen,
+            "error": r.error,
+        }, ensure_ascii=False))
+    errors = sum(1 for r in results if r.status == "error")
+    return 1 if errors else 0
+
+
 def cmd_load(args: argparse.Namespace) -> int:
     from ingestion.loader.delta_loader import load_delta
     cfg = get_settings()
@@ -232,6 +261,7 @@ def main() -> None:
         "openintel": cmd_openintel,
         "load": cmd_load,
         "submit": cmd_submit,
+        "orchestrate": cmd_orchestrate,
     }
     handler = dispatch.get(args.command)
     if handler is None:

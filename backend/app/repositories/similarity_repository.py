@@ -76,7 +76,7 @@ class SimilarityRepository:
         tld: str,
         typo_candidates: list[str],
         *,
-        watermark_at: datetime | None = None,
+        watermark_day: int | None = None,
         include_subdomains: bool = False,
         limit: int = 5000,
     ) -> list[dict]:
@@ -87,7 +87,7 @@ class SimilarityRepository:
         deduplicated by domain name, keeping the row with the highest
         sim_trigram score.
 
-        Returns dicts with: name, tld, label, first_seen_at, sim_trigram, edit_dist.
+        Returns dicts with: name, tld, label, added_day, sim_trigram, edit_dist.
         """
         brand_like = f"%{brand_label}%"
 
@@ -96,10 +96,10 @@ class SimilarityRepository:
             "brand_like": brand_like,
             "tld": tld,
         }
-        if watermark_at:
-            base_params["watermark_at"] = watermark_at
+        if watermark_day:
+            base_params["watermark_day"] = watermark_day
 
-        wm_filter = "AND first_seen_at > :watermark_at" if watermark_at else ""
+        wm_filter = "AND added_day >= :watermark_day" if watermark_day else ""
         subdomain_filter = "" if include_subdomains else "AND label NOT LIKE '%.%'"
 
         # Dynamic threshold: stricter for short brands to avoid false positives
@@ -123,7 +123,7 @@ class SimilarityRepository:
 
         # ── Part 1: Trigram similarity (GIN index via % operator) ──────────
         trigram_sql = f"""
-            SELECT DISTINCT name, tld, label, first_seen_at,
+            SELECT DISTINCT name, tld, label, added_day,
                    similarity(label, :brand_label) AS sim_trigram,
                    levenshtein(label, :brand_label) AS edit_dist
             FROM domain
@@ -140,7 +140,7 @@ class SimilarityRepository:
 
         # ── Part 2: Substring / brand containment (LIKE, uses GIN index) ──
         substring_sql = f"""
-            SELECT DISTINCT name, tld, label, first_seen_at,
+            SELECT DISTINCT name, tld, label, added_day,
                    similarity(label, :brand_label) AS sim_trigram,
                    levenshtein(label, :brand_label) AS edit_dist
             FROM domain
@@ -159,7 +159,7 @@ class SimilarityRepository:
         typo_rows: list = []
         if typo_candidates:
             typo_sql = f"""
-                SELECT DISTINCT name, tld, label, first_seen_at,
+                SELECT DISTINCT name, tld, label, added_day,
                        similarity(label, :brand_label) AS sim_trigram,
                        levenshtein(label, :brand_label) AS edit_dist
                 FROM domain
@@ -193,8 +193,7 @@ class SimilarityRepository:
                 "name": r.name,
                 "tld": r.tld,
                 "label": r.label,
-                "first_seen_at": r.first_seen_at,
-                "last_seen_at": getattr(r, "last_seen_at", None),
+                "added_day": r.added_day,
                 "sim_trigram": float(r.sim_trigram),
                 "edit_dist": int(r.edit_dist),
             }
@@ -207,22 +206,22 @@ class SimilarityRepository:
         brand_label: str,
         tld: str,
         *,
-        watermark_at: datetime | None = None,
+        watermark_day: int | None = None,
         limit: int = 2000,
     ) -> list[dict]:
         """Exact-label lookup for typo/homograph seeds via btree equality scan.
 
         Processes candidates in chunks of 1000 to stay within pg parameter limits.
-        Returns dicts with: name, tld, label, first_seen_at, sim_trigram, edit_dist.
+        Returns dicts with: name, tld, label, added_day, sim_trigram, edit_dist.
         """
         if not candidate_labels:
             return []
 
-        wm_filter = "AND first_seen_at > :watermark_at" if watermark_at else ""
+        wm_filter = "AND added_day >= :watermark_day" if watermark_day else ""
         timeout_ms = _TLD_QUERY_TIMEOUT_MS.get(tld, _DEFAULT_QUERY_TIMEOUT_MS)
 
         sql = f"""
-            SELECT DISTINCT name, tld, label, first_seen_at,
+            SELECT DISTINCT name, tld, label, added_day,
                    similarity(label, :brand_label) AS sim_trigram,
                    levenshtein(label, :brand_label) AS edit_dist
             FROM domain
@@ -241,8 +240,8 @@ class SimilarityRepository:
                 "candidate_labels": chunk,
                 "limit": limit,
             }
-            if watermark_at:
-                params["watermark_at"] = watermark_at
+            if watermark_day:
+                params["watermark_day"] = watermark_day
             rows = self._exec_candidate_part(
                 sql, params,
                 timeout_ms=timeout_ms,
@@ -262,8 +261,7 @@ class SimilarityRepository:
                 "name": r.name,
                 "tld": r.tld,
                 "label": r.label,
-                "first_seen_at": r.first_seen_at,
-                "last_seen_at": getattr(r, "last_seen_at", None),
+                "added_day": r.added_day,
                 "sim_trigram": float(r.sim_trigram),
                 "edit_dist": int(r.edit_dist),
             }
@@ -275,20 +273,20 @@ class SimilarityRepository:
         brand_label: str,
         tld: str,
         *,
-        watermark_at: datetime | None = None,
-        limit: int = 300,
+        watermark_day: int | None = None,
+        limit: int = 1200,
     ) -> list[dict]:
         """Fetch Punycode (IDN homograph) domains for a TLD.
 
         Uses LIKE 'xn--%' filter to pull all IDN domains, then scores them
         against the brand label for downstream filtering.
-        Returns dicts with: name, tld, label, first_seen_at, sim_trigram, edit_dist.
+        Returns dicts with: name, tld, label, added_day, sim_trigram, edit_dist.
         """
-        wm_filter = "AND first_seen_at > :watermark_at" if watermark_at else ""
+        wm_filter = "AND added_day >= :watermark_day" if watermark_day else ""
         timeout_ms = _TLD_QUERY_TIMEOUT_MS.get(tld, _DEFAULT_QUERY_TIMEOUT_MS)
 
         sql = f"""
-            SELECT DISTINCT name, tld, label, first_seen_at,
+            SELECT DISTINCT name, tld, label, added_day,
                    similarity(label, :brand_label) AS sim_trigram,
                    levenshtein(label, :brand_label) AS edit_dist
             FROM domain
@@ -296,11 +294,12 @@ class SimilarityRepository:
               AND label LIKE 'xn--%%'
               AND label NOT LIKE '%%.%%'
               {wm_filter}
+            ORDER BY levenshtein(label, :brand_label) ASC, added_day DESC
             LIMIT :limit
         """
         params: dict = {"brand_label": brand_label, "tld": tld, "limit": limit}
-        if watermark_at:
-            params["watermark_at"] = watermark_at
+        if watermark_day:
+            params["watermark_day"] = watermark_day
 
         rows = self._exec_candidate_part(
             sql, params,
@@ -314,8 +313,7 @@ class SimilarityRepository:
                 "name": r.name,
                 "tld": r.tld,
                 "label": r.label,
-                "first_seen_at": r.first_seen_at,
-                "last_seen_at": getattr(r, "last_seen_at", None),
+                "added_day": r.added_day,
                 "sim_trigram": float(r.sim_trigram),
                 "edit_dist": int(r.edit_dist),
             }
@@ -361,7 +359,7 @@ class SimilarityRepository:
             candidate_queries.extend(
                 [
                     f"""
-                    SELECT DISTINCT name, tld, label, first_seen_at, last_seen_at,
+                    SELECT DISTINCT name, tld, label, added_day,
                            similarity(label, :brand_label) AS sim_trigram,
                            levenshtein(label, :brand_label) AS edit_dist
                     FROM domain
@@ -369,7 +367,7 @@ class SimilarityRepository:
                       AND label % :brand_label
                     """,
                     f"""
-                    SELECT DISTINCT name, tld, label, first_seen_at, last_seen_at,
+                    SELECT DISTINCT name, tld, label, added_day,
                            similarity(label, :brand_label) AS sim_trigram,
                            levenshtein(label, :brand_label) AS edit_dist
                     FROM domain
@@ -383,7 +381,7 @@ class SimilarityRepository:
             params["typo_candidates"] = typo_candidates
             candidate_queries.append(
                 f"""
-                SELECT DISTINCT name, tld, label, first_seen_at, last_seen_at,
+                SELECT DISTINCT name, tld, label, added_day,
                        similarity(label, :brand_label) AS sim_trigram,
                        levenshtein(label, :brand_label) AS edit_dist
                 FROM domain
@@ -400,7 +398,7 @@ class SimilarityRepository:
                 {" UNION ".join(candidate_queries)}
             )
             SELECT * FROM candidates
-            ORDER BY sim_trigram DESC, last_seen_at DESC, name ASC
+            ORDER BY sim_trigram DESC, added_day DESC, name ASC
             OFFSET :offset
             LIMIT :limit
         """
@@ -411,8 +409,51 @@ class SimilarityRepository:
                 "name": r.name,
                 "tld": r.tld,
                 "label": r.label,
-                "first_seen_at": r.first_seen_at,
-                "last_seen_at": r.last_seen_at,
+                "added_day": r.added_day,
+                "sim_trigram": float(r.sim_trigram),
+                "edit_dist": int(r.edit_dist),
+            }
+            for r in rows
+        ]
+
+    def search_punycode_candidates(
+        self,
+        query_label: str,
+        *,
+        tld_allowlist: list[str] | None = None,
+        include_subdomains: bool = False,
+        limit: int = 500,
+    ) -> list[dict]:
+        """Search across TLDs for punycode labels for synchronous Ring C."""
+        params: dict = {
+            "brand_label": query_label,
+            "limit": limit,
+        }
+        filters: list[str] = ["label LIKE 'xn--%'"]
+        if tld_allowlist:
+            params["tld_allowlist"] = tld_allowlist
+            filters.append("tld = ANY(:tld_allowlist)")
+        if not include_subdomains:
+            filters.append("label NOT LIKE '%.%'")
+        where_clause = " AND ".join(filters)
+
+        sql = f"""
+            SELECT DISTINCT name, tld, label, added_day,
+                   similarity(label, :brand_label) AS sim_trigram,
+                   levenshtein(label, :brand_label) AS edit_dist
+            FROM domain
+            WHERE {where_clause}
+            ORDER BY added_day DESC NULLS LAST, name ASC
+            LIMIT :limit
+        """
+
+        rows = self.db.execute(text(sql), params).fetchall()
+        return [
+            {
+                "name": r.name,
+                "tld": r.tld,
+                "label": r.label,
+                "added_day": r.added_day,
                 "sim_trigram": float(r.sim_trigram),
                 "edit_dist": int(r.edit_dist),
             }
@@ -534,7 +575,7 @@ class SimilarityRepository:
         cursor: SimilarityScanCursor,
         *,
         status: str,
-        watermark_at: datetime | None = None,
+        watermark_day: int | None = None,
         domains_scanned: int = 0,
         domains_matched: int = 0,
         error_message: str | None = None,
@@ -548,8 +589,8 @@ class SimilarityRepository:
         if status == "complete":
             cursor.domains_scanned += domains_scanned
             cursor.domains_matched += domains_matched
-            if watermark_at:
-                cursor.watermark_at = watermark_at
+            if watermark_day:
+                cursor.watermark_day = watermark_day
             # After initial scan completes, switch to delta mode
             if cursor.scan_phase == "initial":
                 cursor.scan_phase = "delta"
@@ -578,6 +619,9 @@ class SimilarityRepository:
                     "candidates": 0,
                     "matched": 0,
                     "removed": 0,
+                    "ring_c_candidates": 0,
+                    "ring_c_matches": 0,
+                    "ring_c_limit": 0,
                     "error_message": None,
                     "started_at": None,
                     "finished_at": None,
@@ -665,6 +709,7 @@ class SimilarityRepository:
         error_message: str | None = None,
         started_at: datetime | None = None,
         finished_at: datetime | None = None,
+        extra_metrics: dict | None = None,
     ) -> None:
         results = dict(job.tld_results or {})
         current = dict(results.get(tld) or {})
@@ -679,6 +724,8 @@ class SimilarityRepository:
                 "finished_at": finished_at.isoformat() if finished_at else current.get("finished_at"),
             }
         )
+        if extra_metrics:
+            current.update(extra_metrics)
         results[tld] = current
         job.tld_results = results
         job.status = self._derive_scan_job_status(results)

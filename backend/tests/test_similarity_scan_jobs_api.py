@@ -44,6 +44,9 @@ def _build_job(brand_id):
                 "candidates": 0,
                 "matched": 0,
                 "removed": 0,
+                "ring_c_candidates": 0,
+                "ring_c_matches": 0,
+                "ring_c_limit": 1200,
                 "error_message": None,
                 "started_at": None,
                 "finished_at": None,
@@ -53,6 +56,9 @@ def _build_job(brand_id):
                 "candidates": 0,
                 "matched": 0,
                 "removed": 0,
+                "ring_c_candidates": 0,
+                "ring_c_matches": 0,
+                "ring_c_limit": 2000,
                 "error_message": None,
                 "started_at": None,
                 "finished_at": None,
@@ -88,6 +94,7 @@ def test_trigger_scan_returns_durable_job_metadata(monkeypatch) -> None:
     assert payload["status"] == "queued"
     assert payload["tlds_effective"] == ["com.br", "com"]
     assert len(payload["results"]) == 2
+    assert payload["results"][0]["ring_c_limit"] in {1200, 2000}
 
 
 def test_matches_response_includes_scan_context(monkeypatch) -> None:

@@ -121,6 +121,9 @@ class ScanResultResponse(BaseModel):
     candidates: int
     matched: int
     removed: int = 0
+    ring_c_candidates: int | None = None
+    ring_c_matches: int | None = None
+    ring_c_limit: int | None = None
     status: str
     error_message: str | None = None
     started_at: datetime | None = None
@@ -186,10 +189,17 @@ class SimilaritySearchPaginationResponse(BaseModel):
     has_more: bool
 
 
+class SimilaritySearchTelemetryResponse(BaseModel):
+    punycode_candidates_evaluated: int = 0
+    punycode_candidates_matched: int = 0
+    punycode_scan_enabled: bool = True
+
+
 class SimilaritySearchResponse(BaseModel):
     query: SimilaritySearchQueryResponse
     pagination: SimilaritySearchPaginationResponse
     results: list[SimilaritySearchResultResponse]
+    telemetry: SimilaritySearchTelemetryResponse | None = None
 
 
 class SimilarityHealthResponse(BaseModel):
@@ -198,3 +208,5 @@ class SimilarityHealthResponse(BaseModel):
     average_search_latency_ms: float
     samples: int
     vector_enabled: bool
+    average_punycode_candidates_evaluated: float = 0.0
+    punycode_search_samples: int = 0

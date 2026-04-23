@@ -67,6 +67,13 @@ _COMBO_SEED_TYPES = frozenset({
     "combo_keyword_brand",
 })
 
+_PUNYCODE_RING_LIMITS = {
+    "com": 2000,
+    "net": 1500,
+    "org": 1500,
+    "com.br": 1200,
+}
+
 
 def _find_best_matching_seed(cand: dict, combo_seeds: list) -> object | None:
     """Return the combo seed whose seed_value best matches the candidate label."""
@@ -90,10 +97,10 @@ def _process_candidate(
     best_matches_by_domain: dict[str, dict],
     candidate_domain_names: set[str],
     scan_seeds: list,
-) -> None:
+) -> bool:
     """Score a single candidate against a seed and update best_matches_by_domain."""
     if cand["name"].strip().lower() in official_domains:
-        return
+        return False
     candidate_domain_names.add(cand["name"])
     scores = compute_seeded_scores(
         label=cand["label"],
@@ -105,7 +112,7 @@ def _process_candidate(
     )
 
     if scores["score_final"] < threshold:
-        return
+        return False
 
     matched_channel = (
         "registrable_domain"
@@ -124,7 +131,7 @@ def _process_candidate(
         matched_seed_type=seed.seed_type,
         matched_seed_value=seed.seed_value,
         matched_channel=matched_channel,
-        domain_first_seen=cand["first_seen_at"],
+        domain_first_seen=cand.get("added_day"),
     )
     candidate_match = {
         "brand_id": brand.id,
@@ -140,7 +147,7 @@ def _process_candidate(
         "reasons": scores["reasons"],
         "risk_level": scores["risk_level"],
         "first_detected_at": now,
-        "domain_first_seen": cand["first_seen_at"],
+        "domain_first_seen": cand.get("added_day"),
         "matched_channel": matched_channel,
         "matched_seed_id": seed.id,
         "matched_seed_value": seed.seed_value,
@@ -169,6 +176,7 @@ def _process_candidate(
         ),
     ):
         best_matches_by_domain[cand["name"]] = candidate_match
+    return True
 
 
 def run_similarity_scan(
@@ -186,12 +194,12 @@ def run_similarity_scan(
     cursor = repo.get_or_create_cursor(brand.id, tld)
 
     # Determine watermark for delta scans
-    watermark_at = None
-    if not force_full and cursor.scan_phase == "delta" and cursor.watermark_at:
-        watermark_at = cursor.watermark_at
+    watermark_day = None
+    if not force_full and cursor.scan_phase == "delta" and cursor.watermark_day:
+        watermark_day = cursor.watermark_day
         logger.info(
-            "Delta scan for brand=%s tld=%s watermark=%s",
-            brand.brand_label, tld, watermark_at,
+            "Delta scan for brand=%s tld=%s watermark_day=%s",
+            brand.brand_label, tld, watermark_day,
         )
     else:
         logger.info(
@@ -224,6 +232,9 @@ def run_similarity_scan(
         best_matches_by_domain: dict[str, dict] = {}
         candidate_domain_names: set[str] = set()
         now = datetime.now(timezone.utc)
+        ring_c_candidates_count = 0
+        ring_c_matches_count = 0
+        ring_c_limit = _PUNYCODE_RING_LIMITS.get(tld, 1200)
 
         # Partition seeds by ring strategy
         exact_seeds = [s for s in scan_seeds if s.seed_type in _EXACT_SEED_TYPES]
@@ -244,7 +255,7 @@ def run_similarity_scan(
                 candidate_labels=exact_labels,
                 brand_label=primary_brand_label,
                 tld=tld,
-                watermark_at=watermark_at,
+                watermark_day=watermark_day,
                 limit=2000,
             )
             logger.info(
@@ -271,7 +282,7 @@ def run_similarity_scan(
                 brand_label=seed.seed_value,
                 tld=tld,
                 typo_candidates=typo_candidates,
-                watermark_at=watermark_at,
+                watermark_day=watermark_day,
                 limit=per_seed_limit,
             )
             logger.info(
@@ -295,7 +306,7 @@ def run_similarity_scan(
                     brand_label=seed.seed_value,
                     tld=tld,
                     typo_candidates=typo_candidates,
-                    watermark_at=watermark_at,
+                    watermark_day=watermark_day,
                     limit=per_seed_limit,
                 )
                 for cand in candidates:
@@ -309,26 +320,30 @@ def run_similarity_scan(
         ring_c_candidates = repo.fetch_candidates_punycode(
             brand_label=primary_brand_label,
             tld=tld,
-            watermark_at=watermark_at,
-            limit=300,
+            watermark_day=watermark_day,
+            limit=ring_c_limit,
         )
+        ring_c_candidates_count = len(ring_c_candidates)
         logger.info(
             "Ring C: %d punycode candidates for brand=%s tld=%s",
             len(ring_c_candidates), brand.brand_label, tld,
         )
-        # Use the highest-weight homograph_base seed if available, else best fuzzy seed
-        homograph_seeds = [s for s in exact_seeds if s.seed_type == "homograph_base"]
+        # Ring C scores punycode candidates against the brand label, not against
+        # homograph_base seeds.  homograph_base seeds are punycode strings
+        # themselves (e.g. "xn--gogle-jye") — comparing a punycode candidate
+        # against another punycode string yields useless scores (~0.35).
+        # The brand label (e.g. "google") is what decode_idna_label + normalize_homograph
+        # need on the other side to detect the attack.
         punycode_seed = (
-            max(homograph_seeds, key=lambda s: s.base_weight)
-            if homograph_seeds
-            else (max(fuzzy_seeds, key=lambda s: s.base_weight) if fuzzy_seeds else scan_seeds[0])
+            max(fuzzy_seeds, key=lambda s: s.base_weight) if fuzzy_seeds else scan_seeds[0]
         )
         for cand in ring_c_candidates:
-            _process_candidate(
+            if _process_candidate(
                 cand, punycode_seed, brand, official_domains,
                 threshold, now,
                 best_matches_by_domain, candidate_domain_names, scan_seeds,
-            )
+            ):
+                ring_c_matches_count += 1
 
         # ── Ring D: Exact btree on combo seeds ────────────────────────────
         if combo_seeds:
@@ -337,7 +352,7 @@ def run_similarity_scan(
                 candidate_labels=combo_labels,
                 brand_label=primary_brand_label,
                 tld=tld,
-                watermark_at=watermark_at,
+                watermark_day=watermark_day,
                 limit=500,
             )
             logger.info(
@@ -362,14 +377,13 @@ def run_similarity_scan(
             match.setdefault("enrichment_status", "pending")
             match.setdefault("enrichment_summary", None)
             match.setdefault("last_enriched_at", None)
-
         matched_count = repo.upsert_matches(matches_to_upsert)
         kept_domain_names = sorted(best_matches_by_domain.keys())
         candidate_domain_names_sorted = sorted(candidate_domain_names)
 
         removed_subdomain_matches = repo.delete_subdomain_matches(brand.id, tld)
         removed_stale_matches = 0
-        if force_full or watermark_at is None:
+        if force_full or watermark_day is None:
             removed_stale_matches = repo.reconcile_matches_for_brand_tld(
                 brand.id,
                 tld,
@@ -393,17 +407,15 @@ def run_similarity_scan(
         )
 
         # ── 5. Update watermark ────────────────────────────────
-        # Set watermark to the max first_seen_at across ALL domains in this TLD
-        # (not just candidates) so delta picks up everything new next time
         new_watermark = db.execute(
-            text("SELECT MAX(first_seen_at) FROM domain WHERE tld = :tld"),
+            text("SELECT MAX(added_day) FROM domain WHERE tld = :tld"),
             {"tld": tld},
         ).scalar()
 
         repo.finish_scan(
             cursor,
             status="complete",
-            watermark_at=new_watermark,
+            watermark_day=new_watermark,
             domains_scanned=len(candidate_domain_names_sorted),
             domains_matched=matched_count,
         )
@@ -414,6 +426,9 @@ def run_similarity_scan(
             "matched": matched_count,
             "scanned": len(candidate_domain_names_sorted),
             "removed": removed_stale_matches + removed_subdomain_matches,
+            "ring_c_candidates": ring_c_candidates_count,
+            "ring_c_matches": ring_c_matches_count,
+            "ring_c_limit": ring_c_limit,
         }
 
         logger.info(
@@ -537,6 +552,11 @@ def run_similarity_scan_job(
                 removed=int(metrics.get("removed", 0)),
                 started_at=started_at,
                 finished_at=datetime.now(timezone.utc),
+                extra_metrics={
+                    "ring_c_candidates": int(metrics.get("ring_c_candidates", 0)),
+                    "ring_c_matches": int(metrics.get("ring_c_matches", 0)),
+                    "ring_c_limit": int(metrics.get("ring_c_limit", 0)),
+                },
             )
             repo.heartbeat_scan_job(job)
             db.commit()

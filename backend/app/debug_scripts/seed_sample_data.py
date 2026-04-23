@@ -157,16 +157,15 @@ def seed_domains(db) -> dict[str, list[str]]:
 
         for label in labels:
             name = f"{label}.{tld}"
-            first_seen = random_past_dt(60)
-            last_seen = first_seen + timedelta(days=random.randint(0, 10))
+            added_day = int((NOW - timedelta(days=random.randint(0, 60))).strftime("%Y%m%d"))
             try:
                 db.execute(
                     text("""
-                        INSERT INTO domain (name, tld, label, first_seen_at, last_seen_at)
-                        VALUES (:name, :tld, :label, :first, :last)
+                        INSERT INTO domain (name, tld, label, added_day)
+                        VALUES (:name, :tld, :label, :added_day)
                         ON CONFLICT (name, tld) DO NOTHING
                     """),
-                    {"name": name, "tld": tld, "label": label, "first": first_seen, "last": last_seen},
+                    {"name": name, "tld": tld, "label": label, "added_day": added_day},
                 )
                 inserted[tld].append(name)
             except Exception:

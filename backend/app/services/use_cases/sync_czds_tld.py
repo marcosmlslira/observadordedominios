@@ -1,6 +1,19 @@
-"""Use case: sync a single TLD from CZDS — orchestrates download, upload, and delta."""
+"""Use case: sync a single TLD from CZDS — orchestrates download, upload, and delta.
+
+.. deprecated::
+    This module is superseded by the ``ingestion`` package orchestrator.
+    It will be removed in a future release.
+"""
 
 from __future__ import annotations
+
+import warnings
+
+warnings.warn(
+    "sync_czds_tld is deprecated. Use the ingestion package orchestrator instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import gzip
 import logging

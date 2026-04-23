@@ -131,7 +131,7 @@ def update_monitoring_profile(
             repo.db.execute(
                 text(
                     "UPDATE similarity_scan_cursor"
-                    " SET scan_phase = 'initial', watermark_at = NULL, updated_at = NOW()"
+                    " SET scan_phase = 'initial', watermark_at = NULL, watermark_day = NULL, updated_at = NOW()"
                     " WHERE brand_id = :brand_id"
                 ),
                 {"brand_id": brand.id},
@@ -149,6 +149,8 @@ def update_monitoring_profile(
 def regenerate_seeds_for_brand(
     repo: MonitoredBrandRepository,
     brand: MonitoredBrand,
+    *,
+    run_llm: bool = True,
 ) -> MonitoredBrand:
     """Force-regenerate seeds for an existing brand using current aliases/domains."""
     official_domains = [item.domain_name for item in brand.domains]
@@ -165,7 +167,7 @@ def regenerate_seeds_for_brand(
         keywords=list(brand.keywords or []),
         noise_mode=brand.noise_mode,
     )
-    _apply_profile_components(repo, brand, prepared, run_llm=True)
+    _apply_profile_components(repo, brand, prepared, run_llm=run_llm)
     return brand
 
 
