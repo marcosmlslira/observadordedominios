@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "ingestion"
 version = "1.0.0"
 description = "Domain ingestion pipeline — CZDS zone files + OpenINTEL snapshots → R2 Parquet + PostgreSQL"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "polars>=0.20",
     "boto3>=1.34",

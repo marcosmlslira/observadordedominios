@@ -26,10 +26,10 @@ _result = subprocess.run(
     [sys.executable, "-m", "pip", "--disable-pip-version-check", "install", _pkg_url],
     capture_output=True, text=True,
 )
+_pip_output = f"Python: {sys.version}\nPkg: {_pkg_url}\nExit: {_result.returncode}\nSTDOUT: {_result.stdout[-2000:]}\nSTDERR: {_result.stderr[-2000:]}"
+print(_pip_output)
 if _result.returncode != 0:
-    print("PIP STDOUT:", _result.stdout[-3000:])
-    print("PIP STDERR:", _result.stderr[-3000:])
-    raise RuntimeError(f"pip install failed (exit {_result.returncode})")
+    dbutils.notebook.exit("PIP_FAIL: " + _pip_output[:3000])  # noqa: F821
 importlib.invalidate_caches()
 
 # ── credentials injected by submitter ─────────────────────────────────────────
