@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -53,6 +53,33 @@ class TldResult:
 
 # ── Idempotency ───────────────────────────────────────────────────────────────
 
+_MARKER_LOOKBACK_DAYS = 7  # OpenINTEL lags up to ~4 days; 7 gives a safe margin
+
+
+def _find_latest_marker_date(
+    storage: "R2Storage",
+    layout: "Layout",
+    source: str,
+    tld: str,
+    today: date,
+    lookback_days: int = _MARKER_LOOKBACK_DAYS,
+) -> str | None:
+    """Scan back from today to find the most recent R2 marker for (source, tld).
+
+    OpenINTEL data typically lags 2-5 days behind the current date, so we must
+    look back instead of only checking today's date.
+
+    Returns the ISO date string of the latest marker found, or None.
+    """
+    for days_back in range(lookback_days):
+        check_date = (today - timedelta(days=days_back)).isoformat()
+        mk = layout.marker_key(source, tld, check_date)
+        if storage.key_exists(mk):
+            if days_back > 0:
+                log.debug("marker found at %s for %s/%s (today=%s)", check_date, source, tld, today.isoformat())
+            return check_date
+    return None
+
 
 def check_phase(
     db_url: str,
@@ -64,25 +91,31 @@ def check_phase(
 ) -> TldPhase:
     """Determine which phase to run for (source, tld, today)."""
     today_str = today.isoformat()
-    marker_key = layout.marker_key(source, tld, today_str)
 
-    if not storage.key_exists(marker_key):
+    # Look back up to MARKER_LOOKBACK_DAYS — OpenINTEL lags behind current date
+    marker_date = _find_latest_marker_date(storage, layout, source, tld, today)
+
+    if marker_date is None:
         return TldPhase.FULL_RUN
 
-    # Marker exists — check if PG was already loaded successfully today
+    # Marker exists — check if PG was already loaded successfully for the found marker
     if db_url:
         try:
             conn = psycopg2.connect(db_url)
             try:
                 with conn.cursor() as cur:
+                    # Look for any successful run started within the lookback window.
+                    # We can't correlate by snapshot_date (column absent), so we check
+                    # for a recent success — if the marker exists and PG has a recent
+                    # success for this TLD, it was almost certainly loaded already.
                     cur.execute(
                         """
                         SELECT 1 FROM ingestion_run
                         WHERE source = %s AND tld = %s AND status = 'success'
-                          AND started_at::date = %s
+                          AND started_at >= (NOW() - INTERVAL '8 days')
                         LIMIT 1
                         """,
-                        (source, tld, today_str),
+                        (source, tld),
                     )
                     row = cur.fetchone()
             finally:
@@ -159,6 +192,11 @@ def _process_tld_local(
 
         domains_seen = domains_inserted = domains_deleted = 0
 
+        # snap_str tracks the actual snapshot date to use for load_delta.
+        # For FULL_RUN, the runner discovers the real snapshot date (which may lag
+        # several days behind today for OpenINTEL). For LOAD_ONLY, we look back in R2.
+        snap_str = today_str
+
         if phase == TldPhase.FULL_RUN:
             if source == "czds":
                 from ingestion.runners.czds_runner import run_czds
@@ -188,6 +226,16 @@ def _process_tld_local(
                 domains_seen = stats.snapshot_count
                 domains_inserted = stats.added_count
                 domains_deleted = stats.removed_count
+                # Use the actual snapshot date the runner resolved (may differ from today)
+                snap_str = stats.run_key.snapshot_date.isoformat()
+
+        elif phase == TldPhase.LOAD_ONLY:
+            # Find the latest marker to know which snapshot date to load from R2
+            actual_date = _find_latest_marker_date(storage, layout, source, tld, snapshot_date)
+            if actual_date is not None:
+                snap_str = actual_date
+            else:
+                log.warning("LOAD_ONLY tld=%s but no marker found — will attempt today_str", tld)
 
         # Load PG for both FULL_RUN (after writing R2) and LOAD_ONLY
         if db_url:
@@ -197,7 +245,7 @@ def _process_tld_local(
                 layout=layout,
                 source=source,
                 tld=tld,
-                snapshot_date=today_str,
+                snapshot_date=snap_str,
             )
             # Loader counts are authoritative — override runner estimates
             domains_inserted = load_result.get("added_loaded", domains_inserted)
@@ -250,11 +298,16 @@ def _load_tld_from_r2(
     db_url = cfg.database_url
     run_id: str | None = None
     try:
-        # Check if R2 marker exists when requested (post-Databricks validation)
+        # Find the actual snapshot date from R2 markers (OpenINTEL lags 2-5 days)
+        snap_str = today_str
         if check_marker:
-            marker_key = layout.marker_key(source, tld, today_str)
-            if not storage.key_exists(marker_key):
-                raise RuntimeError(f"R2 marker missing after Databricks run — TLD likely failed in notebook")
+            today = date.fromisoformat(today_str)
+            actual_date = _find_latest_marker_date(storage, layout, source, tld, today)
+            if actual_date is None:
+                raise RuntimeError("R2 marker missing after Databricks run — TLD likely failed in notebook")
+            if actual_date != today_str:
+                log.info("_load_tld_from_r2 tld=%s using marker_date=%s (requested %s)", tld, actual_date, today_str)
+            snap_str = actual_date
 
         if db_url:
             run_id = create_run(db_url, source, tld)
@@ -264,7 +317,7 @@ def _load_tld_from_r2(
                 layout=layout,
                 source=source,
                 tld=tld,
-                snapshot_date=today_str,
+                snapshot_date=snap_str,
             )
             added = load_result.get("added_loaded", 0)
             removed = load_result.get("removed_loaded", 0)
