@@ -7,6 +7,7 @@ so no secrets are ever hardcoded in the notebook source.
 
 from __future__ import annotations
 
+import json
 import logging
 import importlib.resources
 from datetime import date
@@ -57,6 +58,25 @@ def _build_base_parameters(cfg: Settings, tld: str, snapshot_date: str | None) -
     if snapshot_date:
         params["SNAPSHOT_DATE_OVERRIDE"] = snapshot_date
     return params
+
+
+def _parse_notebook_result(raw_output: str) -> dict[str, Any] | None:
+    output = raw_output.strip()
+    if not output.startswith("{"):
+        return None
+    parsed = json.loads(output)
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _resolve_output_run_id(run: dict[str, Any], default_run_id: int) -> int:
+    tasks = run.get("tasks")
+    if isinstance(tasks, list) and tasks:
+        task = tasks[0]
+        if isinstance(task, dict) and "run_id" in task:
+            return int(task["run_id"])
+    return default_run_id
 
 
 class DatabricksSubmitter:
@@ -112,6 +132,7 @@ class DatabricksSubmitter:
             notebook_path=workspace_nb,
             base_parameters=base_params,
             serverless=serverless,
+            performance_target=self.cfg.databricks_serverless_performance_target or None,
             timeout_seconds=timeout_seconds,
         )
         log.info("databricks batch submitted: run_id=%d source=%s tlds=%s", run_id, source, tlds)
@@ -122,11 +143,26 @@ class DatabricksSubmitter:
         run = self.client.wait(run_id)
         result_state = run.get("state", {}).get("result_state", "UNKNOWN")
         ok = result_state == "SUCCESS"
+        output_run_id = _resolve_output_run_id(run, run_id)
+        notebook_output: str | None = None
+        notebook_result: dict[str, Any] | None = None
+        try:
+            output = self.client.run_get_output(output_run_id)
+            notebook = output.get("notebook_output", {})
+            if isinstance(notebook, dict) and "result" in notebook:
+                notebook_output = str(notebook["result"])
+                if notebook_output:
+                    notebook_result = _parse_notebook_result(notebook_output)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("databricks batch output unavailable run_id=%d: %s", output_run_id, exc)
         return {
             "run_id": run_id,
             "tlds": tlds,
             "status": "ok" if ok else "error",
             "result_state": result_state,
+            "run_page_url": run.get("run_page_url"),
+            "notebook_output": notebook_output,
+            "notebook_result": notebook_result,
         }
 
     def submit(
@@ -174,6 +210,7 @@ class DatabricksSubmitter:
             notebook_path=workspace_nb,
             base_parameters=base_params,
             serverless=serverless,
+            performance_target=self.cfg.databricks_serverless_performance_target or None,
             timeout_seconds=timeout_seconds,
         )
         log.info("databricks run submitted: run_id=%d source=%s tld=%s", run_id, source, tld)
@@ -184,9 +221,24 @@ class DatabricksSubmitter:
         run = self.client.wait(run_id)
         result_state = run.get("state", {}).get("result_state", "UNKNOWN")
         ok = result_state == "SUCCESS"
+        output_run_id = _resolve_output_run_id(run, run_id)
+        notebook_output: str | None = None
+        notebook_result: dict[str, Any] | None = None
+        try:
+            output = self.client.run_get_output(output_run_id)
+            notebook = output.get("notebook_output", {})
+            if isinstance(notebook, dict) and "result" in notebook:
+                notebook_output = str(notebook["result"])
+                if notebook_output:
+                    notebook_result = _parse_notebook_result(notebook_output)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("databricks output unavailable run_id=%d: %s", output_run_id, exc)
         return {
             "run_id": run_id,
             "tld": tld,
             "status": "ok" if ok else "error",
             "result_state": result_state,
+            "run_page_url": run.get("run_page_url"),
+            "notebook_output": notebook_output,
+            "notebook_result": notebook_result,
         }

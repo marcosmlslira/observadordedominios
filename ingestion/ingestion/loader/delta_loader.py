@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import logging
 from datetime import date
+from time import perf_counter
 
 import psycopg2
 import polars as pl
@@ -103,8 +104,10 @@ def load_delta(
     delta_removed_key = layout.delta_removed_key(source, tld, snap_str)
 
     # Read deltas from R2 — ADR-001 schema: name, tld, label, added_day
+    read_started_at = perf_counter()
     delta_df = _read_parquet_or_empty(storage, delta_key, ["name", "tld", "label"])
     removed_df = _read_parquet_or_empty(storage, delta_removed_key, ["name", "tld"])
+    read_seconds = perf_counter() - read_started_at
 
     log.info(
         "loader source=%s tld=%s snapshot=%s added_rows=%d removed_rows=%d",
@@ -113,7 +116,9 @@ def load_delta(
 
     conn = psycopg2.connect(database_url)
     try:
+        partition_started_at = perf_counter()
         _ensure_partition(conn, tld)
+        partition_seconds = perf_counter() - partition_started_at
 
         # Prepare added frame — inject added_day from snapshot_date
         added_loaded = 0
@@ -121,21 +126,45 @@ def load_delta(
             load_df = delta_df.select(["name", "tld", "label"]).with_columns(
                 pl.lit(added_day).cast(pl.Int32).alias("added_day")
             )
+            added_load_started_at = perf_counter()
             added_loaded = _copy_load(conn, load_df, "domain", ["name", "tld", "label", "added_day"])
+            added_load_seconds = perf_counter() - added_load_started_at
             log.info("loader inserted domain tld=%s added=%d", tld, added_loaded)
+        else:
+            added_load_seconds = 0.0
 
         removed_loaded = 0
         if len(removed_df) > 0:
             rem_df = removed_df.select(["name", "tld"]).with_columns(
                 pl.lit(added_day).cast(pl.Int32).alias("removed_day")
             )
+            removed_load_started_at = perf_counter()
             removed_loaded = _copy_load(conn, rem_df, "domain_removed", ["name", "tld", "removed_day"])
+            removed_load_seconds = perf_counter() - removed_load_started_at
             log.info("loader inserted domain_removed tld=%s removed=%d", tld, removed_loaded)
+        else:
+            removed_load_seconds = 0.0
 
     finally:
         conn.close()
 
-    return {"added_loaded": added_loaded, "removed_loaded": removed_loaded, "status": "ok"}
+    timings = {
+        "read_delta_seconds": round(read_seconds, 3),
+        "ensure_partition_seconds": round(partition_seconds, 3),
+        "load_added_seconds": round(added_load_seconds, 3),
+        "load_removed_seconds": round(removed_load_seconds, 3),
+        "total_seconds": round(
+            read_seconds + partition_seconds + added_load_seconds + removed_load_seconds,
+            3,
+        ),
+    }
+    return {
+        "added_loaded": added_loaded,
+        "removed_loaded": removed_loaded,
+        "status": "ok",
+        "snapshot_date": snap_str,
+        "timings": timings,
+    }
 
 
 def _read_parquet_or_empty(storage: R2Storage, key: str, required_columns: list[str]) -> pl.DataFrame:

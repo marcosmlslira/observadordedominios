@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     databricks_workspace_path: str = Field(
         default="/ingestion/notebooks", alias="DATABRICKS_WORKSPACE_PATH"
     )
+    databricks_serverless_performance_target: str = Field(
+        default="", alias="DATABRICKS_SERVERLESS_PERFORMANCE_TARGET"
+    )
     ingestion_git_ref: str = Field(default="main", alias="INGESTION_GIT_REF")
 
     # ── Runtime ───────────────────────────────────────────────────────────────

@@ -75,23 +75,25 @@ class DatabricksClient:
         notebook_path: str,
         base_parameters: dict[str, str] | None = None,
         serverless: bool = True,
+        performance_target: str | None = None,
         cluster_id: str | None = None,
         new_cluster: dict[str, Any] | None = None,
         timeout_seconds: int = 0,
     ) -> int:
         """Submit a notebook run and return the run_id."""
         if serverless:
+            task: dict[str, Any] = {
+                "task_key": "main",
+                "notebook_task": {
+                    "notebook_path": notebook_path,
+                    "base_parameters": base_parameters or {},
+                },
+            }
+            if performance_target:
+                task["performance_target"] = performance_target
             payload: dict[str, Any] = {
                 "run_name": run_name,
-                "tasks": [
-                    {
-                        "task_key": "main",
-                        "notebook_task": {
-                            "notebook_path": notebook_path,
-                            "base_parameters": base_parameters or {},
-                        },
-                    }
-                ],
+                "tasks": [task],
             }
             if timeout_seconds:
                 payload["timeout_seconds"] = timeout_seconds

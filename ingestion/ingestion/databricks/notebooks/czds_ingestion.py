@@ -81,19 +81,23 @@ from ingestion.runners.czds_runner import run_czds_from_env
 reset_settings_cache()
 
 _batch_errors = []
+_batch_results = []
 for _tld in tld_list:
     print(f"=== CZDS: processing TLD={_tld} ===")
     try:
         results = run_czds_from_env(tld=_tld, snapshot_date=SNAPSHOT_DATE_OVERRIDE)
         for r in results:
-            print(json.dumps({
+            result_payload = {
                 "tld": r.run_key.tld,
                 "status": r.status,
                 "snapshot": r.snapshot_count,
                 "added": r.added_count,
                 "removed": r.removed_count,
                 "error": r.error_message,
-            }))
+                "metadata": r.metadata,
+            }
+            _batch_results.append(result_payload)
+            print(json.dumps(result_payload))
         tld_errs = [r for r in results if r.status == "error"]
         if tld_errs:
             _batch_errors.append(f"tld={_tld}: {[r.error_message or 'unknown' for r in tld_errs]}")
@@ -105,4 +109,8 @@ for _tld in tld_list:
 if _batch_errors:
     raise RuntimeError("CZDS batch ingestion errors:\n" + "\n".join(_batch_errors))
 
-dbutils.notebook.exit("OK")  # noqa: F821
+dbutils.notebook.exit(json.dumps({  # noqa: F821
+    "source": "czds",
+    "tlds": tld_list,
+    "results": _batch_results,
+}))
