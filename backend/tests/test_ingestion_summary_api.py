@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from contextlib import contextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -83,6 +84,70 @@ def test_ingestion_summary_includes_crtsh_hints(monkeypatch) -> None:
     assert payload["crtsh"]["next_expected_run_hint"] is not None
 
     assert "crtsh-bulk" not in payload
+
+
+def test_ingestion_runs_accepts_started_range_filters(monkeypatch) -> None:
+    now = datetime(2026, 4, 24, 12, 0, tzinfo=timezone.utc)
+    app = FastAPI()
+    app.include_router(ingestion_router.router)
+    seen: dict[str, object] = {}
+
+    def fake_list_runs(
+        self,
+        *,
+        limit,
+        offset,
+        source,
+        status,
+        tld,
+        started_from,
+        started_to,
+    ):
+        seen.update(
+            limit=limit,
+            offset=offset,
+            source=source,
+            status=status,
+            tld=tld,
+            started_from=started_from,
+            started_to=started_to,
+        )
+        return [
+            SimpleNamespace(
+                id=uuid4(),
+                source="openintel",
+                tld="com",
+                status="success",
+                started_at=now,
+                finished_at=now,
+                domains_seen=10,
+                domains_inserted=8,
+                domains_reactivated=0,
+                domains_deleted=0,
+                error_message=None,
+            )
+        ]
+
+    monkeypatch.setattr(IngestionRunRepository, "list_runs", fake_list_runs)
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_current_admin] = _override_admin
+
+    try:
+        client = TestClient(app)
+        response = client.get(
+            "/v1/ingestion/runs"
+            "?source=openintel"
+            "&started_from=2026-04-10T00:00:00%2B00:00"
+            "&started_to=2026-04-24T23:59:59%2B00:00"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert seen["source"] == "openintel"
+    assert seen["started_from"] == datetime(2026, 4, 10, 0, 0, tzinfo=timezone.utc)
+    assert seen["started_to"] == datetime(2026, 4, 24, 23, 59, 59, tzinfo=timezone.utc)
+    assert response.json()[0]["domains_inserted"] == 8
 
 
 def test_tld_coverage_uses_short_lived_session_without_checkpoint_queries(monkeypatch) -> None:

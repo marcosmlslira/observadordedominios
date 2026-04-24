@@ -14,7 +14,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   backend:
     image: observadordedominios-backend:latest
@@ -38,7 +41,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   postgres:
     image: postgres:16-alpine
@@ -67,7 +73,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   czds_ingestor:
     image: observadordedominios-backend:latest
@@ -82,7 +91,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   certstream_server:
     image: 0rickyy0/certstream-server-go:latest
@@ -91,7 +103,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   ct_ingestor:
     image: observadordedominios-backend:latest
@@ -110,7 +125,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   openintel_ingestor:
     image: observadordedominios-backend:latest
@@ -126,7 +144,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
   similarity_worker:
     image: observadordedominios-backend:latest
@@ -141,7 +162,10 @@ services:
     deploy:
       replicas: 1
       restart_policy:
-        condition: on-failure
+        condition: any
+        delay: 30s
+        max_attempts: 0
+        window: 120s
 
 networks:
   app-network:

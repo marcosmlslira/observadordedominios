@@ -208,11 +208,21 @@ def list_runs(
     source: str | None = None,
     status: str | None = None,
     tld: str | None = None,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
     db: Session = Depends(get_db),
 ):
     """Return ingestion runs, optionally filtered by source and/or status."""
     run_repo = IngestionRunRepository(db)
-    runs = run_repo.list_runs(limit=limit, offset=offset, source=source, status=status, tld=tld)
+    runs = run_repo.list_runs(
+        limit=limit,
+        offset=offset,
+        source=source,
+        status=status,
+        tld=tld,
+        started_from=started_from,
+        started_to=started_to,
+    )
 
     return [
         RunStatusResponse(
