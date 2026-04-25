@@ -24,9 +24,7 @@ import {
 
 const SOURCE_LABELS: Record<string, string> = {
   czds: "CZDS",
-  certstream: "CertStream",
-  crtsh: "crt.sh",
-  "crtsh-bulk": "crt.sh Bulk",
+  openintel: "OpenINTEL",
 }
 
 function StatusIcon({ status }: { status: string | null }) {

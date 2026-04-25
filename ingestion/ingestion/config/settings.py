@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     # ── Runtime ───────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="json", alias="LOG_FORMAT")
+    manual_trigger_token: str = Field(default="", alias="INGESTION_MANUAL_TRIGGER_TOKEN")
 
     def czds_tld_list(self) -> list[str] | None:
         """Return explicit CZDS TLD list or None (meaning: fetch all from API)."""

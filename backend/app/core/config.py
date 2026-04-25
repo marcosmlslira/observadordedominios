@@ -143,6 +143,14 @@ class Settings(BaseSettings):
     OPENINTEL_CCTLD_COOKIE_VALUE: str = "true"
     OPENINTEL_CCTLD_S3_BASE: str = "https://object.openintel.nl/seeseetld/lists"
 
+    # ── Ingestion Worker Manual Trigger ────────────────────
+    INGESTION_TRIGGER_URLS: str = (
+        "http://ingestion_worker:8080/run-now,"
+        "http://obs_ingestion_worker:8080/run-now"
+    )
+    INGESTION_TRIGGER_TIMEOUT_SECONDS: float = 5.0
+    INGESTION_MANUAL_TRIGGER_TOKEN: str = ""
+
     @property
     def openintel_zonefile_tlds_set(self) -> set[str]:
         return {t.strip() for t in self.OPENINTEL_ZONEFILE_TLDS.split(",") if t.strip()}

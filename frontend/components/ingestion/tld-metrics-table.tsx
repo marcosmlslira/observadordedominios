@@ -135,7 +135,6 @@ export function TldMetricsTable({
   onEnableAll,
   onDisableAll,
 }: TldMetricsTableProps) {
-  const isCertStream = source === "certstream"
   const isOpenintel = source === "openintel"
   const [filter, setFilter] = useState("")
   const [toggling, setToggling] = useState<Set<string>>(new Set())
@@ -203,7 +202,7 @@ export function TldMetricsTable({
   }, [rows, filter, sortKey, sortDir])
 
   const activeCount = rows.filter((r) => r.is_enabled).length
-  const baseColCount = isCertStream ? 4 : isOpenintel ? 7 : 6  // TLD + Ativo + source-specific columns
+  const baseColCount = isOpenintel ? 7 : 6  // TLD + Ativo + source-specific columns
   const colSpan = baseColCount + (showPriority ? 1 : 0) + (onTrigger ? 1 : 0)
 
   async function handleToggle(tld: string, enabled: boolean) {
@@ -301,12 +300,7 @@ export function TldMetricsTable({
               {showPriority && (
                 <SortableHead col="priority" className="text-right">Prioridade</SortableHead>
               )}
-              {isCertStream ? (
-                <>
-                  <SortableHead col="domains_inserted_total" className="text-right">Domínios inseridos</SortableHead>
-                  <SortableHead col="last_seen_at" className="text-center">Último visto</SortableHead>
-                </>
-              ) : isOpenintel ? (
+              {isOpenintel ? (
                 <>
                   <SortableHead col="last_domains_inserted" className="text-right">Inseridos</SortableHead>
                   <SortableHead col="openintel_last_verification_at" className="text-center">Última verificação</SortableHead>
@@ -352,16 +346,7 @@ export function TldMetricsTable({
                     />
                   </TableCell>
                 )}
-                {isCertStream ? (
-                  <>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {formatCount(row.domains_inserted_total ?? null)}
-                    </TableCell>
-                    <TableCell className="text-center text-xs text-muted-foreground">
-                      {formatDate(row.last_seen_at ?? null)}
-                    </TableCell>
-                  </>
-                ) : isOpenintel ? (
+                {isOpenintel ? (
                   <>
                     <TableCell className="text-right text-xs tabular-nums">
                       {formatCount(row.last_domains_inserted)}
@@ -442,10 +427,8 @@ export function TldMetricsTable({
         </Table>
       </div>
       <p className="text-xs text-muted-foreground">
-        {isCertStream
-          ? "Domínios inseridos: total acumulado desde o início da sessão · Último visto: última vez que o TLD recebeu domínios"
-          : isOpenintel
-            ? "Inseridos: quantidade da última execução do TLD · Última verificação exibida em UTC · Azul = em dia sem novo arquivo · Verde = novo arquivo ingerido · Amarelo = atrasado · Vermelho = falha"
+        {isOpenintel
+          ? "Inseridos: quantidade da última execução do TLD · Última verificação exibida em UTC · Azul = em dia sem novo arquivo · Verde = novo arquivo ingerido · Amarelo = atrasado · Vermelho = falha"
           : "Barras: altura proporcional à duração · verde = sucesso · vermelho = erro · cinza = sem dado"}
         {showPriority && " · Prioridade: menor número = processado primeiro · Enter ou foco perdido para salvar"}
       </p>

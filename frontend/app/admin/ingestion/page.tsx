@@ -33,7 +33,7 @@ import type {
   TldStatusResponse,
 } from "@/lib/types"
 
-type SourceFilter = "all" | "czds" | "certstream" | "crtsh" | "openintel"
+type SourceFilter = "all" | "czds" | "openintel"
 type StatusFilter = "all" | "attention" | "success" | "failed" | "running" | "queued" | "no_data"
 type SortMode = "domains" | "attention" | "tld"
 type CellStatus = "success" | "failed" | "running" | "queued" | "delayed" | "no_data"
@@ -42,17 +42,13 @@ const SOURCES: Array<{ value: SourceFilter; label: string }> = [
   { value: "all", label: "Todas as fontes" },
   { value: "czds", label: "CZDS" },
   { value: "openintel", label: "OpenINTEL / R2" },
-  { value: "certstream", label: "CertStream" },
-  { value: "crtsh", label: "crt.sh" },
 ]
 
 const PERIODS = [7, 14, 30, 60, 90]
-const SOURCE_PRIORITY: SourceFilter[] = ["czds", "openintel", "certstream", "crtsh"]
+const SOURCE_PRIORITY: SourceFilter[] = ["czds", "openintel"]
 const SOURCE_PILL_LABEL: Record<string, string> = {
   czds: "CZDS",
   openintel: "OI",
-  certstream: "CT",
-  crtsh: "crt.sh",
 }
 
 const STATUS_META: Record<CellStatus, { label: string; className: string; dot: string }> = {
@@ -191,6 +187,8 @@ export default function IngestionPage() {
   const [tldStatuses, setTldStatuses] = useState<Record<string, TldStatusResponse | null>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [manualTriggering, setManualTriggering] = useState(false)
+  const [manualMessage, setManualMessage] = useState("")
   const [error, setError] = useState("")
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null)
 
@@ -208,7 +206,7 @@ export default function IngestionPage() {
     setError("")
 
     try {
-      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus, certstreamStatus] =
+      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus] =
         await Promise.all([
           api.get<IngestionRun[]>(`/v1/ingestion/runs?${params}`),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
@@ -217,10 +215,9 @@ export default function IngestionPage() {
           ingestionApi.getOpenintelStatus().catch(() => null),
           ingestionApi.getTldStatus("czds").catch(() => null),
           ingestionApi.getTldStatus("openintel").catch(() => null),
-          ingestionApi.getTldStatus("certstream").catch(() => null),
         ])
 
-      setRuns(runsData)
+      setRuns(runsData.filter((run) => run.source === "czds" || run.source === "openintel"))
       setSummaries(summaryData)
       setDomainCounts(countsData)
       setCycleStatus(cycleData)
@@ -228,7 +225,6 @@ export default function IngestionPage() {
       setTldStatuses({
         czds: czdsStatus,
         openintel: openintelTldStatus,
-        certstream: certstreamStatus,
       })
       setLastFetchedAt(new Date())
     } catch (err) {
@@ -243,6 +239,21 @@ export default function IngestionPage() {
     void fetchData(true)
     const interval = window.setInterval(() => void fetchData(false), 60_000)
     return () => window.clearInterval(interval)
+  }, [fetchData])
+
+  const triggerDailyCycle = useCallback(async () => {
+    setManualTriggering(true)
+    setError("")
+    setManualMessage("")
+    try {
+      const response = await ingestionApi.triggerDailyCycle()
+      setManualMessage(response.message)
+      await fetchData(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao disparar ciclo manual")
+    } finally {
+      setManualTriggering(false)
+    }
   }, [fetchData])
 
   const dateKeys = useMemo(() => buildDateKeys(periodDays), [periodDays])
@@ -287,7 +298,6 @@ export default function IngestionPage() {
     const statusesBySource = {
       czds: new Set((tldStatuses.czds?.items ?? []).map((item) => item.tld)),
       openintel: new Set((tldStatuses.openintel?.items ?? []).map((item) => item.tld)),
-      certstream: new Set((tldStatuses.certstream?.items ?? []).map((item) => item.tld)),
     }
     const rows = Array.from(tlds).map((tld) => {
       const tldRuns = runs.filter((run) => run.tld === tld)
@@ -297,7 +307,6 @@ export default function IngestionPage() {
       const presentSources = new Set<string>(tldRuns.map((run) => run.source))
       if (statusesBySource.czds.has(tld)) presentSources.add("czds")
       if (statusesBySource.openintel.has(tld) || r2) presentSources.add("openintel")
-      if (statusesBySource.certstream.has(tld)) presentSources.add("certstream")
       const primarySource = (
         sourceFilter !== "all"
           ? sourceFilter
@@ -460,6 +469,10 @@ export default function IngestionPage() {
           <span>Atualiza a cada 1 minuto</span>
           <span className="hidden h-1 w-1 rounded-full bg-border-strong sm:block" />
           <span>Última leitura: {formatDateTime(lastFetchedAt)}</span>
+          <Button onClick={() => void triggerDailyCycle()} disabled={manualTriggering || refreshing}>
+            {manualTriggering ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-2 h-3.5 w-3.5" />}
+            Executar ciclo agora
+          </Button>
           <Button variant="outline" size="sm" onClick={() => void fetchData(false)} disabled={refreshing}>
             <RefreshCw className={`mr-2 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
@@ -481,6 +494,11 @@ export default function IngestionPage() {
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
           {error}
+        </div>
+      )}
+      {manualMessage && !error && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200">
+          {manualMessage}
         </div>
       )}
 

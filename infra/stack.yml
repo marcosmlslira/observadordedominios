@@ -78,65 +78,27 @@ services:
         max_attempts: 0
         window: 120s
 
-  czds_ingestor:
-    image: observadordedominios-backend:latest
-    command: ["python", "-m", "app.worker.czds_ingestor"]
+  ingestion_worker:
+    image: observadordedominios-ingestion:latest
+    command: ["python", "scheduler.py"]
     environment:
       - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
-      - S3_BUCKET=observador-zones
-      - S3_FORCE_PATH_STYLE=false
-      - CZDS_RUNNING_STALE_MINUTES=480
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-        delay: 30s
-        max_attempts: 0
-        window: 120s
-
-  certstream_server:
-    image: 0rickyy0/certstream-server-go:latest
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-        delay: 30s
-        max_attempts: 0
-        window: 120s
-
-  ct_ingestor:
-    image: observadordedominios-backend:latest
-    command: ["python", "-m", "app.worker.ct_ingestor"]
-    environment:
-      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
-      - CT_CERTSTREAM_ENABLED=true
-      - CT_CERTSTREAM_URL=ws://certstream_server:8080/
-      - CT_CRTSH_ENABLED=true
-      - CT_CRTSH_SYNC_CRON=0 5 * * *
-    networks:
-      - app-network
-    depends_on:
-      - postgres
-      - certstream_server
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
-        delay: 30s
-        max_attempts: 0
-        window: 120s
-
-  openintel_ingestor:
-    image: observadordedominios-backend:latest
-    command: ["python", "-m", "app.worker.openintel_ingestor"]
-    environment:
-      - DATABASE_URL=postgresql://obs:obs@postgres:5432/obs
-      - OPENINTEL_ENABLED_TLDS=br,uk,de,fr,au,ca,nl,eu
-      - OPENINTEL_SYNC_CRON=0 13 * * *
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET=observadordedominios
+      - R2_PREFIX=lake/domain_ingestion
+      - CZDS_USERNAME=${CZDS_USERNAME:-}
+      - CZDS_PASSWORD=${CZDS_PASSWORD:-}
+      - CZDS_TLDS=all
+      - DATABRICKS_HOST=${DATABRICKS_HOST:-}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN:-}
+      - DATABRICKS_WORKSPACE_PATH=/ingestion/notebooks
+      - INGESTION_GIT_REF=main
+      - OPENINTEL_TLDS=ac,br,uk,de,fr,se,nu,ch,li,sk,ee
+      - OPENINTEL_ZONEFILE_TLDS=ch,ee,fr,li,nu,se,sk
+      - LOG_FORMAT=json
+      - LOG_LEVEL=INFO
     networks:
       - app-network
     depends_on:

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
+from urllib import error as urlerror
+from urllib import request as urlrequest
 from zoneinfo import ZoneInfo
 from uuid import UUID
 
@@ -10,8 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.dependencies import get_current_admin
+from app.core.config import settings
 from app.infra.db.session import SessionLocal, get_db
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.czds_policy_repository import CzdsPolicyRepository
@@ -35,6 +38,7 @@ from app.schemas.czds_ingestion import (
     OpenintelTldStatusItem,
     OpenintelGlobalCounts,
     OpenintelVisualStatus,
+    ManualCycleTriggerResponse,
 )
 from app.services.tld_coverage import get_target_tlds, resolve_tld_coverages
 
@@ -44,7 +48,58 @@ router = APIRouter(
     dependencies=[Depends(get_current_admin)],
 )
 
-SUMMARY_SOURCE_ORDER = ("czds", "certstream", "crtsh", "openintel")
+SUMMARY_SOURCE_ORDER = ("czds", "openintel")
+_DEFAULT_DAILY_CRON_UTC = "0 4 * * *"  # ingestion/scheduler.py (04:00 UTC = 01:00 UTC-3)
+
+
+def _active_cron_map(db: Session) -> dict[str, str]:
+    try:
+        repo = IngestionConfigRepository(db)
+        by_source = {cfg.source: cfg.cron_expression for cfg in repo.list_configs()}
+    except Exception:
+        by_source = {}
+    return {
+        "czds": by_source.get("czds", _DEFAULT_DAILY_CRON_UTC),
+        "openintel": by_source.get("openintel", _DEFAULT_DAILY_CRON_UTC),
+    }
+
+
+def _trigger_ingestion_worker_cycle(admin_email: str) -> tuple[str, str]:
+    urls = [u.strip() for u in settings.INGESTION_TRIGGER_URLS.split(",") if u.strip()]
+    if not urls:
+        raise HTTPException(status_code=500, detail="INGESTION_TRIGGER_URLS is empty")
+
+    payload = json.dumps({"requested_by": admin_email}).encode()
+    errors: list[str] = []
+
+    for url in urls:
+        req = urlrequest.Request(
+            url=url,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        if settings.INGESTION_MANUAL_TRIGGER_TOKEN:
+            req.add_header("X-Ingestion-Trigger-Token", settings.INGESTION_MANUAL_TRIGGER_TOKEN)
+
+        try:
+            with urlrequest.urlopen(req, timeout=settings.INGESTION_TRIGGER_TIMEOUT_SECONDS) as resp:
+                body_raw = resp.read().decode() if resp else ""
+                body = json.loads(body_raw) if body_raw else {}
+                status = body.get("status", "accepted")
+                if status == "already_running":
+                    return "already_running", f"Ciclo já está em execução ({url})."
+                return "accepted", f"Disparo manual aceito pelo ingestion worker ({url})."
+        except urlerror.HTTPError as exc:
+            body = exc.read().decode() if exc.fp else ""
+            if exc.code == 409:
+                return "already_running", "Ciclo já está em execução."
+            errors.append(f"{url} -> HTTP {exc.code}: {body or exc.reason}")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{url} -> {exc}")
+
+    detail = " | ".join(errors) if errors else "Failed to contact ingestion worker"
+    raise HTTPException(status_code=502, detail=detail)
 
 
 def _build_openintel_visual_status(
@@ -136,6 +191,7 @@ def _next_cron_hint(cron_expr: str) -> str | None:
 
 def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
     indexed = {row["source"]: row for row in run_repo.get_source_summary()}
+    active_crons = _active_cron_map(run_repo.db)
     rows: list[dict] = []
 
     for source in SUMMARY_SOURCE_ORDER:
@@ -156,34 +212,20 @@ def _build_source_summary_rows(run_repo: IngestionRunRepository) -> list[dict]:
         }
         row.update(indexed.get(source, {}))
 
-        if source == "certstream":
-            row["mode"] = "Realtime stream"
-            row["cron_expression"] = None
-            if row["running_now"] > 0:
-                row["status_hint"] = "Streaming continuously from CertStream."
-            elif row["last_success_at"]:
-                row["status_hint"] = "Last CertStream session finished cleanly."
-            else:
-                row["status_hint"] = "No CertStream session completed yet."
-        elif source == "crtsh":
+        if source == "czds":
+            cron_expression = active_crons["czds"]
             row["mode"] = "Daily cron"
-            row["cron_expression"] = settings.CT_CRTSH_SYNC_CRON
-            row["next_expected_run_hint"] = _next_cron_hint(settings.CT_CRTSH_SYNC_CRON)
-            if row["running_now"] > 0:
-                row["status_hint"] = "crt.sh batch is running now."
-            elif row["last_run_at"]:
-                row["status_hint"] = "crt.sh runs only on its daily cron."
-            else:
-                row["status_hint"] = "crt.sh is scheduled and waiting for the next daily cron."
-        elif source == "czds":
-            row["mode"] = "Daily cron"
-            row["cron_expression"] = settings.CZDS_SYNC_CRON
-            row["next_expected_run_hint"] = _next_cron_hint(settings.CZDS_SYNC_CRON)
-            row["status_hint"] = "Processes enabled TLDs one by one in priority order."
+            row["cron_expression"] = cron_expression
+            row["next_expected_run_hint"] = _next_cron_hint(cron_expression)
+            row["status_hint"] = (
+                "Processes enabled TLDs one by one in priority order. "
+                "Scheduler baseline: 04:00 UTC (01:00 UTC-3)."
+            )
         elif source == "openintel":
+            cron_expression = active_crons["openintel"]
             row["mode"] = "Daily cron"
-            row["cron_expression"] = settings.OPENINTEL_SYNC_CRON
-            row["next_expected_run_hint"] = _next_cron_hint(settings.OPENINTEL_SYNC_CRON)
+            row["cron_expression"] = cron_expression
+            row["next_expected_run_hint"] = _next_cron_hint(cron_expression)
             if row["running_now"] > 0:
                 row["status_hint"] = "OpenINTEL batch is running now."
             elif row["last_run_at"]:
@@ -287,6 +329,21 @@ def get_summary(
     return [SourceSummaryResponse(**row) for row in _build_source_summary_rows(run_repo)]
 
 
+@router.post(
+    "/trigger/daily-cycle",
+    response_model=ManualCycleTriggerResponse,
+    status_code=202,
+    summary="Trigger the daily ingestion cycle manually (OpenINTEL -> CZDS)",
+)
+def trigger_daily_cycle(
+    admin_email: str = Depends(get_current_admin),
+):
+    status, message = _trigger_ingestion_worker_cycle(admin_email)
+    if status == "already_running":
+        return ManualCycleTriggerResponse(status="already_running", message=message)
+    return ManualCycleTriggerResponse(status="accepted", message=message)
+
+
 @router.get(
     "/cycle-status",
     response_model=IngestionCycleStatusResponse,
@@ -343,30 +400,19 @@ def get_cycle_status(
     tlds_suspended_count = len(suspended_tlds)
     tlds_ok = total_tlds - tlds_failing - tlds_suspended_count
 
-    # Schedules
+    # Schedules (active sources only; cron comes from persisted source config)
+    active_crons = _active_cron_map(db)
     schedules = [
         ScheduleEntry(
             source="czds",
-            cron_expression=settings.CZDS_SYNC_CRON,
-            next_run_at=_next_cron_hint(settings.CZDS_SYNC_CRON),
-            mode="cron",
-        ),
-        ScheduleEntry(
-            source="certstream",
-            cron_expression="",
-            next_run_at=None,
-            mode="realtime",
-        ),
-        ScheduleEntry(
-            source="crtsh",
-            cron_expression=settings.CT_CRTSH_SYNC_CRON,
-            next_run_at=_next_cron_hint(settings.CT_CRTSH_SYNC_CRON),
+            cron_expression=active_crons["czds"],
+            next_run_at=_next_cron_hint(active_crons["czds"]),
             mode="cron",
         ),
         ScheduleEntry(
             source="openintel",
-            cron_expression=settings.OPENINTEL_SYNC_CRON,
-            next_run_at=_next_cron_hint(settings.OPENINTEL_SYNC_CRON),
+            cron_expression=active_crons["openintel"],
+            next_run_at=_next_cron_hint(active_crons["openintel"]),
             mode="cron",
         ),
     ]
@@ -581,7 +627,7 @@ def get_tld_status(
     _admin=Depends(get_current_admin),
 ):
     """Unified per-TLD status: last run, domains inserted/deleted today, enabled flag."""
-    valid_sources = {"czds", "openintel", "certstream"}
+    valid_sources = {"czds", "openintel"}
     if source not in valid_sources:
         raise HTTPException(status_code=400, detail=f"source must be one of {valid_sources}")
 

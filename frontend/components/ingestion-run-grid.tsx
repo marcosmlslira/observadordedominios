@@ -4,9 +4,7 @@ import type { IngestionRun } from "@/lib/types"
 
 const SOURCES = [
   { key: "czds", label: "CZDS" },
-  { key: "certstream", label: "CertStream" },
-  { key: "crtsh", label: "crt.sh" },
-  { key: "crtsh-bulk", label: "crt.sh Bulk" },
+  { key: "openintel", label: "OpenINTEL" },
 ] as const
 
 const COLS = 30

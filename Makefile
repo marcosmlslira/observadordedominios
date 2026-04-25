@@ -15,6 +15,7 @@ help:
 	@echo "  make build           - Build de todas as imagens"
 	@echo "  make build-frontend  - Build apenas frontend"
 	@echo "  make build-backend   - Build apenas backend"
+	@echo "  make build-ingestion - Build apenas ingestion worker"
 	@echo ""
 	@echo "📋 Logs:"
 	@echo "  make logs            - Logs de todos os serviços"
@@ -64,8 +65,8 @@ help:
 # BUILD - Construção de imagens
 # ============================================================================
 
-.PHONY: build build-frontend build-backend
-build: build-frontend build-backend
+.PHONY: build build-frontend build-backend build-ingestion
+build: build-frontend build-backend build-ingestion
 
 build-frontend:
 	@echo "📦 Building frontend:dev..."
@@ -77,9 +78,14 @@ build-backend:
 	docker build -t observadordedominios-backend:dev -f backend/Dockerfile.dev backend/
 	@echo "✅ Backend image built!"
 
+build-ingestion:
+	@echo "📦 Building ingestion:dev..."
+	docker build -t observadordedominios-ingestion:dev -f ingestion/Dockerfile.dev ingestion/
+	@echo "✅ Ingestion image built!"
+
 # Build para produção
-.PHONY: build-prod build-frontend-prod build-backend-prod
-build-prod: build-frontend-prod build-backend-prod
+.PHONY: build-prod build-frontend-prod build-backend-prod build-ingestion-prod
+build-prod: build-frontend-prod build-backend-prod build-ingestion-prod
 
 build-frontend-prod:
 	@echo "📦 Building frontend:latest (production)..."
@@ -91,12 +97,18 @@ build-backend-prod:
 	docker build -t observadordedominios-backend:latest -f backend/Dockerfile backend/
 	@echo "✅ Backend production image built!"
 
+build-ingestion-prod:
+	@echo "📦 Building ingestion:latest (production)..."
+	docker build -t observadordedominios-ingestion:latest -f ingestion/Dockerfile ingestion/
+	@echo "✅ Ingestion production image built!"
+
 # Build sem cache
 .PHONY: build-clean
 build-clean:
 	@echo "🧹 Building without cache..."
 	docker build --no-cache -t observadordedominios-frontend:dev -f frontend/Dockerfile.dev frontend/
 	docker build --no-cache -t observadordedominios-backend:dev -f backend/Dockerfile.dev backend/
+	docker build --no-cache -t observadordedominios-ingestion:dev -f ingestion/Dockerfile.dev ingestion/
 	@echo "✅ Clean build completed!"
 
 # ============================================================================
@@ -139,7 +151,7 @@ init-swarm:
 # LOGS - Visualização de logs
 # ============================================================================
 
-.PHONY: logs logs-frontend logs-backend logs-czds logs-postgres logs-minio logs-10m logs-frontend-10m logs-backend-10m
+.PHONY: logs logs-frontend logs-backend logs-ingestion logs-postgres logs-minio logs-10m logs-frontend-10m logs-backend-10m
 logs:
 	docker service logs -f $(STACK_NAME)_frontend $(STACK_NAME)_backend
 
@@ -149,8 +161,8 @@ logs-frontend:
 logs-backend:
 	docker service logs -f $(STACK_NAME)_backend
 
-logs-czds:
-	docker service logs -f $(STACK_NAME)_czds_ingestor
+logs-ingestion:
+	docker service logs -f $(STACK_NAME)_ingestion_worker
 
 logs-postgres:
 	docker service logs -f $(STACK_NAME)_postgres
@@ -200,14 +212,14 @@ ps:
 # UPDATE - Atualização de serviços
 # ============================================================================
 
-.PHONY: update update-frontend update-backend update-czds update-all
+.PHONY: update update-frontend update-backend update-ingestion update-all
 update: update-all
 
 update-all:
 	@echo "🔄 Atualizando todos os serviços..."
 	-docker service update --force $(STACK_NAME)_frontend
 	-docker service update --force $(STACK_NAME)_backend
-	-docker service update --force $(STACK_NAME)_czds_ingestor
+	-docker service update --force $(STACK_NAME)_ingestion_worker
 	@echo "✅ Serviços atualizados!"
 
 update-frontend:
@@ -220,10 +232,10 @@ update-backend:
 	docker service update --force $(STACK_NAME)_backend
 	@echo "✅ Backend atualizado!"
 
-update-czds:
-	@echo "🔄 Atualizando CZDS ingestor..."
-	docker service update --force $(STACK_NAME)_czds_ingestor
-	@echo "✅ CZDS ingestor atualizado!"
+update-ingestion:
+	@echo "🔄 Atualizando ingestion worker..."
+	docker service update --force $(STACK_NAME)_ingestion_worker
+	@echo "✅ Ingestion worker atualizado!"
 
 # Rebuild e update de um serviço específico
 .PHONY: rebuild-frontend rebuild-backend
@@ -281,7 +293,7 @@ prune: prune-volumes prune-images
 # DEBUG - Comandos de debug
 # ============================================================================
 
-.PHONY: exec-frontend exec-backend exec-czds shell-frontend shell-backend inspect-frontend inspect-backend
+.PHONY: exec-frontend exec-backend exec-ingestion shell-frontend shell-backend inspect-frontend inspect-backend
 exec-frontend:
 	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_frontend | head -n1); \
 	if [ -z "$$container_id" ]; then echo "❌ Container frontend não encontrado"; exit 1; fi; \
@@ -292,9 +304,9 @@ exec-backend:
 	if [ -z "$$container_id" ]; then echo "❌ Container backend não encontrado"; exit 1; fi; \
 	docker exec -it $$container_id bash
 
-exec-czds:
-	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_czds_ingestor | head -n1); \
-	if [ -z "$$container_id" ]; then echo "❌ Container czds_ingestor não encontrado"; exit 1; fi; \
+exec-ingestion:
+	@container_id=$$(docker ps -q -f name=$(STACK_NAME)_ingestion_worker | head -n1); \
+	if [ -z "$$container_id" ]; then echo "❌ Container ingestion_worker não encontrado"; exit 1; fi; \
 	docker exec -it $$container_id bash
 
 shell-frontend: exec-frontend

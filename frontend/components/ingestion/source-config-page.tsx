@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CronConfigCard } from "./cron-config-card"
-import { CertStreamSessionCard } from "./certstream-session-card"
 import { TldMetricsTable } from "./tld-metrics-table"
 import { TldStatusTable } from "./tld-status-table"
 import { OrderingModeSelector } from "./ordering-mode-selector"
@@ -33,7 +32,6 @@ import type {
 
 const SOURCE_LABELS: Record<string, string> = {
   czds: "CZDS",
-  certstream: "CertStream",
   openintel: "OpenINTEL",
 }
 
@@ -84,7 +82,6 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
   const [error, setError] = useState<string | null>(null)
 
   const label = SOURCE_LABELS[source] ?? source.toUpperCase()
-  const isContinuousStream = source === "certstream"
   const supportsOrderingMode = ORDERING_MODE_SOURCES.has(source)
   const supportsPriority = PRIORITY_SOURCES.has(source)
 
@@ -255,9 +252,7 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
           {config && (
             <>
               <CronConfigCard
-                source={source}
                 initialCron={config.cron_expression}
-                isContinuousStream={isContinuousStream}
                 onSave={handleSaveCron}
               />
               {supportsOrderingMode && (
@@ -270,8 +265,6 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
               )}
             </>
           )}
-
-          {isContinuousStream && <CertStreamSessionCard />}
 
           {source === "openintel" && openintelStatus && (
             <Card>

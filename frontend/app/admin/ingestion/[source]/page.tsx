@@ -1,6 +1,6 @@
 import { SourceConfigPage } from "@/components/ingestion/source-config-page"
 
-const VALID_SOURCES = ["czds", "certstream", "openintel"]
+const VALID_SOURCES = ["czds", "openintel"]
 
 interface Props {
   params: Promise<{ source: string }>

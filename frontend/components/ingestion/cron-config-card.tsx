@@ -7,9 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 
 interface CronConfigCardProps {
-  source: string
   initialCron: string
-  isContinuousStream?: boolean  // true for certstream realtime part
   onSave: (cron: string) => Promise<void>
 }
 
@@ -30,9 +28,7 @@ function validateCron(cron: string): string | null {
 }
 
 export function CronConfigCard({
-  source,
   initialCron,
-  isContinuousStream = false,
   onSave,
 }: CronConfigCardProps) {
   const [cron, setCron] = useState(initialCron)
@@ -67,11 +63,6 @@ export function CronConfigCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {isContinuousStream && (
-          <p className="text-xs text-muted-foreground mb-3">
-            Stream CertStream: contínuo (sempre ativo). Cron aplica ao batch crt.sh.
-          </p>
-        )}
         <div className="flex items-center gap-3">
           <Label className="text-sm text-muted-foreground whitespace-nowrap">
             Expressão cron

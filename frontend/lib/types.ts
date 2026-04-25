@@ -282,6 +282,11 @@ export interface IngestionCycleStatus {
   health: HealthSummary
 }
 
+export interface ManualCycleTriggerResponse {
+  status: "accepted" | "already_running"
+  message: string
+}
+
 export interface CzdsPolicyResponse {
   source: "database" | "env"
   tlds: string[]

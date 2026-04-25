@@ -6,13 +6,10 @@ import { CheckCircle2, XCircle, Loader2, Activity } from "lucide-react"
 
 const SOURCE_LABELS: Record<string, string> = {
   czds: "CZDS",
-  certstream: "CertStream",
-  crtsh: "crt.sh",
   openintel: "OpenINTEL",
-  "crtsh-bulk": "crt.sh Bulk",
 }
 
-const SUMMARY_SOURCES = ["czds", "certstream", "crtsh", "openintel"] as const
+const SUMMARY_SOURCES = ["czds", "openintel"] as const
 
 function StatusIcon({ status }: { status: string | null }) {
   switch (status) {

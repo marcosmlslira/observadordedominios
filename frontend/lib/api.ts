@@ -148,6 +148,9 @@ export const ingestionApi = {
 
   getTldStatus: (source: string) =>
     api.get<import("./types").TldStatusResponse>(`/v1/ingestion/tld-status?source=${encodeURIComponent(source)}`),
+
+  triggerDailyCycle: () =>
+    api.post<import("./types").ManualCycleTriggerResponse>("/v1/ingestion/trigger/daily-cycle"),
 }
 
 // ── Ingestion Config API ──────────────────────────────────────

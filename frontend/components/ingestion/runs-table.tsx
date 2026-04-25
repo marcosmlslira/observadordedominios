@@ -15,12 +15,10 @@ import {
 
 const SOURCE_LABELS: Record<string, string> = {
   czds: "CZDS",
-  certstream: "CertStream",
-  crtsh: "crt.sh",
-  "crtsh-bulk": "crt.sh Bulk",
+  openintel: "OpenINTEL",
 }
 
-const ALL_SOURCES = ["all", "czds", "certstream", "crtsh", "crtsh-bulk"] as const
+const ALL_SOURCES = ["all", "czds", "openintel"] as const
 
 function statusVariant(status: string) {
   switch (status) {

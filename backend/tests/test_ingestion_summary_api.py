@@ -41,7 +41,7 @@ def _override_admin():
     return "admin@observador.com"
 
 
-def test_ingestion_summary_includes_crtsh_hints(monkeypatch) -> None:
+def test_ingestion_summary_only_returns_active_sources(monkeypatch) -> None:
     now = datetime.now(timezone.utc)
     app = FastAPI()
     app.include_router(ingestion_router.router)
@@ -49,7 +49,7 @@ def test_ingestion_summary_includes_crtsh_hints(monkeypatch) -> None:
     def fake_get_source_summary(self):
         return [
             {
-                "source": "certstream",
+                "source": "czds",
                 "total_runs": 2,
                 "successful_runs": 1,
                 "failed_runs": 0,
@@ -75,15 +75,11 @@ def test_ingestion_summary_includes_crtsh_hints(monkeypatch) -> None:
     assert response.status_code == 200
     payload = {item["source"]: item for item in response.json()}
 
-    assert payload["certstream"]["mode"] == "Realtime stream"
-    assert payload["certstream"]["status_hint"] == "Streaming continuously from CertStream."
-
-    assert payload["crtsh"]["mode"] == "Daily cron"
-    assert payload["crtsh"]["total_runs"] == 0
-    assert payload["crtsh"]["status_hint"] == "crt.sh is scheduled and waiting for the next daily cron."
-    assert payload["crtsh"]["next_expected_run_hint"] is not None
-
-    assert "crtsh-bulk" not in payload
+    assert set(payload) == {"czds", "openintel"}
+    assert payload["czds"]["mode"] == "Daily cron"
+    assert payload["openintel"]["mode"] == "Daily cron"
+    assert payload["czds"]["next_expected_run_hint"] is not None
+    assert payload["openintel"]["next_expected_run_hint"] is not None
 
 
 def test_ingestion_runs_accepts_started_range_filters(monkeypatch) -> None:
@@ -211,3 +207,20 @@ def test_tld_coverage_uses_short_lived_session_without_checkpoint_queries(monkey
     assert seen["session_opened"] is True
     assert seen["session_closed"] is True
     assert set(seen["resolved_policies"]) == {"com"}
+
+
+def test_tld_status_rejects_legacy_certstream_source() -> None:
+    app = FastAPI()
+    app.include_router(ingestion_router.router)
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_current_admin] = _override_admin
+
+    try:
+        client = TestClient(app)
+        response = client.get("/v1/ingestion/tld-status?source=certstream")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert "czds" in response.json()["detail"]
+    assert "openintel" in response.json()["detail"]

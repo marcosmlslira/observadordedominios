@@ -1,4 +1,4 @@
-"""IngestionTldPolicy — generic per-source TLD enable/disable (OpenINTEL, CertStream)."""
+"""IngestionTldPolicy — generic per-source TLD enable/disable (active sources)."""
 
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, String
 

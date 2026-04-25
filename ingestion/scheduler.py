@@ -15,6 +15,7 @@ import sys
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -25,6 +26,17 @@ from ingestion.orchestrator.pipeline import run_cycle
 log = logging.getLogger(__name__)
 
 _last_run: dict = {}
+_run_lock = threading.Lock()
+_run_in_progress = False
+
+
+def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: dict[str, Any]) -> None:
+    body = json.dumps(payload).encode()
+    handler.send_response(status_code)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
 # ── HTTP health server ────────────────────────────────────────────────────────
@@ -33,19 +45,35 @@ _last_run: dict = {}
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path in ("/health", "/"):
-            body = json.dumps({
+            _json_response(self, 200, {
                 "status": "ok",
+                "run_in_progress": _run_in_progress,
                 "last_run": _last_run,
                 "now": datetime.now(timezone.utc).isoformat(),
-            }).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            })
         else:
             self.send_response(404)
             self.end_headers()
+
+    def do_POST(self) -> None:
+        if self.path != "/run-now":
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        cfg = get_settings()
+        if cfg.manual_trigger_token:
+            given_token = self.headers.get("X-Ingestion-Trigger-Token") or ""
+            if given_token != cfg.manual_trigger_token:
+                _json_response(self, 401, {"status": "unauthorized"})
+                return
+
+        if _run_in_progress:
+            _json_response(self, 409, {"status": "already_running"})
+            return
+
+        threading.Thread(target=lambda: _run_daily_cycle(trigger="manual"), daemon=True).start()
+        _json_response(self, 202, {"status": "accepted"})
 
     def log_message(self, *args) -> None:  # silence access log
         pass
@@ -61,42 +89,56 @@ def _start_health_server(port: int = 8080) -> None:
 # ── Scheduled job ─────────────────────────────────────────────────────────────
 
 
-def _run_daily_cycle() -> None:
+def _run_daily_cycle(trigger: str = "schedule") -> None:
+    global _run_in_progress
+    acquired = _run_lock.acquire(blocking=False)
+    if not acquired:
+        log.warning("cycle trigger=%s ignored: already running", trigger)
+        return
+
+    _run_in_progress = True
     cfg = get_settings()
-    log.info("=== daily ingestion cycle starting ===")
-    summary: dict = {"started_at": datetime.now(timezone.utc).isoformat()}
+    log.info("=== daily ingestion cycle starting (trigger=%s) ===", trigger)
+    summary: dict = {
+        "trigger": trigger,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-    # 1. OpenINTEL first
     try:
-        oi_results = run_cycle("openintel", cfg)
-        summary["openintel"] = {
-            "total": len(oi_results),
-            "ok": sum(1 for r in oi_results if r.status == "ok"),
-            "skipped": sum(1 for r in oi_results if r.status == "skipped"),
-            "errors": sum(1 for r in oi_results if r.status == "error"),
-        }
-        log.info("openintel done: %s", summary["openintel"])
-    except Exception as exc:  # noqa: BLE001
-        log.exception("openintel cycle crashed: %s", exc)
-        summary["openintel"] = {"error": str(exc)}
+        # 1. OpenINTEL first
+        try:
+            oi_results = run_cycle("openintel", cfg)
+            summary["openintel"] = {
+                "total": len(oi_results),
+                "ok": sum(1 for r in oi_results if r.status == "ok"),
+                "skipped": sum(1 for r in oi_results if r.status == "skipped"),
+                "errors": sum(1 for r in oi_results if r.status == "error"),
+            }
+            log.info("openintel done: %s", summary["openintel"])
+        except Exception as exc:  # noqa: BLE001
+            log.exception("openintel cycle crashed: %s", exc)
+            summary["openintel"] = {"error": str(exc)}
 
-    # 2. CZDS next (.com always last inside run_cycle)
-    try:
-        czds_results = run_cycle("czds", cfg)
-        summary["czds"] = {
-            "total": len(czds_results),
-            "ok": sum(1 for r in czds_results if r.status == "ok"),
-            "skipped": sum(1 for r in czds_results if r.status == "skipped"),
-            "errors": sum(1 for r in czds_results if r.status == "error"),
-        }
-        log.info("czds done: %s", summary["czds"])
-    except Exception as exc:  # noqa: BLE001
-        log.exception("czds cycle crashed: %s", exc)
-        summary["czds"] = {"error": str(exc)}
+        # 2. CZDS next (.com always last inside run_cycle)
+        try:
+            czds_results = run_cycle("czds", cfg)
+            summary["czds"] = {
+                "total": len(czds_results),
+                "ok": sum(1 for r in czds_results if r.status == "ok"),
+                "skipped": sum(1 for r in czds_results if r.status == "skipped"),
+                "errors": sum(1 for r in czds_results if r.status == "error"),
+            }
+            log.info("czds done: %s", summary["czds"])
+        except Exception as exc:  # noqa: BLE001
+            log.exception("czds cycle crashed: %s", exc)
+            summary["czds"] = {"error": str(exc)}
 
-    summary["finished_at"] = datetime.now(timezone.utc).isoformat()
-    _last_run.update(summary)
-    log.info("=== daily ingestion cycle complete === %s", summary)
+        summary["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _last_run.update(summary)
+        log.info("=== daily ingestion cycle complete === %s", summary)
+    finally:
+        _run_in_progress = False
+        _run_lock.release()
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

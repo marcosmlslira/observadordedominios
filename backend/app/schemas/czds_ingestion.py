@@ -173,6 +173,11 @@ class IngestionCycleStatusResponse(BaseModel):
     health: HealthSummary
 
 
+class ManualCycleTriggerResponse(BaseModel):
+    status: Literal["accepted", "already_running"]
+    message: str
+
+
 class TldRunMetricItem(BaseModel):
     status: str
     started_at: datetime

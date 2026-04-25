@@ -12,7 +12,7 @@ _CRON_PART_RANGES = [
     ("day_of_week", 0, 6),
 ]
 
-_VALID_SOURCES = {"czds", "certstream", "openintel"}
+_VALID_SOURCES = {"czds", "openintel"}
 
 
 class InvalidCronError(ValueError):
