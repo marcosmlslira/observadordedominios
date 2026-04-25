@@ -1,0 +1,158 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e14]
+  - generic [ref=e15]:
+    - complementary [ref=e16]:
+      - generic [ref=e17]:
+        - heading "Observador de Dominios" [level=1] [ref=e18]
+        - paragraph [ref=e19]: Admin
+      - navigation [ref=e20]:
+        - link "Dashboard" [ref=e21] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e22]
+          - text: Dashboard
+        - link "Ingestão de Dados" [ref=e27] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e28]
+          - text: Ingestão de Dados
+        - link "Perfis de Marca" [ref=e31] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e32]
+          - text: Perfis de Marca
+        - link "Ameaças" [ref=e34] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e35]
+          - text: Ameaças
+        - link "Ferramentas" [ref=e37] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e38]
+          - text: Ferramentas
+      - generic [ref=e40]:
+        - button "Ativar modo escuro" [ref=e41]:
+          - img
+        - button "Sair" [ref=e42]:
+          - img
+          - text: Sair
+    - main [ref=e44]:
+      - generic [ref=e45]:
+        - heading "Dashboard" [level=1] [ref=e46]
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - generic [ref=e49]:
+              - generic [ref=e50]: Monitored Brands
+              - img [ref=e51]
+            - generic [ref=e53]:
+              - generic [ref=e54]: "9"
+              - paragraph [ref=e55]: 9 active
+          - generic [ref=e56]:
+            - generic [ref=e57]:
+              - generic [ref=e58]: Total Domains Ingested
+              - img [ref=e59]
+            - generic [ref=e62]:
+              - generic [ref=e63]: 830.566.494
+              - paragraph [ref=e64]:
+                - text: 4 sources
+                - generic [ref=e65]: (3 running)
+          - generic [ref=e66]:
+            - generic [ref=e67]:
+              - generic [ref=e68]: Quick Actions
+              - img [ref=e69]
+            - generic [ref=e72]:
+              - link "New Brand" [ref=e73] [cursor=pointer]:
+                - /url: /admin/brands
+                - img
+                - text: New Brand
+              - link "View Ingestion" [ref=e74] [cursor=pointer]:
+                - /url: /admin/ingestion
+        - generic [ref=e75]:
+          - heading "Inteligência de Ameaças" [level=2] [ref=e76]
+          - generic [ref=e77]:
+            - link "Ameaças Imediatas 1318 Imediato" [ref=e78] [cursor=pointer]:
+              - /url: /admin/matches?bucket=immediate_attention
+              - generic [ref=e79]:
+                - generic [ref=e80]:
+                  - generic [ref=e81]: Ameaças Imediatas
+                  - img [ref=e82]
+                - generic [ref=e84]:
+                  - generic [ref=e85]: "1318"
+                  - paragraph [ref=e86]:
+                    - generic [ref=e87]: Imediato
+            - link "Defensive Gap 1264 Defensivo" [ref=e88] [cursor=pointer]:
+              - /url: /admin/matches?bucket=defensive_gap
+              - generic [ref=e89]:
+                - generic [ref=e90]:
+                  - generic [ref=e91]: Defensive Gap
+                  - img [ref=e92]
+                - generic [ref=e94]:
+                  - generic [ref=e95]: "1264"
+                  - paragraph [ref=e96]:
+                    - generic [ref=e97]: Defensivo
+            - link "Watchlist 8945 Watchlist" [ref=e98] [cursor=pointer]:
+              - /url: /admin/matches?bucket=watchlist
+              - generic [ref=e99]:
+                - generic [ref=e100]:
+                  - generic [ref=e101]: Watchlist
+                  - img [ref=e102]
+                - generic [ref=e105]:
+                  - generic [ref=e106]: "8945"
+                  - paragraph [ref=e107]:
+                    - generic [ref=e108]: Watchlist
+            - link "Novos (7 dias) 11448 5 nas últimas 24h" [ref=e109] [cursor=pointer]:
+              - /url: /admin/matches
+              - generic [ref=e110]:
+                - generic [ref=e111]:
+                  - generic [ref=e112]: Novos (7 dias)
+                  - img [ref=e113]
+                - generic [ref=e116]:
+                  - generic [ref=e117]: "11448"
+                  - paragraph [ref=e118]: 5 nas últimas 24h
+        - generic [ref=e119]:
+          - heading "Ingestion Sources" [level=2] [ref=e120]
+          - generic [ref=e121]:
+            - link "CZDS 702.677.109 domains inserted running 1h ago" [ref=e122] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e123]:
+                - generic [ref=e124]:
+                  - generic [ref=e125]: CZDS
+                  - img [ref=e126]
+                - generic [ref=e128]:
+                  - generic [ref=e129]: 702.677.109
+                  - paragraph [ref=e130]: domains inserted
+                  - generic [ref=e131]:
+                    - generic [ref=e132]: running
+                    - generic [ref=e133]: 1h ago
+            - link "CertStream 14.635.473 domains inserted running 1h ago" [ref=e134] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e135]:
+                - generic [ref=e136]:
+                  - generic [ref=e137]: CertStream
+                  - img [ref=e138]
+                - generic [ref=e140]:
+                  - generic [ref=e141]: 14.635.473
+                  - paragraph [ref=e142]: domains inserted
+                  - generic [ref=e143]:
+                    - generic [ref=e144]: running
+                    - generic [ref=e145]: 1h ago
+            - link "crt.sh 156.215 domains inserted success 15h ago" [ref=e146] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e147]:
+                - generic [ref=e148]:
+                  - generic [ref=e149]: crt.sh
+                  - img [ref=e150]
+                - generic [ref=e153]:
+                  - generic [ref=e154]: "156.215"
+                  - paragraph [ref=e155]: domains inserted
+                  - generic [ref=e156]:
+                    - generic [ref=e157]: success
+                    - generic [ref=e158]: 15h ago
+            - link "openintel 113.097.697 domains inserted running 1h ago" [ref=e159] [cursor=pointer]:
+              - /url: /admin/ingestion
+              - generic [ref=e160]:
+                - generic [ref=e161]:
+                  - generic [ref=e162]: openintel
+                  - img [ref=e163]
+                - generic [ref=e165]:
+                  - generic [ref=e166]: 113.097.697
+                  - paragraph [ref=e167]: domains inserted
+                  - generic [ref=e168]:
+                    - generic [ref=e169]: running
+                    - generic [ref=e170]: 1h ago

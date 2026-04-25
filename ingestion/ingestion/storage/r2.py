@@ -27,9 +27,11 @@ class R2Storage:
             region_name="auto",
             config=BotoConfig(
                 s3={"addressing_style": "path"},
-                retries={"max_attempts": 10, "mode": "standard"},
-                connect_timeout=20,
-                read_timeout=120,
+                # Aggressive timeouts so a stalled TCP connection is abandoned
+                # quickly and retried rather than hanging for 2+ minutes per attempt.
+                retries={"max_attempts": 5, "mode": "standard"},
+                connect_timeout=10,
+                read_timeout=30,
             ),
         )
 

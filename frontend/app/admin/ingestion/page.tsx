@@ -47,6 +47,13 @@ const SOURCES: Array<{ value: SourceFilter; label: string }> = [
 ]
 
 const PERIODS = [7, 14, 30, 60, 90]
+const SOURCE_PRIORITY: SourceFilter[] = ["czds", "openintel", "certstream", "crtsh"]
+const SOURCE_PILL_LABEL: Record<string, string> = {
+  czds: "CZDS",
+  openintel: "OI",
+  certstream: "CT",
+  crtsh: "crt.sh",
+}
 
 const STATUS_META: Record<CellStatus, { label: string; className: string; dot: string }> = {
   success: {
@@ -143,6 +150,10 @@ function formatRunDuration(startedAt: string | null, finishedAt: string | null):
 
 function sourceLabel(source: string): string {
   return SOURCES.find((item) => item.value === source)?.label ?? source
+}
+
+function sourcePillLabel(source: string): string {
+  return SOURCE_PILL_LABEL[source] ?? source.toUpperCase()
 }
 
 function normalizeTld(value: string): string {
@@ -273,11 +284,25 @@ export default function IngestionPage() {
     Object.values(tldStatuses).forEach((response) => response?.items.forEach((item) => tlds.add(item.tld)))
 
     const query = normalizeTld(tldQuery)
+    const statusesBySource = {
+      czds: new Set((tldStatuses.czds?.items ?? []).map((item) => item.tld)),
+      openintel: new Set((tldStatuses.openintel?.items ?? []).map((item) => item.tld)),
+      certstream: new Set((tldStatuses.certstream?.items ?? []).map((item) => item.tld)),
+    }
     const rows = Array.from(tlds).map((tld) => {
       const tldRuns = runs.filter((run) => run.tld === tld)
       const latestRun = tldRuns[0]
       const r2 = openintelByTld.get(tld)
       const isQueued = queuedTlds.has(tld)
+      const presentSources = new Set<string>(tldRuns.map((run) => run.source))
+      if (statusesBySource.czds.has(tld)) presentSources.add("czds")
+      if (statusesBySource.openintel.has(tld) || r2) presentSources.add("openintel")
+      if (statusesBySource.certstream.has(tld)) presentSources.add("certstream")
+      const primarySource = (
+        sourceFilter !== "all"
+          ? sourceFilter
+          : SOURCE_PRIORITY.find((source) => presentSources.has(source))
+      ) ?? latestRun?.source ?? "czds"
       const cells = dateKeys.map((key) => {
         const dayRuns = tldRuns.filter((run) => runDateKey(run.started_at) === key)
         const latestDayRun = dayRuns[0]
@@ -322,6 +347,7 @@ export default function IngestionPage() {
       return {
         tld,
         cells,
+        primarySource,
         currentStatus,
         latestRun,
         r2,
@@ -363,6 +389,11 @@ export default function IngestionPage() {
   ])
 
   const visibleRows = tldQuery.trim() ? matrixRows : matrixRows.slice(0, 180)
+  const nextSchedules = useMemo(() => {
+    return (cycleStatus?.schedules ?? [])
+      .filter((schedule) => schedule.mode === "cron" && schedule.next_run_at)
+      .sort((a, b) => new Date(a.next_run_at ?? 0).getTime() - new Date(b.next_run_at ?? 0).getTime())
+  }, [cycleStatus])
 
   const counters = useMemo(() => {
     const failedTlds = new Set<string>()
@@ -435,6 +466,17 @@ export default function IngestionPage() {
           </Button>
         </div>
       </div>
+      {nextSchedules.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span className="mr-1 text-xs">Próximas:</span>
+          {nextSchedules.map((schedule) => (
+            <span key={schedule.source} className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-muted/35 px-2 py-0.5">
+              <span className="font-medium">{sourcePillLabel(schedule.source)}</span>
+              <span>{formatDateTime(schedule.next_run_at)}</span>
+            </span>
+          ))}
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
@@ -691,6 +733,7 @@ function RowCells({
 }: {
   row: {
     tld: string
+    primarySource: string
     domainCount: number
     inserted: number
     attentionScore: number
@@ -712,11 +755,14 @@ function RowCells({
   return (
     <>
       <div
-        className="sticky left-0 z-10 min-w-0 border-r border-border-subtle bg-card px-2.5 py-1"
+        className="sticky left-0 z-10 min-w-0 border-r border-border-subtle bg-card px-2 py-0.5"
         title={`.${row.tld} • ${formatCount(row.domainCount)} domínios • ${formatCount(row.inserted)} novos`}
       >
-        <div className="flex items-center gap-1.5 whitespace-nowrap text-[10px] leading-none">
+        <div className="flex items-center gap-1 whitespace-nowrap text-[9px] leading-none">
           <span className="truncate font-mono text-xs font-medium">.{row.tld}</span>
+          <span className="shrink-0 rounded-full border border-border-subtle bg-muted/30 px-1 py-0.5 text-[8px] font-medium leading-none text-muted-foreground">
+            {sourcePillLabel(row.primarySource)}
+          </span>
           <span className="shrink-0 text-muted-foreground">{formatCount(row.domainCount)}d • {formatCount(row.inserted)}n</span>
           {row.attentionScore > 0 && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
         </div>
@@ -760,10 +806,10 @@ function HeatmapCell({
   ].filter(Boolean).join(" | ")
 
   return (
-    <div className="border-b border-border-subtle p-0.5">
+    <div className="border-b border-border-subtle p-px">
       <div
         title={title}
-        className={`flex h-8 min-w-0 items-center justify-center rounded-md border px-1 text-center text-[9px] leading-none transition-colors ${meta.className}`}
+        className={`flex h-7 min-w-0 items-center justify-center rounded-md border px-1 text-center text-[9px] leading-none transition-colors ${meta.className}`}
       >
         {cell.status === "running" ? (
           <div className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">

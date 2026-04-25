@@ -26,6 +26,7 @@ import polars as pl
 
 from ingestion.storage.layout import Layout
 from ingestion.storage.r2 import R2Storage
+from ingestion.config.settings import Settings
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ def _rebuild_indexes(conn, ddls: list[str], partition: str) -> None:
 @dataclass
 class _ShardArgs:
     database_url: str
-    storage: R2Storage
+    r2_settings: "Settings"
     key: str
     partition: str
     columns: list[str]
@@ -157,11 +158,13 @@ class _ShardArgs:
 def _load_shard_worker(args: _ShardArgs) -> int:
     """Download one shard from R2 and COPY directly into the target partition.
 
-    Each worker uses its own dedicated DB connection (psycopg2 is not thread-safe).
+    Each worker uses its own dedicated DB connection and R2Storage instance
+    (boto3 clients share a connection pool which can cause stalls under concurrent load).
     Direct COPY (no temp table, no ON CONFLICT) — safe for CZDS sharded data where
     each domain name appears in exactly one shard.
     """
-    raw = args.storage.get_bytes(args.key)
+    storage = R2Storage(args.r2_settings)
+    raw = storage.get_bytes(args.key)
     df = pl.read_parquet(io.BytesIO(raw))
 
     required = [c for c in args.columns if c != "added_day"]
@@ -211,7 +214,7 @@ def _load_shard_worker(args: _ShardArgs) -> int:
 def _parallel_load_shards(
     *,
     database_url: str,
-    storage: R2Storage,
+    r2_settings: "Settings",
     keys: list[str],
     partition: str,
     columns: list[str],
@@ -232,7 +235,7 @@ def _parallel_load_shards(
                 _load_shard_worker,
                 _ShardArgs(
                     database_url=database_url,
-                    storage=storage,
+                    r2_settings=r2_settings,
                     key=key,
                     partition=partition,
                     columns=columns,
@@ -256,6 +259,7 @@ def load_delta(
     *,
     database_url: str,
     storage: R2Storage,
+    settings: "Settings | None" = None,
     layout: Layout,
     source: str,
     tld: str,
@@ -264,7 +268,15 @@ def load_delta(
     """Load a single (source, tld, snapshot_date) delta into PostgreSQL.
 
     Returns dict with keys: added_loaded, removed_loaded, status.
+
+    ``settings`` is used to create per-worker R2Storage instances (avoids
+    sharing a single boto3 client across threads which causes TCP stalls).
+    When not supplied we fall back to re-constructing Settings from env vars.
     """
+    from ingestion.config.settings import get_settings as _get_settings
+
+    r2_settings: Settings = settings if settings is not None else _get_settings()
+
     if isinstance(snapshot_date, date):
         snap_str = snapshot_date.isoformat()
     else:
@@ -314,7 +326,7 @@ def load_delta(
     try:
         added_loaded = _parallel_load_shards(
             database_url=database_url,
-            storage=storage,
+            r2_settings=r2_settings,
             keys=delta_keys,
             partition=domain_partition,
             columns=["name", "tld", "label", "added_day"],
@@ -333,7 +345,7 @@ def load_delta(
     try:
         removed_loaded = _parallel_load_shards(
             database_url=database_url,
-            storage=storage,
+            r2_settings=r2_settings,
             keys=removed_keys,
             partition=removed_partition,
             columns=["name", "tld", "removed_day"],

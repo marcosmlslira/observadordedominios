@@ -1,0 +1,665 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Observador de Dominios" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Admin
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e10]
+          - text: Dashboard
+        - link "Ingestão de Dados" [ref=e15] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e16]
+          - text: Ingestão de Dados
+        - link "Perfis de Marca" [ref=e19] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e20]
+          - text: Perfis de Marca
+        - link "Ameaças" [ref=e22] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e23]
+          - text: Ameaças
+        - link "Ferramentas" [ref=e25] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e26]
+          - text: Ferramentas
+      - generic [ref=e28]:
+        - button "Ativar modo escuro" [ref=e29]:
+          - img
+        - button "Sair" [ref=e30]:
+          - img
+          - text: Sair
+    - main [ref=e32]:
+      - generic [ref=e33]:
+        - button "Perfis de Monitoramento" [ref=e37]:
+          - img
+          - text: Perfis de Monitoramento
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - paragraph [ref=e42]: Banco do Brasil
+              - generic [ref=e43]:
+                - heading "bb.com.br" [level=1] [ref=e44]
+                - generic [ref=e45]: Primário
+                - generic [ref=e46]:
+                  - img [ref=e47]
+                  - generic [ref=e48]: Desconhecido
+              - generic [ref=e49]:
+                - generic [ref=e50]:
+                  - img [ref=e51]
+                  - text: Perfil desde abr. de 2026
+                - generic [ref=e53]: 2 domínios oficiais
+            - button "Executar nova verificação" [ref=e55]:
+              - img
+              - text: Executar nova verificação
+          - generic [ref=e56]: Aguardando primeira verificação de saúde para este domínio.
+          - generic [ref=e57]:
+            - button "DNS Não verificado Aguardando verificação" [ref=e58]:
+              - generic [ref=e59]:
+                - img [ref=e60]
+                - generic [ref=e63]:
+                  - img [ref=e64]
+                  - img [ref=e65]
+              - generic [ref=e67]:
+                - paragraph [ref=e68]: DNS
+                - paragraph [ref=e69]: Não verificado
+                - paragraph [ref=e70]: Aguardando verificação
+            - button "SSL Não verificado Aguardando verificação" [ref=e71]:
+              - generic [ref=e72]:
+                - img [ref=e73]
+                - generic [ref=e76]:
+                  - img [ref=e77]
+                  - img [ref=e78]
+              - generic [ref=e80]:
+                - paragraph [ref=e81]: SSL
+                - paragraph [ref=e82]: Não verificado
+                - paragraph [ref=e83]: Aguardando verificação
+            - button "E-mail Não verificado Aguardando verificação" [ref=e84]:
+              - generic [ref=e85]:
+                - img [ref=e86]
+                - generic [ref=e89]:
+                  - img [ref=e90]
+                  - img [ref=e91]
+              - generic [ref=e93]:
+                - paragraph [ref=e94]: E-mail
+                - paragraph [ref=e95]: Não verificado
+                - paragraph [ref=e96]: Aguardando verificação
+            - button "Headers Não verificado Aguardando verificação" [ref=e97]:
+              - generic [ref=e98]:
+                - img [ref=e99]
+                - generic [ref=e103]:
+                  - img [ref=e104]
+                  - img [ref=e105]
+              - generic [ref=e107]:
+                - paragraph [ref=e108]: Headers
+                - paragraph [ref=e109]: Não verificado
+                - paragraph [ref=e110]: Aguardando verificação
+            - button "Blacklist Não verificado Aguardando verificação" [ref=e111]:
+              - generic [ref=e112]:
+                - img [ref=e113]
+                - generic [ref=e115]:
+                  - img [ref=e116]
+                  - img [ref=e117]
+              - generic [ref=e119]:
+                - paragraph [ref=e120]: Blacklist
+                - paragraph [ref=e121]: Não verificado
+                - paragraph [ref=e122]: Aguardando verificação
+            - button "Integridade Não verificado Aguardando verificação" [ref=e123]:
+              - generic [ref=e124]:
+                - img [ref=e125]
+                - generic [ref=e127]:
+                  - img [ref=e128]
+                  - img [ref=e129]
+              - generic [ref=e131]:
+                - paragraph [ref=e132]: Integridade
+                - paragraph [ref=e133]: Não verificado
+                - paragraph [ref=e134]: Aguardando verificação
+          - generic [ref=e135]:
+            - paragraph [ref=e136]: Outros domínios monitorados
+            - generic [ref=e138]:
+              - img [ref=e139]
+              - generic [ref=e140]: bancodobrasil.com.br
+        - generic [ref=e141]:
+          - generic [ref=e143]: Último Ciclo de Monitoramento
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - paragraph [ref=e147]: Data
+              - paragraph [ref=e148]: 2026-04-17
+            - generic [ref=e149]:
+              - paragraph [ref=e150]: Saúde
+              - generic [ref=e151]: Em execução
+            - generic [ref=e152]:
+              - paragraph [ref=e153]: Varredura
+              - generic [ref=e154]: Concluído
+            - generic [ref=e155]:
+              - paragraph [ref=e156]: Ameaças
+              - paragraph [ref=e157]: "3112"
+            - generic [ref=e158]:
+              - paragraph [ref=e159]: Novos Matches
+              - paragraph [ref=e160]: "0"
+        - generic [ref=e161]:
+          - generic [ref=e163] [cursor=pointer]:
+            - generic [ref=e164]: Domínios da Empresa (3)
+            - img [ref=e165]
+          - generic [ref=e167]:
+            - generic [ref=e168]:
+              - img [ref=e169]
+              - paragraph [ref=e173]: Estes domínios foram detectados como pertencentes à própria empresa e excluídos dos alertas de ameaça. Verifique os sinais de segurança para garantir que estejam saudáveis.
+            - table [ref=e175]:
+              - rowgroup [ref=e176]:
+                - row "Domínio Detectado Segurança Motivo" [ref=e177]:
+                  - columnheader "Domínio" [ref=e178]
+                  - columnheader "Detectado" [ref=e179]
+                  - columnheader "Segurança" [ref=e180]
+                  - columnheader "Motivo" [ref=e181]
+              - rowgroup [ref=e182]:
+                - row "bancobrasil.com.br 12/04/2026 ✓ Sem alertas same_registrant_detected" [ref=e183] [cursor=pointer]:
+                  - cell "bancobrasil.com.br" [ref=e184]
+                  - cell "12/04/2026" [ref=e185]
+                  - cell "✓ Sem alertas" [ref=e186]:
+                    - generic [ref=e187]: ✓ Sem alertas
+                  - cell "same_registrant_detected" [ref=e188]
+                - row "bancodobrasilseguros.com.br 12/04/2026 ✓ Sem alertas same_registrant_detected" [ref=e189] [cursor=pointer]:
+                  - cell "bancodobrasilseguros.com.br" [ref=e190]
+                  - cell "12/04/2026" [ref=e191]
+                  - cell "✓ Sem alertas" [ref=e192]:
+                    - generic [ref=e193]: ✓ Sem alertas
+                  - cell "same_registrant_detected" [ref=e194]
+                - row "banco-do-brasil.com 13/04/2026 ✓ Sem alertas same_registrant_detected" [ref=e195] [cursor=pointer]:
+                  - cell "banco-do-brasil.com" [ref=e196]
+                  - cell "13/04/2026" [ref=e197]
+                  - cell "✓ Sem alertas" [ref=e198]:
+                    - generic [ref=e199]: ✓ Sem alertas
+                  - cell "same_registrant_detected" [ref=e200]
+        - generic [ref=e201]:
+          - generic [ref=e203]:
+            - generic [ref=e204]: Ameaças Detectadas
+            - generic [ref=e205]:
+              - button "Todos" [ref=e206]
+              - button "Imediato" [ref=e207]
+              - button "Gap Defensivo" [ref=e208]
+              - button "Watchlist" [ref=e209]
+          - generic [ref=e210]:
+            - img [ref=e211]
+            - generic [ref=e213]:
+              - paragraph [ref=e214]: Avaliação por IA em andamento
+              - paragraph [ref=e215]: 40 de 3115 domínios críticos avaliados
+            - generic [ref=e216]: Atualização automática
+          - generic [ref=e217]:
+            - table [ref=e219]:
+              - rowgroup [ref=e220]:
+                - row "Domínio Categoria Score Risco Sinais Detectado" [ref=e221]:
+                  - columnheader "Domínio" [ref=e222]
+                  - columnheader "Categoria" [ref=e223]
+                  - columnheader "Score" [ref=e224]
+                  - columnheader "Risco" [ref=e225]
+                  - columnheader "Sinais" [ref=e226]
+                  - columnheader "Detectado" [ref=e227]
+              - rowgroup [ref=e228]:
+                - row "bancodobrasil.com Imediato 90% low 13/04/2026" [ref=e229] [cursor=pointer]:
+                  - cell "bancodobrasil.com" [ref=e230]
+                  - cell "Imediato" [ref=e231]:
+                    - generic [ref=e232]: Imediato
+                  - cell "90%" [ref=e233]
+                  - cell "low" [ref=e234]:
+                    - generic [ref=e235]: low
+                  - cell [ref=e236]
+                  - cell "13/04/2026" [ref=e237]
+                - row "bancodobrasil.net Imediato 90% low 13/04/2026" [ref=e238] [cursor=pointer]:
+                  - cell "bancodobrasil.net" [ref=e239]
+                  - cell "Imediato" [ref=e240]:
+                    - generic [ref=e241]: Imediato
+                  - cell "90%" [ref=e242]
+                  - cell "low" [ref=e243]:
+                    - generic [ref=e244]: low
+                  - cell [ref=e245]
+                  - cell "13/04/2026" [ref=e246]
+                - row "bancodobrasill.com Imediato 84% low 13/04/2026" [ref=e247] [cursor=pointer]:
+                  - cell "bancodobrasill.com" [ref=e248]
+                  - cell "Imediato" [ref=e249]:
+                    - generic [ref=e250]: Imediato
+                  - cell "84%" [ref=e251]
+                  - cell "low" [ref=e252]:
+                    - generic [ref=e253]: low
+                  - cell [ref=e254]
+                  - cell "13/04/2026" [ref=e255]
+                - row "bancodobrasileiro.com Gap Defensivo 77% low 13/04/2026" [ref=e256] [cursor=pointer]:
+                  - cell "bancodobrasileiro.com" [ref=e257]
+                  - cell "Gap Defensivo" [ref=e258]:
+                    - generic [ref=e259]: Gap Defensivo
+                  - cell "77%" [ref=e260]
+                  - cell "low" [ref=e261]:
+                    - generic [ref=e262]: low
+                  - cell [ref=e263]
+                  - cell "13/04/2026" [ref=e264]
+                - row "bancodobrasil777bet.com Gap Defensivo 74% low 13/04/2026" [ref=e265] [cursor=pointer]:
+                  - cell "bancodobrasil777bet.com" [ref=e266]
+                  - cell "Gap Defensivo" [ref=e267]:
+                    - generic [ref=e268]: Gap Defensivo
+                  - cell "74%" [ref=e269]
+                  - cell "low" [ref=e270]:
+                    - generic [ref=e271]: low
+                  - cell [ref=e272]
+                  - cell "13/04/2026" [ref=e273]
+                - row "bancobrasil.com Gap Defensivo 72% low 13/04/2026" [ref=e274] [cursor=pointer]:
+                  - cell "bancobrasil.com" [ref=e275]
+                  - cell "Gap Defensivo" [ref=e276]:
+                    - generic [ref=e277]: Gap Defensivo
+                  - cell "72%" [ref=e278]
+                  - cell "low" [ref=e279]:
+                    - generic [ref=e280]: low
+                  - cell [ref=e281]
+                  - cell "13/04/2026" [ref=e282]
+                - row "bancodobrasilcanecao.com Gap Defensivo 72% low 13/04/2026" [ref=e283] [cursor=pointer]:
+                  - cell "bancodobrasilcanecao.com" [ref=e284]
+                  - cell "Gap Defensivo" [ref=e285]:
+                    - generic [ref=e286]: Gap Defensivo
+                  - cell "72%" [ref=e287]
+                  - cell "low" [ref=e288]:
+                    - generic [ref=e289]: low
+                  - cell [ref=e290]
+                  - cell "13/04/2026" [ref=e291]
+                - row "bancodobrasilstartup.com Gap Defensivo 72% low 13/04/2026" [ref=e292] [cursor=pointer]:
+                  - cell "bancodobrasilstartup.com" [ref=e293]
+                  - cell "Gap Defensivo" [ref=e294]:
+                    - generic [ref=e295]: Gap Defensivo
+                  - cell "72%" [ref=e296]
+                  - cell "low" [ref=e297]:
+                    - generic [ref=e298]: low
+                  - cell [ref=e299]
+                  - cell "13/04/2026" [ref=e300]
+                - row "bancosdobrasil.net Gap Defensivo 72% low 13/04/2026" [ref=e301] [cursor=pointer]:
+                  - cell "bancosdobrasil.net" [ref=e302]
+                  - cell "Gap Defensivo" [ref=e303]:
+                    - generic [ref=e304]: Gap Defensivo
+                  - cell "72%" [ref=e305]
+                  - cell "low" [ref=e306]:
+                    - generic [ref=e307]: low
+                  - cell [ref=e308]
+                  - cell "13/04/2026" [ref=e309]
+                - row "bancosdobrasil.com Gap Defensivo 72% low 13/04/2026" [ref=e310] [cursor=pointer]:
+                  - cell "bancosdobrasil.com" [ref=e311]
+                  - cell "Gap Defensivo" [ref=e312]:
+                    - generic [ref=e313]: Gap Defensivo
+                  - cell "72%" [ref=e314]
+                  - cell "low" [ref=e315]:
+                    - generic [ref=e316]: low
+                  - cell [ref=e317]
+                  - cell "13/04/2026" [ref=e318]
+                - row "bancodobrasilamericas.com Gap Defensivo 71% low 13/04/2026" [ref=e319] [cursor=pointer]:
+                  - cell "bancodobrasilamericas.com" [ref=e320]
+                  - cell "Gap Defensivo" [ref=e321]:
+                    - generic [ref=e322]: Gap Defensivo
+                  - cell "71%" [ref=e323]
+                  - cell "low" [ref=e324]:
+                    - generic [ref=e325]: low
+                  - cell [ref=e326]
+                  - cell "13/04/2026" [ref=e327]
+                - row "projetobancodobrasil.com.br Gap Defensivo 71% low 12/04/2026" [ref=e328] [cursor=pointer]:
+                  - cell "projetobancodobrasil.com.br" [ref=e329]
+                  - cell "Gap Defensivo" [ref=e330]:
+                    - generic [ref=e331]: Gap Defensivo
+                  - cell "71%" [ref=e332]
+                  - cell "low" [ref=e333]:
+                    - generic [ref=e334]: low
+                  - cell [ref=e335]
+                  - cell "12/04/2026" [ref=e336]
+                - row "canecaobancodobrasil.com Gap Defensivo 71% low 13/04/2026" [ref=e337] [cursor=pointer]:
+                  - cell "canecaobancodobrasil.com" [ref=e338]
+                  - cell "Gap Defensivo" [ref=e339]:
+                    - generic [ref=e340]: Gap Defensivo
+                  - cell "71%" [ref=e341]
+                  - cell "low" [ref=e342]:
+                    - generic [ref=e343]: low
+                  - cell [ref=e344]
+                  - cell "13/04/2026" [ref=e345]
+                - row "bancodobrasilsecurities.com Gap Defensivo 69% low 13/04/2026" [ref=e346] [cursor=pointer]:
+                  - cell "bancodobrasilsecurities.com" [ref=e347]
+                  - cell "Gap Defensivo" [ref=e348]:
+                    - generic [ref=e349]: Gap Defensivo
+                  - cell "69%" [ref=e350]
+                  - cell "low" [ref=e351]:
+                    - generic [ref=e352]: low
+                  - cell [ref=e353]
+                  - cell "13/04/2026" [ref=e354]
+                - row "bancodobrasilseguridade.com.br Gap Defensivo 69% low 12/04/2026" [ref=e355] [cursor=pointer]:
+                  - cell "bancodobrasilseguridade.com.br" [ref=e356]
+                  - cell "Gap Defensivo" [ref=e357]:
+                    - generic [ref=e358]: Gap Defensivo
+                  - cell "69%" [ref=e359]
+                  - cell "low" [ref=e360]:
+                    - generic [ref=e361]: low
+                  - cell [ref=e362]
+                  - cell "12/04/2026" [ref=e363]
+                - row "banjodobrasil.com Gap Defensivo 68% low 13/04/2026" [ref=e364] [cursor=pointer]:
+                  - cell "banjodobrasil.com" [ref=e365]
+                  - cell "Gap Defensivo" [ref=e366]:
+                    - generic [ref=e367]: Gap Defensivo
+                  - cell "68%" [ref=e368]
+                  - cell "low" [ref=e369]:
+                    - generic [ref=e370]: low
+                  - cell [ref=e371]
+                  - cell "13/04/2026" [ref=e372]
+                - row "banjodobrasil.com.br Gap Defensivo 68% low 12/04/2026" [ref=e373] [cursor=pointer]:
+                  - cell "banjodobrasil.com.br" [ref=e374]
+                  - cell "Gap Defensivo" [ref=e375]:
+                    - generic [ref=e376]: Gap Defensivo
+                  - cell "68%" [ref=e377]
+                  - cell "low" [ref=e378]:
+                    - generic [ref=e379]: low
+                  - cell [ref=e380]
+                  - cell "12/04/2026" [ref=e381]
+                - row "bancadobrasil.com Gap Defensivo 68% low 13/04/2026" [ref=e382] [cursor=pointer]:
+                  - cell "bancadobrasil.com" [ref=e383]
+                  - cell "Gap Defensivo" [ref=e384]:
+                    - generic [ref=e385]: Gap Defensivo
+                  - cell "68%" [ref=e386]
+                  - cell "low" [ref=e387]:
+                    - generic [ref=e388]: low
+                  - cell [ref=e389]
+                  - cell "13/04/2026" [ref=e390]
+                - row "bancodobrazil.com Gap Defensivo 68% low 13/04/2026" [ref=e391] [cursor=pointer]:
+                  - cell "bancodobrazil.com" [ref=e392]
+                  - cell "Gap Defensivo" [ref=e393]:
+                    - generic [ref=e394]: Gap Defensivo
+                  - cell "68%" [ref=e395]
+                  - cell "low" [ref=e396]:
+                    - generic [ref=e397]: low
+                  - cell [ref=e398]
+                  - cell "13/04/2026" [ref=e399]
+                - row "banco-brasil.com Gap Defensivo 68% low 13/04/2026" [ref=e400] [cursor=pointer]:
+                  - cell "banco-brasil.com" [ref=e401]
+                  - cell "Gap Defensivo" [ref=e402]:
+                    - generic [ref=e403]: Gap Defensivo
+                  - cell "68%" [ref=e404]
+                  - cell "low" [ref=e405]:
+                    - generic [ref=e406]: low
+                  - cell [ref=e407]
+                  - cell "13/04/2026" [ref=e408]
+                - row "bancosbrasil.net Gap Defensivo 67% low 13/04/2026" [ref=e409] [cursor=pointer]:
+                  - cell "bancosbrasil.net" [ref=e410]
+                  - cell "Gap Defensivo" [ref=e411]:
+                    - generic [ref=e412]: Gap Defensivo
+                  - cell "67%" [ref=e413]
+                  - cell "low" [ref=e414]:
+                    - generic [ref=e415]: low
+                  - cell [ref=e416]
+                  - cell "13/04/2026" [ref=e417]
+                - row "bancos-brasil.com Gap Defensivo 67% low 13/04/2026" [ref=e418] [cursor=pointer]:
+                  - cell "bancos-brasil.com" [ref=e419]
+                  - cell "Gap Defensivo" [ref=e420]:
+                    - generic [ref=e421]: Gap Defensivo
+                  - cell "67%" [ref=e422]
+                  - cell "low" [ref=e423]:
+                    - generic [ref=e424]: low
+                  - cell [ref=e425]
+                  - cell "13/04/2026" [ref=e426]
+                - row "bancosbrasil.com.br Gap Defensivo 67% low 12/04/2026" [ref=e427] [cursor=pointer]:
+                  - cell "bancosbrasil.com.br" [ref=e428]
+                  - cell "Gap Defensivo" [ref=e429]:
+                    - generic [ref=e430]: Gap Defensivo
+                  - cell "67%" [ref=e431]
+                  - cell "low" [ref=e432]:
+                    - generic [ref=e433]: low
+                  - cell [ref=e434]
+                  - cell "12/04/2026" [ref=e435]
+                - row "bancosbrasil.com Gap Defensivo 67% low 13/04/2026" [ref=e436] [cursor=pointer]:
+                  - cell "bancosbrasil.com" [ref=e437]
+                  - cell "Gap Defensivo" [ref=e438]:
+                    - generic [ref=e439]: Gap Defensivo
+                  - cell "67%" [ref=e440]
+                  - cell "low" [ref=e441]:
+                    - generic [ref=e442]: low
+                  - cell [ref=e443]
+                  - cell "13/04/2026" [ref=e444]
+                - row "basicodobrasil.com Gap Defensivo 67% low 13/04/2026" [ref=e445] [cursor=pointer]:
+                  - cell "basicodobrasil.com" [ref=e446]
+                  - cell "Gap Defensivo" [ref=e447]:
+                    - generic [ref=e448]: Gap Defensivo
+                  - cell "67%" [ref=e449]
+                  - cell "low" [ref=e450]:
+                    - generic [ref=e451]: low
+                  - cell [ref=e452]
+                  - cell "13/04/2026" [ref=e453]
+                - row "basicodobrasil.com.br Gap Defensivo 67% low 12/04/2026" [ref=e454] [cursor=pointer]:
+                  - cell "basicodobrasil.com.br" [ref=e455]
+                  - cell "Gap Defensivo" [ref=e456]:
+                    - generic [ref=e457]: Gap Defensivo
+                  - cell "67%" [ref=e458]
+                  - cell "low" [ref=e459]:
+                    - generic [ref=e460]: low
+                  - cell [ref=e461]
+                  - cell "12/04/2026" [ref=e462]
+                - row "bandobrasil.com Gap Defensivo 66% low 13/04/2026" [ref=e463] [cursor=pointer]:
+                  - cell "bandobrasil.com" [ref=e464]
+                  - cell "Gap Defensivo" [ref=e465]:
+                    - generic [ref=e466]: Gap Defensivo
+                  - cell "66%" [ref=e467]
+                  - cell "low" [ref=e468]:
+                    - generic [ref=e469]: low
+                  - cell [ref=e470]
+                  - cell "13/04/2026" [ref=e471]
+                - row "atendimentosbancodobrasil.com Gap Defensivo 66% low 13/04/2026" [ref=e472] [cursor=pointer]:
+                  - cell "atendimentosbancodobrasil.com" [ref=e473]
+                  - cell "Gap Defensivo" [ref=e474]:
+                    - generic [ref=e475]: Gap Defensivo
+                  - cell "66%" [ref=e476]
+                  - cell "low" [ref=e477]:
+                    - generic [ref=e478]: low
+                  - cell [ref=e479]
+                  - cell "13/04/2026" [ref=e480]
+                - row "becodobrasil.com Gap Defensivo 65% low 13/04/2026" [ref=e481] [cursor=pointer]:
+                  - cell "becodobrasil.com" [ref=e482]
+                  - cell "Gap Defensivo" [ref=e483]:
+                    - generic [ref=e484]: Gap Defensivo
+                  - cell "65%" [ref=e485]
+                  - cell "low" [ref=e486]:
+                    - generic [ref=e487]: low
+                  - cell [ref=e488]
+                  - cell "13/04/2026" [ref=e489]
+                - row "bancorcibrasil.com Gap Defensivo 65% low 13/04/2026" [ref=e490] [cursor=pointer]:
+                  - cell "bancorcibrasil.com" [ref=e491]
+                  - cell "Gap Defensivo" [ref=e492]:
+                    - generic [ref=e493]: Gap Defensivo
+                  - cell "65%" [ref=e494]
+                  - cell "low" [ref=e495]:
+                    - generic [ref=e496]: low
+                  - cell [ref=e497]
+                  - cell "13/04/2026" [ref=e498]
+                - row "gencodobrasil.com Gap Defensivo 65% low 13/04/2026" [ref=e499] [cursor=pointer]:
+                  - cell "gencodobrasil.com" [ref=e500]
+                  - cell "Gap Defensivo" [ref=e501]:
+                    - generic [ref=e502]: Gap Defensivo
+                  - cell "65%" [ref=e503]
+                  - cell "low" [ref=e504]:
+                    - generic [ref=e505]: low
+                  - cell [ref=e506]
+                  - cell "13/04/2026" [ref=e507]
+                - row "bancoabcbrasil.com Gap Defensivo 65% low 13/04/2026" [ref=e508] [cursor=pointer]:
+                  - cell "bancoabcbrasil.com" [ref=e509]
+                  - cell "Gap Defensivo" [ref=e510]:
+                    - generic [ref=e511]: Gap Defensivo
+                  - cell "65%" [ref=e512]
+                  - cell "low" [ref=e513]:
+                    - generic [ref=e514]: low
+                  - cell [ref=e515]
+                  - cell "13/04/2026" [ref=e516]
+                - row "bancoviabrasil.com.br Gap Defensivo 65% low 12/04/2026" [ref=e517] [cursor=pointer]:
+                  - cell "bancoviabrasil.com.br" [ref=e518]
+                  - cell "Gap Defensivo" [ref=e519]:
+                    - generic [ref=e520]: Gap Defensivo
+                  - cell "65%" [ref=e521]
+                  - cell "low" [ref=e522]:
+                    - generic [ref=e523]: low
+                  - cell [ref=e524]
+                  - cell "12/04/2026" [ref=e525]
+                - row "baraodobrasil.com Gap Defensivo 65% low 13/04/2026" [ref=e526] [cursor=pointer]:
+                  - cell "baraodobrasil.com" [ref=e527]
+                  - cell "Gap Defensivo" [ref=e528]:
+                    - generic [ref=e529]: Gap Defensivo
+                  - cell "65%" [ref=e530]
+                  - cell "low" [ref=e531]:
+                    - generic [ref=e532]: low
+                  - cell [ref=e533]
+                  - cell "13/04/2026" [ref=e534]
+                - row "vencodobrasil.com Gap Defensivo 65% low 13/04/2026" [ref=e535] [cursor=pointer]:
+                  - cell "vencodobrasil.com" [ref=e536]
+                  - cell "Gap Defensivo" [ref=e537]:
+                    - generic [ref=e538]: Gap Defensivo
+                  - cell "65%" [ref=e539]
+                  - cell "low" [ref=e540]:
+                    - generic [ref=e541]: low
+                  - cell [ref=e542]
+                  - cell "13/04/2026" [ref=e543]
+                - row "bancodebrasilia.com Gap Defensivo 64% low 13/04/2026" [ref=e544] [cursor=pointer]:
+                  - cell "bancodebrasilia.com" [ref=e545]
+                  - cell "Gap Defensivo" [ref=e546]:
+                    - generic [ref=e547]: Gap Defensivo
+                  - cell "64%" [ref=e548]
+                  - cell "low" [ref=e549]:
+                    - generic [ref=e550]: low
+                  - cell [ref=e551]
+                  - cell "13/04/2026" [ref=e552]
+                - row "bancdbrasil.com Gap Defensivo 64% low 13/04/2026" [ref=e553] [cursor=pointer]:
+                  - cell "bancdbrasil.com" [ref=e554]
+                  - cell "Gap Defensivo" [ref=e555]:
+                    - generic [ref=e556]: Gap Defensivo
+                  - cell "64%" [ref=e557]
+                  - cell "low" [ref=e558]:
+                    - generic [ref=e559]: low
+                  - cell [ref=e560]
+                  - cell "13/04/2026" [ref=e561]
+                - row "acodobrasil.com Gap Defensivo 64% low 13/04/2026" [ref=e562] [cursor=pointer]:
+                  - cell "acodobrasil.com" [ref=e563]
+                  - cell "Gap Defensivo" [ref=e564]:
+                    - generic [ref=e565]: Gap Defensivo
+                  - cell "64%" [ref=e566]
+                  - cell "low" [ref=e567]:
+                    - generic [ref=e568]: low
+                  - cell [ref=e569]
+                  - cell "13/04/2026" [ref=e570]
+                - row "urbancobrasil.com Gap Defensivo 63% low 13/04/2026" [ref=e571] [cursor=pointer]:
+                  - cell "urbancobrasil.com" [ref=e572]
+                  - cell "Gap Defensivo" [ref=e573]:
+                    - generic [ref=e574]: Gap Defensivo
+                  - cell "63%" [ref=e575]
+                  - cell "low" [ref=e576]:
+                    - generic [ref=e577]: low
+                  - cell [ref=e578]
+                  - cell "13/04/2026" [ref=e579]
+                - row "biobancobrasil.com.br Gap Defensivo 63% low 12/04/2026" [ref=e580] [cursor=pointer]:
+                  - cell "biobancobrasil.com.br" [ref=e581]
+                  - cell "Gap Defensivo" [ref=e582]:
+                    - generic [ref=e583]: Gap Defensivo
+                  - cell "63%" [ref=e584]
+                  - cell "low" [ref=e585]:
+                    - generic [ref=e586]: low
+                  - cell [ref=e587]
+                  - cell "12/04/2026" [ref=e588]
+                - row "bingodobrasil.com Gap Defensivo 63% low 13/04/2026" [ref=e589] [cursor=pointer]:
+                  - cell "bingodobrasil.com" [ref=e590]
+                  - cell "Gap Defensivo" [ref=e591]:
+                    - generic [ref=e592]: Gap Defensivo
+                  - cell "63%" [ref=e593]
+                  - cell "low" [ref=e594]:
+                    - generic [ref=e595]: low
+                  - cell [ref=e596]
+                  - cell "13/04/2026" [ref=e597]
+                - row "bancoxcmgbrasil.com.br Gap Defensivo 63% low 12/04/2026" [ref=e598] [cursor=pointer]:
+                  - cell "bancoxcmgbrasil.com.br" [ref=e599]
+                  - cell "Gap Defensivo" [ref=e600]:
+                    - generic [ref=e601]: Gap Defensivo
+                  - cell "63%" [ref=e602]
+                  - cell "low" [ref=e603]:
+                    - generic [ref=e604]: low
+                  - cell [ref=e605]
+                  - cell "12/04/2026" [ref=e606]
+                - row "bancoverdebrasil.com Gap Defensivo 63% low 13/04/2026" [ref=e607] [cursor=pointer]:
+                  - cell "bancoverdebrasil.com" [ref=e608]
+                  - cell "Gap Defensivo" [ref=e609]:
+                    - generic [ref=e610]: Gap Defensivo
+                  - cell "63%" [ref=e611]
+                  - cell "low" [ref=e612]:
+                    - generic [ref=e613]: low
+                  - cell [ref=e614]
+                  - cell "13/04/2026" [ref=e615]
+                - row "bancosocialdobrasil.com Gap Defensivo 62% low 13/04/2026" [ref=e616] [cursor=pointer]:
+                  - cell "bancosocialdobrasil.com" [ref=e617]
+                  - cell "Gap Defensivo" [ref=e618]:
+                    - generic [ref=e619]: Gap Defensivo
+                  - cell "62%" [ref=e620]
+                  - cell "low" [ref=e621]:
+                    - generic [ref=e622]: low
+                  - cell [ref=e623]
+                  - cell "13/04/2026" [ref=e624]
+                - row "balaiodobrasil.com Gap Defensivo 62% low 13/04/2026" [ref=e625] [cursor=pointer]:
+                  - cell "balaiodobrasil.com" [ref=e626]
+                  - cell "Gap Defensivo" [ref=e627]:
+                    - generic [ref=e628]: Gap Defensivo
+                  - cell "62%" [ref=e629]
+                  - cell "low" [ref=e630]:
+                    - generic [ref=e631]: low
+                  - cell [ref=e632]
+                  - cell "13/04/2026" [ref=e633]
+                - row "botecodobrasil.com Gap Defensivo 62% low 13/04/2026" [ref=e634] [cursor=pointer]:
+                  - cell "botecodobrasil.com" [ref=e635]
+                  - cell "Gap Defensivo" [ref=e636]:
+                    - generic [ref=e637]: Gap Defensivo
+                  - cell "62%" [ref=e638]
+                  - cell "low" [ref=e639]:
+                    - generic [ref=e640]: low
+                  - cell [ref=e641]
+                  - cell "13/04/2026" [ref=e642]
+                - row "bafdobrasil.com Gap Defensivo 62% low 13/04/2026" [ref=e643] [cursor=pointer]:
+                  - cell "bafdobrasil.com" [ref=e644]
+                  - cell "Gap Defensivo" [ref=e645]:
+                    - generic [ref=e646]: Gap Defensivo
+                  - cell "62%" [ref=e647]
+                  - cell "low" [ref=e648]:
+                    - generic [ref=e649]: low
+                  - cell [ref=e650]
+                  - cell "13/04/2026" [ref=e651]
+                - row "bancabrasil.com Gap Defensivo 62% low 13/04/2026" [ref=e652] [cursor=pointer]:
+                  - cell "bancabrasil.com" [ref=e653]
+                  - cell "Gap Defensivo" [ref=e654]:
+                    - generic [ref=e655]: Gap Defensivo
+                  - cell "62%" [ref=e656]
+                  - cell "low" [ref=e657]:
+                    - generic [ref=e658]: low
+                  - cell [ref=e659]
+                  - cell "13/04/2026" [ref=e660]
+                - row "banjobrasil.com.br Gap Defensivo 62% low 12/04/2026" [ref=e661] [cursor=pointer]:
+                  - cell "banjobrasil.com.br" [ref=e662]
+                  - cell "Gap Defensivo" [ref=e663]:
+                    - generic [ref=e664]: Gap Defensivo
+                  - cell "62%" [ref=e665]
+                  - cell "low" [ref=e666]:
+                    - generic [ref=e667]: low
+                  - cell [ref=e668]
+                  - cell "12/04/2026" [ref=e669]
+                - row "bantobrasil.com Gap Defensivo 62% low 13/04/2026" [ref=e670] [cursor=pointer]:
+                  - cell "bantobrasil.com" [ref=e671]
+                  - cell "Gap Defensivo" [ref=e672]:
+                    - generic [ref=e673]: Gap Defensivo
+                  - cell "62%" [ref=e674]
+                  - cell "low" [ref=e675]:
+                    - generic [ref=e676]: low
+                  - cell [ref=e677]
+                  - cell "13/04/2026" [ref=e678]
+            - generic [ref=e679]:
+              - paragraph [ref=e680]: 1–50 de 3112
+              - generic [ref=e681]:
+                - button "Anterior" [disabled]
+                - button "Próximo" [ref=e682]
+        - generic [ref=e685] [cursor=pointer]:
+          - generic [ref=e686]: Seeds de Monitoramento (121)
+          - img [ref=e687]
+        - generic [ref=e691] [cursor=pointer]:
+          - generic [ref=e692]: Configuração do Perfil
+          - img [ref=e693]
+        - generic [ref=e697] [cursor=pointer]:
+          - generic [ref=e698]: Histórico de Ciclos (5)
+          - img [ref=e699]

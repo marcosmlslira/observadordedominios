@@ -1,0 +1,190 @@
+restart_utc=2026-04-17T16:54:17Z total_enabled=304 mode=per_tld_serial
+[1/304] trigger_tld=at
+[1/304] done_tld=at run_id=f2807d48-f6e4-4ea8-8cd5-f1cf58b15c15 status=failed inserted=0 finished_at=04/17/2026 16:54:23
+[2/304] trigger_tld=au
+[2/304] done_tld=au run_id=8e8f95eb-b5ff-4d94-a7bf-eb3fccc97517 status=failed inserted=0 finished_at=04/17/2026 16:54:34
+[3/304] trigger_tld=be
+[3/304] done_tld=be run_id=31d10e74-fbfb-48fc-bd04-54e1728ffc7b status=failed inserted=0 finished_at=04/17/2026 16:54:45
+[4/304] trigger_tld=br
+[4/304] done_tld=br run_id=501bbb34-e5c6-4431-8cc9-02d66396c237 status=failed inserted=0 finished_at=04/17/2026 16:54:56
+[5/304] trigger_tld=ca
+[5/304] done_tld=ca run_id=8c2e7c6d-27d4-4e39-938e-98036c0b4f1b status=failed inserted=0 finished_at=04/17/2026 16:55:07
+[6/304] trigger_tld=ch
+[6/304] skip_conflict_tld=ch
+[7/304] trigger_tld=co
+[7/304] done_tld=co run_id=f7235ae6-0fc4-49d7-96f0-12552fae4945 status=failed inserted=0 finished_at=04/17/2026 16:55:18
+[8/304] trigger_tld=cz
+[8/304] done_tld=cz run_id=e6c5268b-4653-47ec-85a3-a31be80054b9 status=failed inserted=0 finished_at=04/17/2026 16:55:29
+[9/304] trigger_tld=de
+[9/304] done_tld=de run_id=07602bcf-0c3b-4c8b-aa58-b19a928c51d7 status=failed inserted=0 finished_at=04/17/2026 16:55:40
+[10/304] trigger_tld=dk
+[10/304] done_tld=dk run_id=64e8ac67-f5aa-40c6-aabf-6393f3278352 status=failed inserted=0 finished_at=04/17/2026 16:55:51
+checkpoint idx=10 ok=0 failed=9 skipped=1
+[11/304] trigger_tld=es
+[11/304] done_tld=es run_id=8c1cfb81-3e7c-4d84-a5fa-4f67efceb8f0 status=failed inserted=0 finished_at=04/17/2026 16:56:01
+[12/304] trigger_tld=eu
+[12/304] done_tld=eu run_id=031463d3-8c6c-4f65-b1ad-92a9cf2bac2d status=failed inserted=0 finished_at=04/17/2026 16:56:12
+[13/304] trigger_tld=fi
+[13/304] done_tld=fi run_id=92c946a6-a773-49c2-b98f-cdc52fd3cd75 status=failed inserted=0 finished_at=04/17/2026 16:56:23
+[14/304] trigger_tld=fr
+resume_utc=2026-04-17T17:01:35Z pending=290 timeout_per_tld_min=3
+[resume 1/290] trigger_tld=gr
+[resume 1/290] done_tld=gr run_id=13ad11c7-12bf-4974-bd2a-905bad3807da status=failed inserted=0 finished_at=04/17/2026 17:01:42
+[resume 2/290] trigger_tld=hk
+[resume 2/290] done_tld=hk run_id=f5c04425-1ad8-44d2-b807-92294304906b status=failed inserted=0 finished_at=04/17/2026 17:01:54
+[resume 3/290] trigger_tld=hu
+[resume 3/290] done_tld=hu run_id=100ac696-283b-447d-900a-942080ae87cd status=failed inserted=0 finished_at=04/17/2026 17:02:09
+[resume 4/290] trigger_tld=id
+[resume 4/290] done_tld=id run_id=17ec29e5-cc95-4cac-9c53-495086dbef9b status=failed inserted=0 finished_at=04/17/2026 17:02:19
+[resume 5/290] trigger_tld=ie
+[resume 5/290] done_tld=ie run_id=7544b154-5b8b-4a35-a4b1-8338b3194fa0 status=failed inserted=0 finished_at=04/17/2026 17:02:34
+[resume 6/290] trigger_tld=il
+[resume 6/290] done_tld=il run_id=66ebd227-760a-46de-8b0d-ae0b4c554140 status=failed inserted=0 finished_at=04/17/2026 17:02:41
+[resume 7/290] trigger_tld=in
+[resume 7/290] done_tld=in run_id=eac53660-be0f-4e66-a745-bd6f7662241c status=failed inserted=0 finished_at=04/17/2026 17:02:52
+[resume 8/290] trigger_tld=it
+[resume 8/290] done_tld=it run_id=4d7896a2-6f17-4c74-8e23-a82acdeda343 status=failed inserted=0 finished_at=04/17/2026 17:03:04
+[resume 9/290] trigger_tld=jp
+[resume 9/290] done_tld=jp run_id=076d5118-5a3e-4661-901f-754f87406668 status=failed inserted=0 finished_at=04/17/2026 17:03:15
+[resume 10/290] trigger_tld=kr
+[resume 10/290] done_tld=kr run_id=56f26474-11ab-4c9a-b1e9-3a96e06fadc8 status=failed inserted=0 finished_at=04/17/2026 17:03:26
+resume_checkpoint idx=10 pending_total=290 ok=0 failed=10 skipped=0
+[resume 11/290] trigger_tld=mx
+[resume 11/290] done_tld=mx run_id=6be4d003-052d-4b80-ba1e-78fbcfd7eca1 status=failed inserted=0 finished_at=04/17/2026 17:03:37
+[resume 12/290] trigger_tld=nl
+[resume 12/290] done_tld=nl run_id=72b4c5b6-15cb-408f-943a-4412a2be221a status=failed inserted=0 finished_at=04/17/2026 17:03:53
+[resume 13/290] trigger_tld=no
+[resume 13/290] done_tld=no run_id=459731b7-9e2e-48d6-9575-aeb799024764 status=failed inserted=0 finished_at=04/17/2026 17:04:04
+[resume 14/290] trigger_tld=nz
+[resume 14/290] done_tld=nz run_id=612e47f1-bfd0-4da1-96b6-b1eeccde2f79 status=failed inserted=0 finished_at=04/17/2026 17:04:15
+[resume 15/290] trigger_tld=pe
+[resume 15/290] done_tld=pe run_id=89b0e37d-84df-45b1-ac38-f6b1eef6176b status=failed inserted=0 finished_at=04/17/2026 17:04:26
+[resume 16/290] trigger_tld=pl
+[resume 16/290] done_tld=pl run_id=1e0eb536-1fe7-46b4-9e93-5322fb8f02ad status=failed inserted=0 finished_at=04/17/2026 17:04:36
+[resume 17/290] trigger_tld=ro
+[resume 17/290] done_tld=ro run_id=89b8740b-33b8-4c42-a291-23c61241b17f status=failed inserted=0 finished_at=04/17/2026 17:04:47
+[resume 18/290] trigger_tld=ru
+[resume 18/290] done_tld=ru run_id=b2e3833f-1b48-4e22-bacb-a94300e613f6 status=failed inserted=0 finished_at=04/17/2026 17:04:59
+[resume 19/290] trigger_tld=se
+[resume 19/290] timeout_tld=se run_id=62c45c9b-5c9c-43de-b787-1f92d9d0ee64
+[resume 20/290] trigger_tld=sg
+[resume 20/290] done_tld=sg run_id=4d9374ed-23fd-4c7b-a73c-a221f281cb06 status=failed inserted=0 finished_at=04/17/2026 17:08:13
+resume_checkpoint idx=20 pending_total=290 ok=0 failed=20 skipped=0
+[resume 21/290] trigger_tld=th
+[resume 21/290] done_tld=th run_id=793d0314-65fa-4c50-939f-b4306a1062e4 status=failed inserted=0 finished_at=04/17/2026 17:08:23
+[resume 22/290] trigger_tld=tr
+[resume 22/290] done_tld=tr run_id=06640752-7c1d-46b2-b507-6ea5c6bd4fdf status=failed inserted=0 finished_at=04/17/2026 17:08:36
+[resume 23/290] trigger_tld=tw
+[resume 23/290] done_tld=tw run_id=5657fb25-c61a-4693-87ba-866fbdcecbaf status=failed inserted=0 finished_at=04/17/2026 17:08:59
+[resume 24/290] trigger_tld=ua
+[resume 24/290] done_tld=ua run_id=c66471d8-0f12-4fac-8ec6-f47803b8fae7 status=failed inserted=0 finished_at=04/17/2026 17:09:09
+[resume 25/290] trigger_tld=uk
+[resume 25/290] done_tld=uk run_id=a83a74c7-233e-43b1-949e-cfb8744371a3 status=failed inserted=0 finished_at=04/17/2026 17:09:22
+[resume 26/290] trigger_tld=us
+[resume 26/290] done_tld=us run_id=d267e8c5-20a8-4bbb-b292-8331990bacfc status=failed inserted=0 finished_at=04/17/2026 17:09:47
+[resume 27/290] trigger_tld=za
+[resume 27/290] done_tld=za run_id=49cd13a8-f05e-49c9-8e32-921fbaf033cd status=failed inserted=0 finished_at=04/17/2026 17:10:05
+[resume 28/290] trigger_tld=ac
+[resume 28/290] done_tld=ac run_id=36e82516-346e-43c9-b14f-60e2541d3474 status=failed inserted=0 finished_at=04/17/2026 17:10:32
+[resume 29/290] trigger_tld=ae
+[resume 29/290] done_tld=ae run_id=94dd46ef-dbd2-48b2-b929-d3a1ce15bf07 status=failed inserted=0 finished_at=04/17/2026 17:10:53
+[resume 30/290] trigger_tld=af
+[resume 30/290] done_tld=af run_id=cf1544e7-9ca0-48bc-bfa2-392b9c1f5ee9 status=failed inserted=0 finished_at=04/17/2026 17:11:16
+resume_checkpoint idx=30 pending_total=290 ok=0 failed=30 skipped=0
+[resume 31/290] trigger_tld=ag
+[resume 31/290] done_tld=ag run_id=5a362377-aded-4fc6-ad84-8df041594423 status=failed inserted=0 finished_at=04/17/2026 17:11:32
+[resume 32/290] trigger_tld=al
+[resume 32/290] done_tld=al run_id=70d2b8b5-225b-42a9-8f01-80672819ca58 status=failed inserted=0 finished_at=04/17/2026 17:11:46
+[resume 33/290] trigger_tld=am
+[resume 33/290] done_tld=am run_id=0dbf5c41-bda9-4ec7-ab86-b746f07a0f4a status=failed inserted=0 finished_at=04/17/2026 17:11:57
+[resume 34/290] trigger_tld=ao
+[resume 34/290] done_tld=ao run_id=8f08d845-64b3-4431-a848-864fca6e5ccf status=failed inserted=0 finished_at=04/17/2026 17:12:18
+[resume 35/290] trigger_tld=ar
+[resume 35/290] done_tld=ar run_id=5b4c1d53-36d5-41e5-8805-d2cb9cb20696 status=failed inserted=0 finished_at=04/17/2026 17:12:30
+[resume 36/290] trigger_tld=as
+[resume 36/290] done_tld=as run_id=c5703e8a-8b9b-4004-af79-236d62f6b0a8 status=failed inserted=0 finished_at=04/17/2026 17:12:50
+[resume 37/290] trigger_tld=aw
+[resume 37/290] done_tld=aw run_id=d37b2a95-ec9a-4ab5-ad77-56dcf7e06000 status=failed inserted=0 finished_at=04/17/2026 17:13:19
+[resume 38/290] trigger_tld=az
+[resume 38/290] done_tld=az run_id=1906222c-b042-44c6-be9f-fbf41e53afa2 status=failed inserted=0 finished_at=04/17/2026 17:13:43
+[resume 39/290] trigger_tld=ba
+[resume 39/290] done_tld=ba run_id=76fdd0c6-1d83-40fc-b72d-d8583e87d940 status=failed inserted=0 finished_at=04/17/2026 17:13:52
+[resume 40/290] trigger_tld=bb
+[resume 40/290] done_tld=bb run_id=86d94f67-8363-4828-b004-aa270621a84d status=failed inserted=0 finished_at=04/17/2026 17:14:07
+resume_checkpoint idx=40 pending_total=290 ok=0 failed=40 skipped=0
+[resume 41/290] trigger_tld=bd
+[resume 41/290] done_tld=bd run_id=be659785-3c93-432b-b42f-df5633b14fe0 status=failed inserted=0 finished_at=04/17/2026 17:14:29
+[resume 42/290] trigger_tld=bf
+[resume 42/290] done_tld=bf run_id=84ab8519-a92d-4baf-a5e0-20961d51ee9c status=failed inserted=0 finished_at=04/17/2026 17:14:41
+[resume 43/290] trigger_tld=bg
+[resume 43/290] done_tld=bg run_id=ad0dabac-3bb1-4659-9f0f-cf708722836c status=failed inserted=0 finished_at=04/17/2026 17:14:56
+[resume 44/290] trigger_tld=bh
+[resume 44/290] done_tld=bh run_id=446209af-4007-4e14-81a7-e0d710cb37ce status=failed inserted=0 finished_at=04/17/2026 17:15:15
+[resume 45/290] trigger_tld=bi
+[resume 45/290] done_tld=bi run_id=a48f8b71-ae2e-4de9-9132-14490d10f006 status=failed inserted=0 finished_at=04/17/2026 17:15:25
+[resume 46/290] trigger_tld=bj
+[resume 46/290] done_tld=bj run_id=18315e9a-a8db-4cf7-ba95-7f40f54fac66 status=failed inserted=0 finished_at=04/17/2026 17:15:36
+[resume 47/290] trigger_tld=bm
+[resume 47/290] done_tld=bm run_id=a8142c55-9db1-4ef8-9a1b-bdc6b6a2fb3b status=failed inserted=0 finished_at=04/17/2026 17:15:51
+[resume 48/290] trigger_tld=bn
+[resume 48/290] done_tld=bn run_id=ed55525a-bb27-4813-8f68-7068c14a47fe status=failed inserted=0 finished_at=04/17/2026 17:16:18
+[resume 49/290] trigger_tld=bo
+[resume 49/290] done_tld=bo run_id=13e3b986-fe31-4453-a318-9c68c40f668a status=failed inserted=0 finished_at=04/17/2026 17:16:30
+[resume 50/290] trigger_tld=bs
+[resume 50/290] done_tld=bs run_id=8bab9630-c043-428b-823c-c73c1213bfb9 status=failed inserted=0 finished_at=04/17/2026 17:16:42
+resume_checkpoint idx=50 pending_total=290 ok=0 failed=50 skipped=0
+[resume 51/290] trigger_tld=bt
+[resume 51/290] done_tld=bt run_id=6a86d6ba-2cc8-4b4a-b99e-1774ce210822 status=failed inserted=0 finished_at=04/17/2026 17:17:05
+[resume 52/290] trigger_tld=bw
+[resume 52/290] done_tld=bw run_id=4196d9d9-930c-4446-b04e-63134abce9b5 status=failed inserted=0 finished_at=04/17/2026 17:17:28
+[resume 53/290] trigger_tld=by
+[resume 53/290] done_tld=by run_id=f51bac57-02cf-4d25-867c-28dfaaada833 status=failed inserted=0 finished_at=04/17/2026 17:17:39
+[resume 54/290] trigger_tld=bz
+[resume 54/290] done_tld=bz run_id=f88d7665-f417-4555-800c-960dcf8078e2 status=failed inserted=0 finished_at=04/17/2026 17:17:51
+[resume 55/290] trigger_tld=cc
+[resume 55/290] done_tld=cc run_id=be5c4b7d-f505-4b24-ae08-f098e4da80c2 status=failed inserted=0 finished_at=04/17/2026 17:18:01
+[resume 56/290] trigger_tld=cd
+[resume 56/290] done_tld=cd run_id=d44bb07c-a1ca-428d-9f45-f3dc26974d5e status=failed inserted=0 finished_at=04/17/2026 17:18:12
+[resume 57/290] trigger_tld=cf
+[resume 57/290] done_tld=cf run_id=e574905f-ed7c-4c50-b46e-9a3e09c6b43a status=failed inserted=0 finished_at=04/17/2026 17:18:23
+[resume 58/290] trigger_tld=cg
+[resume 58/290] done_tld=cg run_id=e74208b3-b359-4be4-a683-756f78dad7f0 status=failed inserted=0 finished_at=04/17/2026 17:18:35
+[resume 59/290] trigger_tld=ci
+[resume 59/290] done_tld=ci run_id=d7f158d1-3c53-42ee-81a2-2d333ce2aa75 status=failed inserted=0 finished_at=04/17/2026 17:18:50
+[resume 60/290] trigger_tld=ck
+[resume 60/290] done_tld=ck run_id=442de265-72c2-411a-b5da-e368776d38ff status=failed inserted=0 finished_at=04/17/2026 17:19:01
+resume_checkpoint idx=60 pending_total=290 ok=0 failed=60 skipped=0
+[resume 61/290] trigger_tld=cl
+[resume 61/290] done_tld=cl run_id=83e862a5-f686-48fa-b88b-2dd3eedb0ecd status=failed inserted=0 finished_at=04/17/2026 17:19:14
+[resume 62/290] trigger_tld=cm
+[resume 62/290] done_tld=cm run_id=39742e85-9e99-4362-a580-34a5d6901999 status=failed inserted=0 finished_at=04/17/2026 17:19:35
+[resume 63/290] trigger_tld=cn
+[resume 63/290] done_tld=cn run_id=e3273bde-e458-4de5-bbe4-fd14a745ec52 status=failed inserted=0 finished_at=04/17/2026 17:19:49
+[resume 64/290] trigger_tld=cr
+[resume 64/290] done_tld=cr run_id=574eda4a-9a79-4c3a-a937-11c2b3a3dd7b status=failed inserted=0 finished_at=04/17/2026 17:20:03
+[resume 65/290] trigger_tld=cu
+[resume 65/290] done_tld=cu run_id=af2e770e-7bd5-47c3-99fe-39147a6c036f status=failed inserted=0 finished_at=04/17/2026 17:20:19
+[resume 66/290] trigger_tld=cv
+[resume 66/290] done_tld=cv run_id=e0099ca6-b551-4fce-bd89-1af515dbcbe6 status=failed inserted=0 finished_at=04/17/2026 17:20:35
+[resume 67/290] trigger_tld=cw
+[resume 67/290] done_tld=cw run_id=c7e669d9-8b38-462a-85d2-1f39186b2dbd status=failed inserted=0 finished_at=04/17/2026 17:20:49
+[resume 68/290] trigger_tld=cx
+[resume 68/290] done_tld=cx run_id=4fd7f2f0-ac30-4a5a-9ee3-2a06647f4a65 status=failed inserted=0 finished_at=04/17/2026 17:21:21
+[resume 69/290] trigger_tld=cy
+[resume 69/290] done_tld=cy run_id=9d222081-6766-496f-938e-cf67118133f4 status=failed inserted=0 finished_at=04/17/2026 17:21:34
+[resume 70/290] trigger_tld=dj
+[resume 70/290] done_tld=dj run_id=c8d5990d-2ba0-451a-9bd4-5994b25865d5 status=failed inserted=0 finished_at=04/17/2026 17:21:54
+resume_checkpoint idx=70 pending_total=290 ok=0 failed=70 skipped=0
+[resume 71/290] trigger_tld=dm
+[resume 71/290] done_tld=dm run_id=aac71bff-8a9c-41c0-9f6b-7a405430388e status=failed inserted=0 finished_at=04/17/2026 17:22:06
+[resume 72/290] trigger_tld=do
+[resume 72/290] done_tld=do run_id=2e1970b2-df1e-4cef-b7db-a026cea6876c status=failed inserted=0 finished_at=04/17/2026 17:22:16
+[resume 73/290] trigger_tld=dz
+[resume 73/290] done_tld=dz run_id=f0fdc302-89b7-46c7-b524-5d64da3cdeec status=failed inserted=0 finished_at=04/17/2026 17:22:30
+[resume 74/290] trigger_tld=ec
+[resume 74/290] done_tld=ec run_id=360b1af8-0a82-44c6-b9e9-1064a48452a0 status=failed inserted=0 finished_at=04/17/2026 17:22:38
+[resume 75/290] trigger_tld=ee
+[resume 75/290] done_tld=ee run_id=3e257849-a648-4c04-8338-f188168ce9b2 status=failed inserted=0 finished_at=04/17/2026 17:22:46
+[resume 76/290] trigger_tld=eg
+[resume 76/290] done_tld=eg run_id=a8d4f255-9a62-4d17-a04f-3ce2cd1f07c7 status=failed inserted=0 finished_at=04/17/2026 17:22:56
+[resume 77/290] trigger_tld=er

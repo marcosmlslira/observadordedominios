@@ -1,0 +1,1 @@
+[  721134ms] [ERROR] Failed to load resource: net::ERR_INTERNET_DISCONNECTED @ https://api.observadordedominios.com.br/v1/brands/5132398a-b7b5-489d-bff8-1bff42694ae4/matches?include_llm=true&limit=50&offset=0:0

@@ -1,0 +1,180 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "Observador de Dominios" [level=1] [ref=e6]
+        - paragraph [ref=e7]: Admin
+      - navigation [ref=e8]:
+        - link "Dashboard" [ref=e9] [cursor=pointer]:
+          - /url: /admin
+          - img [ref=e10]
+          - text: Dashboard
+        - link "Ingestão de Dados" [ref=e15] [cursor=pointer]:
+          - /url: /admin/ingestion
+          - img [ref=e16]
+          - text: Ingestão de Dados
+        - link "Perfis de Marca" [ref=e19] [cursor=pointer]:
+          - /url: /admin/brands
+          - img [ref=e20]
+          - text: Perfis de Marca
+        - link "Ameaças" [ref=e22] [cursor=pointer]:
+          - /url: /admin/matches
+          - img [ref=e23]
+          - text: Ameaças
+        - link "Ferramentas" [ref=e25] [cursor=pointer]:
+          - /url: /admin/tools
+          - img [ref=e26]
+          - text: Ferramentas
+      - generic [ref=e28]:
+        - button "Ativar modo escuro" [ref=e29]:
+          - img
+        - button "Sair" [ref=e30]:
+          - img
+          - text: Sair
+    - main [ref=e32]:
+      - generic [ref=e33]:
+        - button "Perfis de Monitoramento" [ref=e37]:
+          - img
+          - text: Perfis de Monitoramento
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - paragraph [ref=e42]: TestCorp2
+              - generic [ref=e43]:
+                - heading "testcorp2.com.br" [level=1] [ref=e44]
+                - generic [ref=e45]: Primário
+                - generic [ref=e46]:
+                  - img [ref=e47]
+                  - generic [ref=e48]: Desconhecido
+              - generic [ref=e50]:
+                - img [ref=e51]
+                - text: Perfil desde abr. de 2026
+            - button "Executar nova verificação" [ref=e54]:
+              - img
+              - text: Executar nova verificação
+          - generic [ref=e55]: Aguardando primeira verificação de saúde para este domínio.
+          - generic [ref=e56]:
+            - button "DNS Não verificado Aguardando verificação" [ref=e57]:
+              - generic [ref=e58]:
+                - img [ref=e59]
+                - generic [ref=e62]:
+                  - img [ref=e63]
+                  - img [ref=e64]
+              - generic [ref=e66]:
+                - paragraph [ref=e67]: DNS
+                - paragraph [ref=e68]: Não verificado
+                - paragraph [ref=e69]: Aguardando verificação
+            - button "SSL Não verificado Aguardando verificação" [ref=e70]:
+              - generic [ref=e71]:
+                - img [ref=e72]
+                - generic [ref=e75]:
+                  - img [ref=e76]
+                  - img [ref=e77]
+              - generic [ref=e79]:
+                - paragraph [ref=e80]: SSL
+                - paragraph [ref=e81]: Não verificado
+                - paragraph [ref=e82]: Aguardando verificação
+            - button "E-mail Não verificado Aguardando verificação" [ref=e83]:
+              - generic [ref=e84]:
+                - img [ref=e85]
+                - generic [ref=e88]:
+                  - img [ref=e89]
+                  - img [ref=e90]
+              - generic [ref=e92]:
+                - paragraph [ref=e93]: E-mail
+                - paragraph [ref=e94]: Não verificado
+                - paragraph [ref=e95]: Aguardando verificação
+            - button "Headers Não verificado Aguardando verificação" [ref=e96]:
+              - generic [ref=e97]:
+                - img [ref=e98]
+                - generic [ref=e102]:
+                  - img [ref=e103]
+                  - img [ref=e104]
+              - generic [ref=e106]:
+                - paragraph [ref=e107]: Headers
+                - paragraph [ref=e108]: Não verificado
+                - paragraph [ref=e109]: Aguardando verificação
+            - button "Blacklist Não verificado Aguardando verificação" [ref=e110]:
+              - generic [ref=e111]:
+                - img [ref=e112]
+                - generic [ref=e114]:
+                  - img [ref=e115]
+                  - img [ref=e116]
+              - generic [ref=e118]:
+                - paragraph [ref=e119]: Blacklist
+                - paragraph [ref=e120]: Não verificado
+                - paragraph [ref=e121]: Aguardando verificação
+            - button "Integridade Não verificado Aguardando verificação" [ref=e122]:
+              - generic [ref=e123]:
+                - img [ref=e124]
+                - generic [ref=e126]:
+                  - img [ref=e127]
+                  - img [ref=e128]
+              - generic [ref=e130]:
+                - paragraph [ref=e131]: Integridade
+                - paragraph [ref=e132]: Não verificado
+                - paragraph [ref=e133]: Aguardando verificação
+        - generic [ref=e134]:
+          - generic [ref=e136]:
+            - generic [ref=e137]: Ameaças Detectadas
+            - generic [ref=e138]:
+              - button "Todos" [ref=e139]
+              - button "Imediato" [ref=e140]
+              - button "Gap Defensivo" [ref=e141]
+              - button "Watchlist" [ref=e142]
+          - generic [ref=e143]:
+            - img [ref=e144]
+            - generic [ref=e146]:
+              - paragraph [ref=e147]: Avaliação por IA em andamento
+              - paragraph [ref=e148]: 0 de 4 domínios críticos avaliados
+            - generic [ref=e149]: Atualização automática
+          - table [ref=e205]:
+            - rowgroup [ref=e206]:
+              - row "Domínio Categoria Score Risco Sinais Detectado" [ref=e207]:
+                - columnheader "Domínio" [ref=e208]
+                - columnheader "Categoria" [ref=e209]
+                - columnheader "Score" [ref=e210]
+                - columnheader "Risco" [ref=e211]
+                - columnheader "Sinais" [ref=e212]
+                - columnheader "Detectado" [ref=e213]
+            - rowgroup [ref=e214]:
+              - row "gestcorp.com.br Gap Defensivo 57% low 15/04/2026" [ref=e215] [cursor=pointer]:
+                - cell "gestcorp.com.br" [ref=e216]
+                - cell "Gap Defensivo" [ref=e217]:
+                  - generic [ref=e218]: Gap Defensivo
+                - cell "57%" [ref=e219]
+                - cell "low" [ref=e220]:
+                  - generic [ref=e221]: low
+                - cell [ref=e222]
+                - cell "15/04/2026" [ref=e223]
+              - row "vestcorp.com.br Gap Defensivo 57% low 15/04/2026" [ref=e224] [cursor=pointer]:
+                - cell "vestcorp.com.br" [ref=e225]
+                - cell "Gap Defensivo" [ref=e226]:
+                  - generic [ref=e227]: Gap Defensivo
+                - cell "57%" [ref=e228]
+                - cell "low" [ref=e229]:
+                  - generic [ref=e230]: low
+                - cell [ref=e231]
+                - cell "15/04/2026" [ref=e232]
+              - row "testcode.com.br Gap Defensivo 56% low 15/04/2026" [ref=e233] [cursor=pointer]:
+                - cell "testcode.com.br" [ref=e234]
+                - cell "Gap Defensivo" [ref=e235]:
+                  - generic [ref=e236]: Gap Defensivo
+                - cell "56%" [ref=e237]
+                - cell "low" [ref=e238]:
+                  - generic [ref=e239]: low
+                - cell [ref=e240]
+                - cell "15/04/2026" [ref=e241]
+              - row "testcar.com.br Gap Defensivo 54% low 15/04/2026" [ref=e242] [cursor=pointer]:
+                - cell "testcar.com.br" [ref=e243]
+                - cell "Gap Defensivo" [ref=e244]:
+                  - generic [ref=e245]: Gap Defensivo
+                - cell "54%" [ref=e246]
+                - cell "low" [ref=e247]:
+                  - generic [ref=e248]: low
+                - cell [ref=e249]
+                - cell "15/04/2026" [ref=e250]
+        - generic [ref=e200] [cursor=pointer]:
+          - generic [ref=e201]: Configuração do Perfil
+          - img [ref=e202]

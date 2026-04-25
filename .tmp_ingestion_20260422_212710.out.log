@@ -1,0 +1,273 @@
+Testing R2 connectivity...
+R2 probe OK
+Testing CZDS connectivity...
+CZDS probe OK. Authorized TLDs=1097
+Testing OpenINTEL connectivity...
+OpenINTEL probe OK
+CZDS target TLDs=1097 (sharded mode)
+[CZDS-sharded 1/1097] tld=aaa run_id=43b280ce-11d6-4913-ade3-a6bf01f87b2a
+  - skipped (already success)
+[CZDS-sharded 2/1097] tld=aarp run_id=70500d83-0b3f-4b66-b47f-2629f2d2daa7
+  - skipped (already success)
+[CZDS-sharded 3/1097] tld=abb run_id=3f660a13-0e1d-405e-9dfb-b6c71793ca9f
+  - skipped (already success)
+[CZDS-sharded 4/1097] tld=abbott run_id=7d2cf1e6-32dd-436b-a733-a54814f6a95a
+  - staged domains=1,764
+  - success added=251 removed=0
+  - stage cleanup deleted=124
+[CZDS-sharded 5/1097] tld=abbvie run_id=1eb74a69-c5aa-45b4-a728-c296565fbee4
+  - staged domains=182
+  - success added=41 removed=0
+  - stage cleanup deleted=40
+[CZDS-sharded 6/1097] tld=abc run_id=7b6b438f-f43e-46f5-905b-7230b5137c11
+  - staged domains=70
+  - success added=24 removed=0
+  - stage cleanup deleted=25
+[CZDS-sharded 7/1097] tld=able run_id=c29b3900-624b-45b5-8bc9-c337710d3394
+  - staged domains=52
+  - success added=20 removed=0
+  - stage cleanup deleted=17
+[CZDS-sharded 8/1097] tld=abogado run_id=eac784d0-1811-4d19-8da9-302d572b6b12
+  - staged domains=1,613
+  - success added=624 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 9/1097] tld=abudhabi run_id=7cf7307c-c97e-4a02-9d00-a5de8d5bc554
+  - staged domains=4,564
+  - success added=1,831 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 10/1097] tld=academy run_id=b718f2d4-25f0-4d67-b816-2338e6a23203
+  - staged domains=175,639
+  - success added=59,909 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 11/1097] tld=accenture run_id=91bdc4ea-93dd-4843-b126-9aa317140d6a
+  - staged domains=24
+  - success added=2 removed=0
+  - stage cleanup deleted=9
+[CZDS-sharded 12/1097] tld=accountant run_id=f0a36da7-aed6-4315-bf3f-b830c0ec61b2
+  - staged domains=4,012
+  - success added=276 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 13/1097] tld=accountants run_id=f8adabaa-8df1-4873-b734-af3c77593559
+  - staged domains=4,705
+  - success added=0 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 14/1097] tld=aco run_id=76c7da48-ad04-4142-a75c-39add73cb93b
+  - error Not a gzipped file (b'\x03\x00')
+[CZDS-sharded 15/1097] tld=actor run_id=e2db1e25-1123-4cdc-8e5c-78152c64a1d4
+  - staged domains=9,089
+  - success added=3,485 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 16/1097] tld=ads run_id=3184840f-2e87-4df5-b99d-697289d73b39
+  - staged domains=14
+  - success added=5 removed=0
+  - stage cleanup deleted=5
+[CZDS-sharded 17/1097] tld=adult run_id=d81ea44b-6a93-4a2a-b541-6cdae4378720
+  - staged domains=18,975
+  - success added=6,406 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 18/1097] tld=aeg run_id=c9830582-3814-43c5-93d8-81635bec3128
+  - staged domains=46
+  - success added=14 removed=0
+  - stage cleanup deleted=12
+[CZDS-sharded 19/1097] tld=aero run_id=1eef5359-d882-441e-b593-a0ce89665324
+  - staged domains=37,157
+  - success added=14,178 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 20/1097] tld=aetna run_id=c763cbc0-6744-46a7-bf84-9464300da754
+  - staged domains=76
+  - success added=23 removed=0
+  - stage cleanup deleted=20
+[CZDS-sharded 21/1097] tld=afl run_id=c658907a-bd62-4fe6-8cd6-8a934ebabab5
+  - staged domains=474
+  - success added=165 removed=0
+  - stage cleanup deleted=98
+[CZDS-sharded 22/1097] tld=africa run_id=e475ce48-f146-4496-9dd8-049d8b5c50a0
+  - staged domains=164,519
+  - success added=56,760 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 23/1097] tld=agakhan run_id=1f91e6e4-1aca-41cd-8c59-7a15ec05ad1c
+  - staged domains=18
+  - success added=7 removed=0
+  - stage cleanup deleted=7
+[CZDS-sharded 24/1097] tld=agency run_id=af950922-87d1-4486-8f8b-8e93c77176f8
+  - staged domains=321,420
+  - success added=129,049 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 25/1097] tld=aig run_id=f8393b73-817f-4c78-9292-2287a0fa8eb7
+  - staged domains=163
+  - success added=63 removed=0
+  - stage cleanup deleted=47
+[CZDS-sharded 26/1097] tld=airbus run_id=5dd62369-141f-43c2-91d8-0289bd1b0da0
+  - staged domains=118
+  - success added=43 removed=0
+  - stage cleanup deleted=49
+[CZDS-sharded 27/1097] tld=airforce run_id=8e812ab2-b9e4-47e1-91df-d14d0422c1f8
+  - staged domains=2,445
+  - success added=710 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 28/1097] tld=akdn run_id=0b7b7ecf-b362-4e1d-810c-9e6b22041fa5
+  - staged domains=22
+  - success added=9 removed=0
+  - stage cleanup deleted=9
+[CZDS-sharded 29/1097] tld=alibaba run_id=47c1ab92-1eea-4ce4-9629-f98b82912d5c
+  - staged domains=52
+  - success added=24 removed=0
+  - stage cleanup deleted=23
+[CZDS-sharded 30/1097] tld=alipay run_id=b5a19840-71c3-4c28-b6f6-8e05ae411f65
+  - staged domains=18
+  - success added=7 removed=0
+  - stage cleanup deleted=7
+[CZDS-sharded 31/1097] tld=allfinanz run_id=acd1c2b5-d7eb-4b58-bf1d-ab5b8b4a64cd
+  - staged domains=6,130
+  - success added=1,748 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 32/1097] tld=allstate run_id=6b1363d3-9e1c-4ff9-80c0-4b6a65c51c57
+  - staged domains=58
+  - success added=27 removed=0
+  - stage cleanup deleted=25
+[CZDS-sharded 33/1097] tld=ally run_id=8b2a0e26-15b4-44aa-a982-c517fc6e2411
+  - staged domains=92
+  - success added=35 removed=0
+  - stage cleanup deleted=34
+[CZDS-sharded 34/1097] tld=alsace run_id=9c742c39-5299-4504-bd7b-63189fd452c5
+  - staged domains=8,018
+  - success added=1,689 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 35/1097] tld=amazon run_id=fa7b32d1-a280-4085-a95e-2e3f4314c1f7
+  - staged domains=907
+  - success added=46 removed=0
+  - stage cleanup deleted=103
+[CZDS-sharded 36/1097] tld=americanexpress run_id=f8754960-4a6e-4ab5-a767-9a5d7bce498b
+  - staged domains=46
+  - success added=3 removed=0
+  - stage cleanup deleted=19
+[CZDS-sharded 37/1097] tld=americanfamily run_id=8eeb50e3-7ee7-4c2b-9530-2efad7fb96d3
+  - staged domains=30
+  - success added=0 removed=0
+  - stage cleanup deleted=12
+[CZDS-sharded 38/1097] tld=amex run_id=ce4997aa-3236-4b11-a813-3512974a83f2
+  - staged domains=80
+  - success added=8 removed=0
+  - stage cleanup deleted=24
+[CZDS-sharded 39/1097] tld=amfam run_id=d91e8074-f137-4907-bf60-1a16a5aff18b
+  - staged domains=62
+  - success added=0 removed=0
+  - stage cleanup deleted=19
+[CZDS-sharded 40/1097] tld=amica run_id=a7841df2-ceb7-4ab7-a440-cd2c62fe0080
+  - staged domains=48
+  - success added=0 removed=0
+  - stage cleanup deleted=19
+[CZDS-sharded 41/1097] tld=amsterdam run_id=a735752b-2eec-434f-a4da-7e0ae2d6f082
+  - staged domains=84,275
+  - success added=0 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 42/1097] tld=analytics run_id=2bf7f860-8468-487a-acd7-531489f48a7c
+  - staged domains=64
+  - success added=0 removed=0
+  - stage cleanup deleted=20
+[CZDS-sharded 43/1097] tld=android run_id=308f697d-65d5-4585-abea-54f8305c2456
+  - staged domains=32
+  - success added=0 removed=0
+  - stage cleanup deleted=11
+[CZDS-sharded 44/1097] tld=anquan run_id=63ea2af8-588a-469e-b1a4-a090a7227e2e
+  - staged domains=15
+  - success added=0 removed=0
+  - stage cleanup deleted=5
+[CZDS-sharded 45/1097] tld=anz run_id=f4c226a9-252b-40da-ad29-acd51fb6cbc2
+  - staged domains=195
+  - success added=0 removed=0
+  - stage cleanup deleted=53
+[CZDS-sharded 46/1097] tld=aol run_id=cccc1117-4508-448c-a802-c249b33005d3
+  - staged domains=14
+  - success added=0 removed=0
+  - stage cleanup deleted=6
+[CZDS-sharded 47/1097] tld=apartments run_id=ee5806c8-d98f-4dab-addd-93fd468e13f8
+  - staged domains=11,777
+  - success added=3,696 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 48/1097] tld=app run_id=0cb1f8b8-09ae-4f6b-b10b-7c838151044e
+  - staged domains=5,624,178
+  - success added=2,429,563 removed=0
+  - stage cleanup deleted=512
+[CZDS-sharded 49/1097] tld=apple run_id=c22e140b-5af5-4f60-817f-85493b4acdfe
+  - staged domains=337
+  - success added=90 removed=0
+  - stage cleanup deleted=69
+[CZDS-sharded 50/1097] tld=aquarelle run_id=27456fa8-a8d8-4203-830f-8a10be554e1f
+  - staged domains=332
+  - success added=53 removed=0
+  - stage cleanup deleted=45
+[CZDS-sharded 51/1097] tld=arab run_id=9927b8c0-8dc0-46cf-ac29-fa907eb2e325
+  - staged domains=18
+  - success added=7 removed=0
+  - stage cleanup deleted=7
+[CZDS-sharded 52/1097] tld=aramco run_id=0a00fd5f-0864-491d-8663-114927d4aaff
+  - staged domains=32
+  - success added=13 removed=0
+  - stage cleanup deleted=12
+[CZDS-sharded 53/1097] tld=archi run_id=0fa22768-6c1f-48ac-a2e4-d7515ca338ab
+  - staged domains=12,454
+  - success added=2,750 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 54/1097] tld=army run_id=eec147ee-e1ae-4885-8cf2-c810cd7c508e
+  - staged domains=16,409
+  - success added=6,569 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 55/1097] tld=art run_id=6b632f33-e0ca-44b2-819d-03cd5275d0ef
+  - staged domains=826,849
+  - success added=310,937 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 56/1097] tld=arte run_id=e59686d7-d552-4d38-b5f3-75acd5d84649
+  - staged domains=50
+  - success added=22 removed=0
+  - stage cleanup deleted=21
+[CZDS-sharded 57/1097] tld=asda run_id=661aa65b-766d-41e6-9182-22a8e063ef4b
+  - staged domains=18
+  - success added=7 removed=0
+  - stage cleanup deleted=7
+[CZDS-sharded 58/1097] tld=asia run_id=669d26f1-ee84-4d31-9d69-4fcd82f8dfcb
+  - staged domains=1,486,515
+  - success added=0 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 59/1097] tld=associates run_id=6c0f3d4f-f401-4d59-8556-ac8e2d0218f9
+  - staged domains=11,053
+  - success added=3,967 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 60/1097] tld=athleta run_id=d0cdab00-8075-40e7-ad95-495bade3a6c8
+  - staged domains=40
+  - success added=17 removed=0
+  - stage cleanup deleted=17
+[CZDS-sharded 61/1097] tld=attorney run_id=fb626580-511c-489c-9088-6e5d29846227
+  - staged domains=12,453
+  - success added=4,799 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 62/1097] tld=auction run_id=dcf31ba0-41ba-47c2-a840-1bab5e523bb2
+  - staged domains=23,497
+  - success added=9,849 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 63/1097] tld=audi run_id=e168bf3b-7a01-4bb7-8370-66990f1365f5
+  - staged domains=3,393
+  - success added=1,679 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 64/1097] tld=audible run_id=d6f37ff6-95b3-4a33-bed8-5e756dbca5b9
+  - staged domains=58
+  - success added=19 removed=0
+  - stage cleanup deleted=18
+[CZDS-sharded 65/1097] tld=audio run_id=c5cb5565-8abc-4a1d-b4c9-1cef7bd2a084
+  - staged domains=25,356
+  - success added=5,256 removed=0
+  - stage cleanup deleted=128
+[CZDS-sharded 66/1097] tld=auspost run_id=0c2ed0b2-f360-48d2-8ff0-c03b308d9e82
+  - staged domains=360
+  - success added=136 removed=0
+  - stage cleanup deleted=84
+[CZDS-sharded 67/1097] tld=author run_id=b2c170de-b830-45b5-8f06-ac0932158fda
+  - staged domains=34
+  - success added=13 removed=0
+  - stage cleanup deleted=12
+[CZDS-sharded 68/1097] tld=auto run_id=1c8f363c-9d42-4bc7-8caf-e65eab89d810
+  - staged domains=2,617
+  - success added=533 removed=0
+  - stage cleanup deleted=126
+[CZDS-sharded 69/1097] tld=autos run_id=6795b5e3-bcfc-4113-ae97-bbac6ada674a
+  - staged domains=541,244
