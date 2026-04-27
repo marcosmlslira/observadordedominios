@@ -81,6 +81,8 @@ class RunStatusResponse(BaseModel):
     domains_reactivated: int = 0
     domains_deleted: int = 0
     artifact_key: str | None = None
+    snapshot_date: date | str | None = None
+    reason_code: str | None = None
     error_message: str | None = None
 
     model_config = {"from_attributes": True}
@@ -92,6 +94,8 @@ class SourceSummaryResponse(BaseModel):
     successful_runs: int = 0
     failed_runs: int = 0
     running_now: int = 0
+    running_active_count: int = 0
+    running_stale_count: int = 0
     last_run_at: datetime | None = None
     last_success_at: datetime | None = None
     last_status: str | None = None
@@ -240,8 +244,15 @@ class TldStatusItem(BaseModel):
     is_enabled: bool
     priority: int | None = None
     status: TldStatusCategory
+    execution_status_today: str
+    functional_status: Literal["healthy", "degraded", "unknown", "running"]
     last_run_at: datetime | None = None
+    last_run_id: UUID | None = None
     last_status: str | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    last_reason_code: str | None = None
+    last_error_message: str | None = None
     domains_inserted_today: int = 0
     domains_deleted_today: int = 0
     error_message: str | None = None
@@ -252,6 +263,23 @@ class TldStatusResponse(BaseModel):
     items: list[TldStatusItem]
     total: int
     ok_count: int
+    partial_count: int
     failed_count: int
     running_count: int
     never_run_count: int
+
+
+class IngestionIncidentItem(BaseModel):
+    timestamp: datetime
+    source: str
+    tld: str
+    run_id: UUID
+    status: str
+    reason_code: str | None = None
+    message: str | None = None
+
+
+class IngestionIncidentsResponse(BaseModel):
+    hours: int
+    total: int
+    items: list[IngestionIncidentItem]

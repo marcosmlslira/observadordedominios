@@ -30,6 +30,7 @@ class IngestionRun(Base, TimestampMixin):
     domains_reactivated = Column(BigInteger, default=0)
     domains_deleted = Column(BigInteger, default=0)
 
+    reason_code = Column(String(64), nullable=True)
     error_message = Column(Text, nullable=True)
     snapshot_date = Column(Date, nullable=True)
 

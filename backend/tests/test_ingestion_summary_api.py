@@ -63,6 +63,7 @@ def test_ingestion_summary_only_returns_active_sources(monkeypatch) -> None:
         ]
 
     monkeypatch.setattr(IngestionRunRepository, "get_source_summary", fake_get_source_summary)
+    monkeypatch.setattr(ingestion_router, "_fetch_ingestion_worker_health", lambda: None)
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_current_admin] = _override_admin
 
@@ -80,6 +81,32 @@ def test_ingestion_summary_only_returns_active_sources(monkeypatch) -> None:
     assert payload["openintel"]["mode"] == "Daily cron"
     assert payload["czds"]["next_expected_run_hint"] is not None
     assert payload["openintel"]["next_expected_run_hint"] is not None
+
+
+def test_ingestion_summary_marks_running_from_worker_heartbeat(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(ingestion_router.router)
+
+    monkeypatch.setattr(IngestionRunRepository, "get_source_summary", lambda self: [])
+    monkeypatch.setattr(
+        ingestion_router,
+        "_fetch_ingestion_worker_health",
+        lambda: {"run_in_progress": True, "current_phase": "openintel"},
+    )
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_current_admin] = _override_admin
+
+    try:
+        client = TestClient(app)
+        response = client.get("/v1/ingestion/summary")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = {item["source"]: item for item in response.json()}
+    assert payload["openintel"]["running_active_count"] == 1
+    assert payload["openintel"]["running_now"] == 1
+    assert payload["czds"]["running_active_count"] == 0
 
 
 def test_ingestion_runs_accepts_started_range_filters(monkeypatch) -> None:
@@ -224,3 +251,39 @@ def test_tld_status_rejects_legacy_certstream_source() -> None:
     assert response.status_code == 400
     assert "czds" in response.json()["detail"]
     assert "openintel" in response.json()["detail"]
+
+
+def test_ingestion_incidents_returns_reason_codes() -> None:
+    app = FastAPI()
+    app.include_router(ingestion_router.router)
+
+    class FakeDB:
+        def execute(self, _query, _params):
+            return SimpleNamespace(fetchall=lambda: [
+                SimpleNamespace(
+                    ts=datetime(2026, 4, 26, 1, 0, tzinfo=timezone.utc),
+                    source="openintel",
+                    tld="br",
+                    id=uuid4(),
+                    status="failed",
+                    reason_code="stale_recovered",
+                    error_message="Recovered stale run",
+                )
+            ])
+
+    def _fake_db():
+        yield FakeDB()
+
+    app.dependency_overrides[get_db] = _fake_db
+    app.dependency_overrides[get_current_admin] = _override_admin
+
+    try:
+        client = TestClient(app)
+        response = client.get("/v1/ingestion/incidents?hours=24")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["reason_code"] == "stale_recovered"

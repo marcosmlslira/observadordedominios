@@ -149,6 +149,14 @@ export const ingestionApi = {
   getTldStatus: (source: string) =>
     api.get<import("./types").TldStatusResponse>(`/v1/ingestion/tld-status?source=${encodeURIComponent(source)}`),
 
+  getIncidents: (params?: { source?: string; hours?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.source) qs.set("source", params.source)
+    if (params?.hours != null) qs.set("hours", String(params.hours))
+    if (params?.limit != null) qs.set("limit", String(params.limit))
+    return api.get<import("./types").IngestionIncidentsResponse>(`/v1/ingestion/incidents?${qs.toString()}`)
+  },
+
   triggerDailyCycle: () =>
     api.post<import("./types").ManualCycleTriggerResponse>("/v1/ingestion/trigger/daily-cycle"),
 }

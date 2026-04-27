@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -131,3 +133,90 @@ class DomainRepository:
             {"names": unique_names, "tld": tld, "removed_day": removed_day},
         )
         return len(unique_names)
+
+    @staticmethod
+    def _to_added_day(value: datetime | int) -> int:
+        if isinstance(value, int):
+            return value
+        return int(value.strftime("%Y%m%d"))
+
+    def bulk_upsert(
+        self,
+        domain_names: list[str],
+        tld: str,
+        observed_at: datetime | int,
+    ) -> int:
+        """Compatibility helper used by legacy ingestion paths.
+
+        Upserts by (name, tld), refreshing label + added_day on conflict.
+        Returns number of unique names processed.
+        """
+        if not domain_names:
+            return 0
+
+        unique_names = list(set(domain_names))
+        labels = [n[:-(len(tld) + 1)] for n in unique_names]
+        added_day = self._to_added_day(observed_at)
+
+        self.db.execute(
+            text(
+                """
+                INSERT INTO domain (name, tld, label, added_day)
+                SELECT unnest(:names), :tld, unnest(:labels), :added_day
+                ON CONFLICT (name, tld) DO UPDATE SET
+                    label = EXCLUDED.label,
+                    added_day = EXCLUDED.added_day
+                """
+            ),
+            {
+                "names": unique_names,
+                "labels": labels,
+                "tld": tld,
+                "added_day": added_day,
+            },
+        )
+        return len(unique_names)
+
+    def bulk_upsert_multi_tld(
+        self,
+        normalized_domains: list[tuple[str, str, str]],
+        observed_at: datetime | int,
+    ) -> dict[str, int]:
+        """Compatibility helper for CT batch ingestion across multiple TLDs.
+
+        Input rows are tuples: (name, tld, label).
+        Returns per-TLD processed counts.
+        """
+        if not normalized_domains:
+            return {}
+
+        by_tld: dict[str, dict[str, str]] = defaultdict(dict)
+        for name, tld, label in normalized_domains:
+            by_tld[tld][name] = label
+
+        added_day = self._to_added_day(observed_at)
+        processed: dict[str, int] = {}
+
+        for tld, names_map in by_tld.items():
+            names = list(names_map.keys())
+            labels = [names_map[n] for n in names]
+            self.db.execute(
+                text(
+                    """
+                    INSERT INTO domain (name, tld, label, added_day)
+                    SELECT unnest(:names), :tld, unnest(:labels), :added_day
+                    ON CONFLICT (name, tld) DO UPDATE SET
+                        label = EXCLUDED.label,
+                        added_day = EXCLUDED.added_day
+                    """
+                ),
+                {
+                    "names": names,
+                    "labels": labels,
+                    "tld": tld,
+                    "added_day": added_day,
+                },
+            )
+            processed[tld] = len(names)
+
+        return processed

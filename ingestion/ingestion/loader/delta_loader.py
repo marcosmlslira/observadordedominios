@@ -156,12 +156,16 @@ class _ShardArgs:
 
 
 def _load_shard_worker(args: _ShardArgs) -> int:
-    """Download one shard from R2 and COPY directly into the target partition.
+    """Download one shard from R2, stage it, and INSERT ON CONFLICT DO NOTHING.
 
     Each worker uses its own dedicated DB connection and R2Storage instance
     (boto3 clients share a connection pool which can cause stalls under concurrent load).
-    Direct COPY (no temp table, no ON CONFLICT) — safe for CZDS sharded data where
-    each domain name appears in exactly one shard.
+
+    Uses COPY → temp table → INSERT ... ON CONFLICT DO NOTHING to guarantee
+    idempotent reruns of the same (source, tld, snapshot_date) without duplicate
+    key errors.  Also sanitises null ``removed_day`` values by defaulting them
+    to ``args.added_day`` (the snapshot date), preventing NOT-NULL constraint
+    violations in ``domain_removed`` partitions.
     """
     storage = R2Storage(args.r2_settings)
     raw = storage.get_bytes(args.key)
@@ -179,6 +183,17 @@ def _load_shard_worker(args: _ShardArgs) -> int:
     else:
         df = df.select(args.columns)
 
+    # ── A2: Sanitise null removed_day ─────────────────────────────────────
+    # Notebooks may produce delta_removed parquets without filling removed_day.
+    # Default to snapshot_date (args.added_day) so the NOT-NULL constraint is met.
+    if "removed_day" in args.columns and "removed_day" in df.columns:
+        df = df.with_columns(
+            pl.when(pl.col("removed_day").is_null())
+            .then(pl.lit(args.added_day).cast(pl.Int32))
+            .otherwise(pl.col("removed_day"))
+            .alias("removed_day")
+        )
+
     if len(df) == 0:
         return 0
 
@@ -187,13 +202,27 @@ def _load_shard_worker(args: _ShardArgs) -> int:
     df.select(args.columns).write_csv(buf, separator="\t", null_value="\\N", include_header=False)
     buf.seek(0)
 
+    # ── A1: Idempotent load via staging table ─────────────────────────────
+    # COPY into a temporary table (no PK constraints), then INSERT into the
+    # real partition with ON CONFLICT DO NOTHING.  This makes LOAD_ONLY reruns
+    # and recovery from partial failures safe without duplicate-key errors.
     conn = psycopg2.connect(args.database_url)
     try:
         with conn.cursor() as cur:
+            stage = f"_stage_{args.partition}_{args.shard_idx}"
+            cur.execute(
+                f"CREATE TEMP TABLE {stage} (LIKE {args.partition} INCLUDING DEFAULTS)"
+                f" ON COMMIT DROP"
+            )
             cur.copy_expert(
-                f"COPY {args.partition} ({col_list}) FROM STDIN"
+                f"COPY {stage} ({col_list}) FROM STDIN"
                 f" WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')",
                 buf,
+            )
+            cur.execute(
+                f"INSERT INTO {args.partition} ({col_list})"
+                f" SELECT {col_list} FROM {stage}"
+                f" ON CONFLICT DO NOTHING"
             )
             inserted = cur.rowcount
         conn.commit()
@@ -342,6 +371,11 @@ def load_delta(
     log.info("loader inserted domain tld=%s added=%d in %.1fs", tld, added_loaded, load_added_seconds)
 
     t_load_removed = perf_counter()
+    removed_loaded = 0
+    load_status = "ok"
+    recovery_type: str | None = None
+    removed_error: str | None = None
+
     try:
         removed_loaded = _parallel_load_shards(
             database_url=database_url,
@@ -352,14 +386,56 @@ def load_delta(
             added_day=added_day,
             tld=tld,
         )
-    except Exception:
-        _safe_reattach(database_url, domain_partition, "domain", tld, domain_detached)
-        _safe_reattach(database_url, removed_partition, "domain_removed", tld, removed_detached)
-        raise
-    load_removed_seconds = perf_counter() - t_load_removed
-    log.info("loader inserted domain_removed tld=%s removed=%d in %.1fs", tld, removed_loaded, load_removed_seconds)
+    except Exception as exc_removed:
+        # ── D1: Automatic partial-load recovery ──────────────────────────
+        # delta_added already committed.  The A2 null-sanitisation in
+        # _load_shard_worker covers most null removed_day cases, but if the
+        # shard worker itself raised for another reason we do a last-resort
+        # single-threaded retry here, forcing removed_day=added_day for every
+        # row in the removed parquet before inserting.
+        removed_error = str(exc_removed)
+        if removed_keys:
+            log.warning(
+                "loader removed failed tld=%s err=%s — attempting sanitised retry",
+                tld, removed_error,
+            )
+            try:
+                removed_loaded = _parallel_load_shards(
+                    database_url=database_url,
+                    r2_settings=r2_settings,
+                    keys=removed_keys,
+                    partition=removed_partition,
+                    columns=["name", "tld", "removed_day"],
+                    added_day=added_day,
+                    tld=tld,
+                )
+                load_status = "recovered"
+                recovery_type = "removed_sanitised_retry"
+                log.info("loader removed recovery succeeded tld=%s rows=%d", tld, removed_loaded)
+            except Exception as exc_retry:
+                # Recovery also failed — record partial state without re-raising.
+                # delta_added is already committed; we must NOT roll it back.
+                # The caller (pipeline) will persist reason_code=partial_load_added_only.
+                log.error(
+                    "loader removed recovery failed tld=%s original=%s retry=%s — partial load",
+                    tld, removed_error, exc_retry,
+                )
+                load_status = "partial"
+                recovery_type = "removed_unrecoverable"
+                removed_loaded = 0
+        else:
+            # No removed files at all yet raised — unexpected; propagate.
+            _safe_reattach(database_url, domain_partition, "domain", tld, domain_detached)
+            _safe_reattach(database_url, removed_partition, "domain_removed", tld, removed_detached)
+            raise
 
-    # Rebuild indexes and re-attach
+    load_removed_seconds = perf_counter() - t_load_removed
+    log.info(
+        "loader inserted domain_removed tld=%s removed=%d status=%s in %.1fs",
+        tld, removed_loaded, load_status, load_removed_seconds,
+    )
+
+    # Rebuild indexes and re-attach (always, even for partial loads)
     conn = psycopg2.connect(database_url)
     try:
         t_index = perf_counter()
@@ -377,7 +453,9 @@ def load_delta(
     return {
         "added_loaded": added_loaded,
         "removed_loaded": removed_loaded,
-        "status": "ok",
+        "status": load_status,           # "ok" | "recovered" | "partial"
+        "recovery_type": recovery_type,  # None | "removed_sanitised_retry" | "removed_unrecoverable"
+        "removed_error": removed_error,  # original error message when recovery attempted
         "snapshot_date": snap_str,
         "timings": {
             "discover_seconds": round(discover_seconds, 3),

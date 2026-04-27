@@ -308,6 +308,7 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
                 <TldStatusTable
                   items={tldStatus.items}
                   ok_count={tldStatus.ok_count}
+                  partial_count={tldStatus.partial_count}
                   failed_count={tldStatus.failed_count}
                   running_count={tldStatus.running_count}
                   never_run_count={tldStatus.never_run_count}

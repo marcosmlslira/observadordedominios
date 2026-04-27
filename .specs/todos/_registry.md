@@ -9,6 +9,7 @@
 | 006 | Acesso contínuo ao PostgreSQL via DBeaver + SSH | done | .specs/todos/006/plan.md | 2026-04-16 |
 | 007 | Seed-first candidate retrieval + pausa LLM granular | done | .specs/todos/007/implementation_plan.md | 2026-04-25 |
 | 008 | Pipeline de Ingestão Automatizado: Orquestrador + Observabilidade | done | .specs/todos/008/plan.md | 2026-05-02 |
+| 009 | Correções de Confiabilidade no Monitoramento de Ingestão | in_progress | .specs/todos/009/plan.md | 2026-04-26 |
 
 ## Legenda de status
 
@@ -16,3 +17,4 @@
 - `in_progress`: em execução
 - `blocked`: depende de decisão externa
 - `done`: concluído e validado
+

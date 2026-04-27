@@ -21,6 +21,7 @@ import type { TldStatusItem, TldStatusCategory } from "@/lib/types"
 interface Props {
   items: TldStatusItem[]
   ok_count: number
+  partial_count: number
   failed_count: number
   running_count: number
   never_run_count: number
@@ -49,6 +50,14 @@ function StatusBadge({ status }: { status: TldStatusCategory }) {
           Falha
         </Badge>
       )
+    case "partial":
+      return (
+        <Badge variant="outline" className="gap-1 border-yellow-200 bg-yellow-50 text-yellow-700">
+          <CheckCircle2 className="h-3 w-3" aria-hidden />
+          Parcial
+        </Badge>
+      )
+    case "never_attempted":
     case "never_run":
       return (
         <Badge variant="outline" className="gap-1 border-zinc-200 bg-zinc-50 text-zinc-500">
@@ -56,6 +65,23 @@ function StatusBadge({ status }: { status: TldStatusCategory }) {
           Nunca
         </Badge>
       )
+  }
+}
+
+function TodayExecutionBadge({ status }: { status: TldStatusItem["execution_status_today"] }) {
+  switch (status) {
+    case "success":
+      return <Badge variant="outline" className="border-emerald-200 text-emerald-700">OK</Badge>
+    case "running":
+      return <Badge variant="outline" className="border-blue-200 text-blue-700">Rodando</Badge>
+    case "failed":
+      return <Badge variant="outline" className="border-red-200 text-red-700">Falha</Badge>
+    case "skipped":
+      return <Badge variant="outline" className="border-zinc-200 text-zinc-600">Skipped</Badge>
+    case "no_run_today":
+      return <Badge variant="outline" className="border-orange-200 text-orange-700">Hoje não rodou</Badge>
+    case "never_attempted":
+      return <Badge variant="outline" className="border-zinc-200 text-zinc-500">Nunca</Badge>
   }
 }
 
@@ -76,7 +102,7 @@ function timeAgo(dateStr: string | null): string {
   return `${Math.floor(hours / 24)}d atrás`
 }
 
-export function TldStatusTable({ items, ok_count, failed_count, running_count, never_run_count }: Props) {
+export function TldStatusTable({ items, ok_count, partial_count, failed_count, running_count, never_run_count }: Props) {
   return (
     <div className="space-y-3">
       {/* Summary counts */}
@@ -84,6 +110,11 @@ export function TldStatusTable({ items, ok_count, failed_count, running_count, n
         <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
           OK: {ok_count}
         </Badge>
+        {partial_count > 0 && (
+          <Badge variant="outline" className="border-yellow-200 bg-yellow-50 text-yellow-700">
+            Parcial: {partial_count}
+          </Badge>
+        )}
         {running_count > 0 && (
           <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
             <Loader2 className="h-3 w-3 animate-spin mr-1" aria-hidden />
@@ -132,7 +163,7 @@ export function TldStatusTable({ items, ok_count, failed_count, running_count, n
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span>
-                              <StatusBadge status={item.status} />
+                              <TodayExecutionBadge status={item.execution_status_today} />
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-xs text-xs">
@@ -141,7 +172,7 @@ export function TldStatusTable({ items, ok_count, failed_count, running_count, n
                         </Tooltip>
                       </TooltipProvider>
                     ) : (
-                      <StatusBadge status={item.status} />
+                      <TodayExecutionBadge status={item.execution_status_today} />
                     )}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">

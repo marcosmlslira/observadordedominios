@@ -13,6 +13,7 @@ import importlib.resources
 from datetime import date
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 from ingestion.config.settings import Settings
 from ingestion.databricks.client import DatabricksClient
@@ -99,6 +100,7 @@ class DatabricksSubmitter:
         wait: bool = True,
         timeout_seconds: int = 14400,
         serverless: bool = True,
+        on_poll: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """Upload the notebook for *source* and submit ONE job run for a batch of TLDs.
 
@@ -140,7 +142,7 @@ class DatabricksSubmitter:
         if not wait:
             return {"run_id": run_id, "tlds": tlds, "status": "submitted"}
 
-        run = self.client.wait(run_id)
+        run = self.client.wait(run_id, on_poll=on_poll)
         result_state = run.get("state", {}).get("result_state", "UNKNOWN")
         ok = result_state == "SUCCESS"
         output_run_id = _resolve_output_run_id(run, run_id)
@@ -174,6 +176,7 @@ class DatabricksSubmitter:
         wait: bool = True,
         timeout_seconds: int = 7200,
         serverless: bool = True,
+        on_poll: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """Upload the notebook for *source* and submit a single-TLD job run.
 
@@ -218,7 +221,7 @@ class DatabricksSubmitter:
         if not wait:
             return {"run_id": run_id, "tld": tld, "status": "submitted"}
 
-        run = self.client.wait(run_id)
+        run = self.client.wait(run_id, on_poll=on_poll)
         result_state = run.get("state", {}).get("result_state", "UNKNOWN")
         ok = result_state == "SUCCESS"
         output_run_id = _resolve_output_run_id(run, run_id)

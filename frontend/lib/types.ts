@@ -141,6 +141,8 @@ export interface IngestionRun {
   domains_reactivated: number
   domains_deleted: number
   artifact_key: string | null
+  snapshot_date: string | null
+  reason_code: string | null
   error_message: string | null
 }
 
@@ -150,6 +152,8 @@ export interface SourceSummary {
   successful_runs: number
   failed_runs: number
   running_now: number
+  running_active_count?: number
+  running_stale_count?: number
   last_run_at: string | null
   last_success_at: string | null
   last_status: string | null
@@ -615,7 +619,7 @@ export interface OpenintelStatusResponse {
 
 // ── Unified TLD Status ────────────────────────────────
 
-export type TldStatusCategory = "ok" | "running" | "failed" | "never_run"
+export type TldStatusCategory = "ok" | "partial" | "running" | "failed" | "never_run" | "never_attempted"
 
 export interface TldStatusItem {
   tld: string
@@ -623,8 +627,15 @@ export interface TldStatusItem {
   is_enabled: boolean
   priority: number | null
   status: TldStatusCategory
+  execution_status_today: "never_attempted" | "no_run_today" | "running" | "success" | "failed" | "skipped"
+  functional_status: "healthy" | "degraded" | "unknown" | "running"
+  last_run_id: string | null
   last_run_at: string | null
   last_status: string | null
+  last_success_at: string | null
+  last_failure_at: string | null
+  last_reason_code: string | null
+  last_error_message: string | null
   domains_inserted_today: number
   domains_deleted_today: number
   error_message: string | null
@@ -635,9 +646,26 @@ export interface TldStatusResponse {
   items: TldStatusItem[]
   total: number
   ok_count: number
+  partial_count: number
   failed_count: number
   running_count: number
   never_run_count: number
+}
+
+export interface IngestionIncidentItem {
+  timestamp: string
+  source: string
+  tld: string
+  run_id: string
+  status: string
+  reason_code: string | null
+  message: string | null
+}
+
+export interface IngestionIncidentsResponse {
+  hours: number
+  total: number
+  items: IngestionIncidentItem[]
 }
 
 // ── Monitoring Pipeline ─────────────────────────────

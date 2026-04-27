@@ -63,6 +63,25 @@ class Settings(BaseSettings):
         default="", alias="DATABRICKS_SERVERLESS_PERFORMANCE_TARGET"
     )
     ingestion_git_ref: str = Field(default="main", alias="INGESTION_GIT_REF")
+    ingestion_stale_timeout_minutes: int = Field(default=45, alias="INGESTION_STALE_TIMEOUT_MINUTES")
+    ingestion_execution_mode_openintel: str = Field(
+        default="hybrid",
+        alias="INGESTION_EXECUTION_MODE_OPENINTEL",
+    )
+    ingestion_execution_mode_czds: str = Field(
+        default="hybrid",
+        alias="INGESTION_EXECUTION_MODE_CZDS",
+    )
+
+    # Databricks batch sizes — limits TLDs per job to avoid OOM and rate-limit errors.
+    # OpenINTEL: smaller batches to avoid serverless memory exhaustion.
+    # CZDS: smaller batches to avoid ICANN authentication rate-limiting (429).
+    databricks_batch_size_openintel: int = Field(
+        default=50, alias="DATABRICKS_BATCH_SIZE_OPENINTEL"
+    )
+    databricks_batch_size_czds: int = Field(
+        default=100, alias="DATABRICKS_BATCH_SIZE_CZDS"
+    )
 
     # ── Runtime ───────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
@@ -77,6 +96,24 @@ class Settings(BaseSettings):
 
     def openintel_tld_list(self) -> list[str]:
         return [t.strip().lower() for t in self.openintel_tlds.split(",") if t.strip()]
+
+    def execution_mode_for_source(self, source: str) -> str:
+        if source == "openintel":
+            mode = self.ingestion_execution_mode_openintel
+        elif source == "czds":
+            mode = self.ingestion_execution_mode_czds
+        else:
+            mode = "hybrid"
+        normalized = (mode or "hybrid").strip().lower()
+        return normalized if normalized in {"hybrid", "databricks_only"} else "hybrid"
+
+    def databricks_batch_size_for_source(self, source: str) -> int:
+        """Return the maximum number of TLDs per Databricks job for a source."""
+        if source == "openintel":
+            return max(1, self.databricks_batch_size_openintel)
+        elif source == "czds":
+            return max(1, self.databricks_batch_size_czds)
+        return 50  # safe default
 
 
 _settings: Settings | None = None

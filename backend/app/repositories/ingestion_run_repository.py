@@ -40,6 +40,7 @@ class IngestionRunRepository:
         *,
         status: str,
         metrics: dict[str, int] | None = None,
+        reason_code: str | None = None,
         error_message: str | None = None,
         artifact_id: uuid.UUID | None = None,
     ) -> IngestionRun:
@@ -47,6 +48,7 @@ class IngestionRunRepository:
         run.status = status
         run.finished_at = now
         run.updated_at = now
+        run.reason_code = reason_code
         run.error_message = error_message
         if artifact_id:
             run.artifact_id = artifact_id
@@ -201,6 +203,7 @@ class IngestionRunRepository:
                 f"Run marked as failed automatically after exceeding the stale timeout "
                 f"({age_minutes} minutes without completion)"
             )
+            run.reason_code = "stale_recovered"
 
         self.db.flush()
         return stale_runs
@@ -239,6 +242,7 @@ class IngestionRunRepository:
                 f"Automatically marked failed: no progress for {no_progress_minutes}m "
                 f"(threshold: {stale_after_minutes}m)"
             )
+            run.reason_code = "stale_recovered"
         self.db.flush()
         return stale_runs
 
@@ -279,6 +283,7 @@ class IngestionRunRepository:
             run.finished_at = now
             run.updated_at = now
             run.error_message = error_message
+            run.reason_code = "unexpected_error"
 
         self.db.flush()
         return runs
@@ -308,6 +313,7 @@ class IngestionRunRepository:
             run.finished_at = now
             run.updated_at = now
             run.error_message = error_message
+            run.reason_code = "unexpected_error"
 
         self.db.flush()
         return runs

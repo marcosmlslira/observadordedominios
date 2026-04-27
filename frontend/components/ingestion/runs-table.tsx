@@ -108,13 +108,14 @@ export function RunsTable({ runs, activeSource, onSourceChange }: RunsTableProps
                 <TableHead className="text-right">Seen</TableHead>
                 <TableHead className="text-right">Inserted</TableHead>
                 <TableHead className="text-right">Deleted</TableHead>
+                <TableHead>Snapshot</TableHead>
                 <TableHead>Error</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     No ingestion runs found
                     {activeSource !== "all" && ` for ${SOURCE_LABELS[activeSource] || activeSource}`}
                   </TableCell>
@@ -150,6 +151,9 @@ export function RunsTable({ runs, activeSource, onSourceChange }: RunsTableProps
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {run.domains_deleted.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {run.snapshot_date || run.artifact_key || "—"}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate text-xs text-red-500">
                       {run.error_message || "—"}

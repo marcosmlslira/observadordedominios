@@ -29,7 +29,12 @@ if TYPE_CHECKING:
 
 from ingestion.databricks.submitter import LARGE_TLDS, DatabricksSubmitter
 from ingestion.loader.delta_loader import load_delta
-from ingestion.observability.run_recorder import create_run, finish_run
+from ingestion.observability.run_recorder import (
+    create_run,
+    finish_run,
+    recover_stale_running_runs,
+    touch_run,
+)
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +54,6 @@ class TldResult:
     domains_deleted: int = 0
     domains_seen: int = 0
     error: str = ""
-
 
 # ── Idempotency ───────────────────────────────────────────────────────────────
 
@@ -188,6 +192,7 @@ def _process_tld_local(
     try:
         if db_url:
             run_id = create_run(db_url, source, tld)
+            touch_run(db_url, run_id)
 
         domains_seen = domains_inserted = domains_deleted = 0
 
@@ -221,12 +226,28 @@ def _process_tld_local(
             stats = results[0] if results else None
             if stats and stats.status == "error":
                 raise RuntimeError(stats.error_message or "runner returned error status")
+            if stats and stats.status == "no_snapshot":
+                if run_id and db_url:
+                    finish_run(
+                        db_url,
+                        run_id,
+                        status="failed",
+                        reason_code="no_snapshot",
+                        error_message="No snapshot available for this TLD/date",
+                    )
+                return TldResult(
+                    tld=tld,
+                    phase=phase,
+                    status="skipped",
+                )
             if stats:
                 domains_seen = stats.snapshot_count
                 domains_inserted = stats.added_count
                 domains_deleted = stats.removed_count
                 # Use the actual snapshot date the runner resolved (may differ from today)
                 snap_str = stats.run_key.snapshot_date.isoformat()
+            if run_id and db_url:
+                touch_run(db_url, run_id)
 
         elif phase == TldPhase.LOAD_ONLY:
             # Find the latest marker to know which snapshot date to load from R2
@@ -235,6 +256,8 @@ def _process_tld_local(
                 snap_str = actual_date
             else:
                 log.warning("LOAD_ONLY tld=%s but no marker found — will attempt today_str", tld)
+            if run_id and db_url:
+                touch_run(db_url, run_id)
 
         # Load PG for both FULL_RUN (after writing R2) and LOAD_ONLY
         if db_url:
@@ -250,16 +273,34 @@ def _process_tld_local(
             domains_inserted = load_result.get("added_loaded", domains_inserted)
             domains_deleted = load_result.get("removed_loaded", domains_deleted)
 
+            # ── D2: Map loader status to reason_code ─────────────────────
+            _load_status = load_result.get("status", "ok")
+            if _load_status == "partial":
+                _run_status, _run_reason = "success", "partial_load_added_only"
+                log.warning(
+                    "partial load tld=%s source=%s added=%d removed=0 (%s)",
+                    tld, source, domains_inserted, load_result.get("removed_error", ""),
+                )
+            elif _load_status == "recovered":
+                _run_status, _run_reason = "success", "partial_load_recovered"
+            else:
+                _run_status, _run_reason = "success", "success"
+
             if run_id:
                 finish_run(
                     db_url,
                     run_id,
-                    status="success",
+                    status=_run_status,
+                    reason_code=_run_reason,
                     domains_seen=domains_seen,
                     domains_inserted=domains_inserted,
                     domains_deleted=domains_deleted,
                     snapshot_date=snap_str,
                 )
+
+            # ── A3: Reconcile openintel_tld_status after successful load ──
+            if source == "openintel":
+                _reconcile_openintel_status(db_url, tld, snap_str)
 
         return TldResult(
             tld=tld,
@@ -275,7 +316,13 @@ def _process_tld_local(
         log.error("tld=%s source=%s phase=%s error: %s", tld, source, phase.value, err, exc_info=True)
         if run_id and db_url:
             try:
-                finish_run(db_url, run_id, status="failed", error_message=err)
+                finish_run(
+                    db_url,
+                    run_id,
+                    status="failed",
+                    reason_code="unexpected_error",
+                    error_message=err,
+                )
             except Exception:  # noqa: BLE001
                 pass
         return TldResult(tld=tld, phase=phase, status="error", error=err)
@@ -293,10 +340,11 @@ def _load_tld_from_r2(
     layout: "Layout",
     *,
     check_marker: bool = False,
+    existing_run_id: str | None = None,
 ) -> TldResult:
     """Load one TLD from R2 into PG (post-Databricks step). Returns TldResult."""
     db_url = cfg.database_url
-    run_id: str | None = None
+    run_id: str | None = existing_run_id
     try:
         # Find the actual snapshot date from R2 markers (OpenINTEL lags 2-5 days)
         snap_str = today_str
@@ -309,8 +357,26 @@ def _load_tld_from_r2(
                 log.info("_load_tld_from_r2 tld=%s using marker_date=%s (requested %s)", tld, actual_date, today_str)
             snap_str = actual_date
 
+            # ── B3: Validate Databricks artefact contract ─────────────────
+            # Marker present but no parquets = notebook wrote partial results.
+            # Fail fast with a clear reason_code so the caller can distinguish
+            # "Databricks job reported success but nothing was written" from
+            # regular PG load failures.
+            delta_prefix = layout.delta_tld_date_prefix("delta", source, tld, snap_str)
+            delta_key = layout.delta_key(source, tld, snap_str)
+            from ingestion.loader.delta_loader import _list_parquet_keys  # noqa: PLC0415
+            parquet_keys = _list_parquet_keys(storage, delta_prefix, delta_key)
+            if not parquet_keys:
+                raise RuntimeError(
+                    f"R2 marker present (snapshot={snap_str}) but no delta parquets found"
+                    f" — Databricks notebook completed without writing data (databricks_contract_violation)"
+                )
+            log.debug("B3 artefact check: tld=%s snapshot=%s parquets=%d", tld, snap_str, len(parquet_keys))
+
         if db_url:
-            run_id = create_run(db_url, source, tld)
+            if run_id is None:
+                run_id = create_run(db_url, source, tld)
+            touch_run(db_url, run_id)
             load_result = load_delta(
                 database_url=db_url,
                 storage=storage,
@@ -321,7 +387,32 @@ def _load_tld_from_r2(
             )
             added = load_result.get("added_loaded", 0)
             removed = load_result.get("removed_loaded", 0)
-            finish_run(db_url, run_id, status="success", domains_inserted=added, domains_deleted=removed, snapshot_date=snap_str)
+
+            # ── D2: Map loader status to reason_code ─────────────────────
+            load_status = load_result.get("status", "ok")
+            if load_status == "partial":
+                run_reason = "partial_load_added_only"
+                log.warning(
+                    "partial load tld=%s source=%s: added=%d removed=0 (%s)",
+                    tld, source, added, load_result.get("removed_error", ""),
+                )
+            elif load_status == "recovered":
+                run_reason = "partial_load_recovered"
+            else:
+                run_reason = "success"
+
+            finish_run(
+                db_url,
+                run_id,
+                status="success",
+                reason_code=run_reason,
+                domains_inserted=added,
+                domains_deleted=removed,
+                snapshot_date=snap_str,
+            )
+            # ── A3: Reconcile openintel_tld_status after successful load ──
+            if source == "openintel":
+                _reconcile_openintel_status(db_url, tld, snap_str)
             return TldResult(
                 tld=tld, phase=TldPhase.FULL_RUN, status="ok",
                 domains_inserted=added, domains_deleted=removed,
@@ -334,7 +425,19 @@ def _load_tld_from_r2(
         log.error("post-databricks pg load failed tld=%s: %s", tld, err, exc_info=True)
         if run_id and db_url:
             try:
-                finish_run(db_url, run_id, status="failed", error_message=err)
+                if "databricks_contract_violation" in err:
+                    reason_code = "databricks_contract_violation"
+                elif "marker missing" in err.lower():
+                    reason_code = "r2_marker_missing"
+                else:
+                    reason_code = "pg_load_error"
+                finish_run(
+                    db_url,
+                    run_id,
+                    status="failed",
+                    reason_code=reason_code,
+                    error_message=err,
+                )
             except Exception:  # noqa: BLE001
                 pass
         return TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err)
@@ -352,24 +455,82 @@ def _submit_databricks_batch(
     """Submit one batch Databricks run for a list of TLDs, then load PG per-TLD."""
     log.info("databricks batch: source=%s tlds=%s", source, tlds)
     results: list[TldResult] = []
+    run_ids: dict[str, str] = {}
+    if cfg.database_url:
+        for tld in tlds:
+            try:
+                run_id = create_run(cfg.database_url, source, tld)
+                run_ids[tld] = run_id
+                touch_run(cfg.database_url, run_id)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("failed to create tracking run for %s/%s: %s", source, tld, exc)
+
+    def _heartbeat() -> None:
+        if not cfg.database_url:
+            return
+        for run_id in run_ids.values():
+            try:
+                touch_run(cfg.database_url, run_id)
+            except Exception:
+                pass
+
     try:
-        result = submitter.submit_batch(source, tlds, snapshot_date=today_str, wait=True)
+        result = submitter.submit_batch(
+            source,
+            tlds,
+            snapshot_date=today_str,
+            wait=True,
+            on_poll=_heartbeat,
+        )
         if result.get("status") != "ok":
             err = f"Databricks batch failed (result_state={result.get('result_state', 'UNKNOWN')})"
             log.error(err)
             for tld in tlds:
+                run_id = run_ids.get(tld)
+                if run_id and cfg.database_url:
+                    try:
+                        finish_run(
+                            cfg.database_url,
+                            run_id,
+                            status="failed",
+                            reason_code="databricks_run_error",
+                            error_message=err,
+                        )
+                    except Exception:
+                        pass
                 results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
             return results
     except Exception as exc:  # noqa: BLE001
         err = str(exc)
         log.error("databricks batch submission error: %s", err, exc_info=True)
         for tld in tlds:
+            run_id = run_ids.get(tld)
+            if run_id and cfg.database_url:
+                try:
+                    finish_run(
+                        cfg.database_url,
+                        run_id,
+                        status="failed",
+                        reason_code="databricks_submit_error",
+                        error_message=err,
+                    )
+                except Exception:
+                    pass
             results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
         return results
 
     # Databricks job succeeded — load PG per TLD, checking R2 markers for safety
     for tld in tlds:
-        r = _load_tld_from_r2(source, tld, today_str, cfg, storage, layout, check_marker=True)
+        r = _load_tld_from_r2(
+            source,
+            tld,
+            today_str,
+            cfg,
+            storage,
+            layout,
+            check_marker=True,
+            existing_run_id=run_ids.get(tld),
+        )
         results.append(r)
     return results
 
@@ -405,24 +566,70 @@ def _process_large_tlds(
     batch_tlds = [t for t in full_run if t != "com"]
 
     if batch_tlds:
-        batch_results = _submit_databricks_batch(
-            source, batch_tlds, submitter, cfg, storage, layout, today_str
-        )
-        results.extend(batch_results)
+        # ── B1: chunk batches to avoid OOM and rate-limit ─────────────
+        batch_size = cfg.databricks_batch_size_for_source(source)
+        for chunk_start in range(0, len(batch_tlds), batch_size):
+            chunk = batch_tlds[chunk_start : chunk_start + batch_size]
+            log.info(
+                "databricks large chunk %d/%d source=%s tlds=%d",
+                chunk_start // batch_size + 1,
+                (len(batch_tlds) + batch_size - 1) // batch_size,
+                source,
+                len(chunk),
+            )
+            batch_results = _submit_databricks_batch(
+                source, chunk, submitter, cfg, storage, layout, today_str
+            )
+            results.extend(batch_results)
 
     # .com: always solo, always last
     for tld in com_tlds:
         log.info("databricks solo: source=%s tld=%s (always last)", source, tld)
+        run_id: str | None = None
         try:
-            result = submitter.submit(source, tld, snapshot_date=today_str, wait=True)
+            if cfg.database_url:
+                run_id = create_run(cfg.database_url, source, tld)
+                touch_run(cfg.database_url, run_id)
+            result = submitter.submit(
+                source,
+                tld,
+                snapshot_date=today_str,
+                wait=True,
+                on_poll=(lambda: run_id and cfg.database_url and touch_run(cfg.database_url, run_id)),
+            )
             if result.get("status") == "ok":
-                r = _load_tld_from_r2(source, tld, today_str, cfg, storage, layout, check_marker=True)
+                r = _load_tld_from_r2(
+                    source,
+                    tld,
+                    today_str,
+                    cfg,
+                    storage,
+                    layout,
+                    check_marker=True,
+                    existing_run_id=run_id,
+                )
             else:
                 err = f"Databricks run failed (result_state={result.get('result_state', 'UNKNOWN')})"
+                if run_id and cfg.database_url:
+                    finish_run(
+                        cfg.database_url,
+                        run_id,
+                        status="failed",
+                        reason_code="databricks_run_error",
+                        error_message=err,
+                    )
                 r = TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err)
         except Exception as exc:  # noqa: BLE001
             err = str(exc)
             log.error("databricks solo tld=%s error: %s", tld, err, exc_info=True)
+            if run_id and cfg.database_url:
+                finish_run(
+                    cfg.database_url,
+                    run_id,
+                    status="failed",
+                    reason_code="databricks_submit_error",
+                    error_message=err,
+                )
             r = TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err)
         results.append(r)
 
@@ -449,6 +656,24 @@ def run_cycle(
     storage = R2Storage(cfg)
     layout = Layout(cfg.r2_prefix)
     db_url = cfg.database_url
+    execution_mode = cfg.execution_mode_for_source(source)
+
+    if db_url:
+        try:
+            recovered = recover_stale_running_runs(
+                db_url,
+                source,
+                stale_after_minutes=cfg.ingestion_stale_timeout_minutes,
+            )
+            if recovered:
+                log.warning(
+                    "stale recovery source=%s recovered=%d timeout=%dm",
+                    source,
+                    recovered,
+                    cfg.ingestion_stale_timeout_minutes,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("stale recovery failed source=%s: %s", source, exc)
 
     all_tlds = get_ordered_tlds(db_url, source, cfg)
     max_tlds = cfg.czds_max_tlds if source == "czds" else cfg.openintel_max_tlds
@@ -459,11 +684,116 @@ def run_cycle(
     large_tlds = [t for t in all_tlds if t in LARGE_TLDS]
 
     log.info(
-        "run_cycle source=%s date=%s total=%d small=%d large=%d",
-        source, today, len(all_tlds), len(small_tlds), len(large_tlds),
+        "run_cycle source=%s mode=%s date=%s total=%d small=%d large=%d",
+        source, execution_mode, today, len(all_tlds), len(small_tlds), len(large_tlds),
     )
 
     results: list[TldResult] = []
+
+    if execution_mode == "databricks_only":
+        if not cfg.databricks_host or not cfg.databricks_token:
+            err = "DATABRICKS_HOST/TOKEN not configured for databricks_only mode"
+            for tld in all_tlds:
+                results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
+            return results
+
+        submitter = DatabricksSubmitter(cfg)
+        today_str = today.isoformat()
+        databricks_targets: list[str] = []
+        for tld in all_tlds:
+            phase = check_phase(db_url, storage, layout, source, tld, today)
+            if phase == TldPhase.SKIP:
+                results.append(TldResult(tld=tld, phase=phase, status="skipped"))
+                continue
+            databricks_targets.append(tld)
+
+        if databricks_targets:
+            com_tlds = [t for t in databricks_targets if source == "czds" and t == "com"]
+            batch_tlds = [t for t in databricks_targets if t not in com_tlds]
+            if batch_tlds:
+                # ── B1: chunk batches to avoid OOM and rate-limit ─────────
+                batch_size = cfg.databricks_batch_size_for_source(source)
+                for chunk_start in range(0, len(batch_tlds), batch_size):
+                    chunk = batch_tlds[chunk_start : chunk_start + batch_size]
+                    log.info(
+                        "databricks chunk %d/%d source=%s tlds=%d",
+                        chunk_start // batch_size + 1,
+                        (len(batch_tlds) + batch_size - 1) // batch_size,
+                        source,
+                        len(chunk),
+                    )
+                    results.extend(
+                        _submit_databricks_batch(
+                            source,
+                            chunk,
+                            submitter,
+                            cfg,
+                            storage,
+                            layout,
+                            today_str,
+                        )
+                    )
+            for tld in com_tlds:
+                run_id: str | None = None
+                try:
+                    if db_url:
+                        run_id = create_run(db_url, source, tld)
+                        touch_run(db_url, run_id)
+                    result = submitter.submit(
+                        source,
+                        tld,
+                        snapshot_date=today_str,
+                        wait=True,
+                        on_poll=(lambda: run_id and db_url and touch_run(db_url, run_id)),
+                    )
+                    if result.get("status") != "ok":
+                        err = f"Databricks run failed (result_state={result.get('result_state', 'UNKNOWN')})"
+                        if run_id and db_url:
+                            finish_run(
+                                db_url,
+                                run_id,
+                                status="failed",
+                                reason_code="databricks_run_error",
+                                error_message=err,
+                            )
+                        results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
+                        continue
+                    results.append(
+                        _load_tld_from_r2(
+                            source,
+                            tld,
+                            today_str,
+                            cfg,
+                            storage,
+                            layout,
+                            check_marker=True,
+                            existing_run_id=run_id,
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    err = str(exc)
+                    if run_id and db_url:
+                        finish_run(
+                            db_url,
+                            run_id,
+                            status="failed",
+                            reason_code="databricks_submit_error",
+                            error_message=err,
+                        )
+                    results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
+
+        ok = sum(1 for r in results if r.status == "ok")
+        skipped = sum(1 for r in results if r.status == "skipped")
+        errors = sum(1 for r in results if r.status == "error")
+        log.info(
+            "run_cycle done source=%s mode=%s ok=%d skipped=%d errors=%d",
+            source,
+            execution_mode,
+            ok,
+            skipped,
+            errors,
+        )
+        return results
 
     # ── Small TLDs: run locally, per-TLD isolation ────────────────────────────
     for tld in small_tlds:
@@ -537,6 +867,48 @@ def run_cycle(
 
 
 # ── Post-cycle helpers ────────────────────────────────────────────────────────
+
+
+def _reconcile_openintel_status(db_url: str, tld: str, snapshot_date_str: str) -> None:
+    """Update openintel_tld_status after a successful canonical pipeline load.
+
+    The legacy ``sync_openintel_tld`` use-case was the only writer of this table,
+    but the canonical pipeline never updated it — leaving the ``/admin/ingestion``
+    UI stale even after successful loads.  This reconciles the derived status so
+    the UI correctly reflects the latest ingestion outcome.
+    """
+    try:
+        snap_date = date.fromisoformat(snapshot_date_str) if isinstance(snapshot_date_str, str) else snapshot_date_str
+        conn = psycopg2.connect(db_url)
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO openintel_tld_status (
+                        tld, last_probe_outcome, last_verification_at,
+                        last_available_snapshot_date, last_ingested_snapshot_date,
+                        last_error_message, updated_at
+                    ) VALUES (
+                        %s, 'ingested_new_snapshot', now(),
+                        %s, %s,
+                        NULL, now()
+                    )
+                    ON CONFLICT (tld) DO UPDATE SET
+                        last_probe_outcome = 'ingested_new_snapshot',
+                        last_verification_at = now(),
+                        last_available_snapshot_date = EXCLUDED.last_available_snapshot_date,
+                        last_ingested_snapshot_date = EXCLUDED.last_ingested_snapshot_date,
+                        last_error_message = NULL,
+                        updated_at = now()
+                    """,
+                    (tld, snap_date, snap_date),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        log.info("reconciled openintel_tld_status tld=%s snapshot=%s", tld, snapshot_date_str)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("openintel_tld_status reconciliation failed tld=%s: %s", tld, exc)
 
 
 def _sync_expiration_for_tld(db_url: str, source: str, tld: str, today: date) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -125,7 +126,12 @@ class DatabricksClient:
     def run_get_output(self, run_id: int) -> dict[str, Any]:
         return self.request("GET", "/api/2.1/jobs/runs/get-output", params={"run_id": run_id})
 
-    def wait(self, run_id: int, poll_seconds: int = 10) -> dict[str, Any]:
+    def wait(
+        self,
+        run_id: int,
+        poll_seconds: int = 10,
+        on_poll: Callable[[], None] | None = None,
+    ) -> dict[str, Any]:
         """Poll until the run reaches a terminal state and return the final run object."""
         while True:
             run = self.run_get(run_id)
@@ -134,6 +140,11 @@ class DatabricksClient:
             rs = state.get("result_state")
             msg = state.get("state_message", "")
             print(f"  run_id={run_id} lifecycle={lc} result={rs} {msg}")
+            if on_poll is not None:
+                try:
+                    on_poll()
+                except Exception:
+                    pass
             if lc in {"TERMINATED", "SKIPPED", "INTERNAL_ERROR"}:
                 return run
             time.sleep(poll_seconds)

@@ -28,12 +28,14 @@ INSERT INTO ingestion_run (
     id, source, tld, status,
     started_at, finished_at,
     domains_seen, domains_inserted, domains_reactivated, domains_deleted,
+    reason_code,
     error_message,
     created_at, updated_at
 ) VALUES (
     %s, %s, %s, %s,
     %s, %s,
     %s, %s, %s, %s,
+    %s,
     %s,
     %s, %s
 )
@@ -47,9 +49,16 @@ UPDATE ingestion_run SET
     domains_inserted   = %s,
     domains_reactivated = %s,
     domains_deleted    = %s,
+    reason_code        = %s,
     error_message      = %s,
     snapshot_date      = %s,
     updated_at         = %s
+WHERE id = %s
+"""
+
+_TOUCH_SQL = """
+UPDATE ingestion_run
+SET updated_at = %s
 WHERE id = %s
 """
 
@@ -71,7 +80,7 @@ def create_run(
         with conn.cursor() as cur:
             cur.execute(
                 _INSERT_SQL,
-                (run_id, source, tld, "running", started, None, 0, 0, 0, 0, None, now, now),
+                (run_id, source, tld, "running", started, None, 0, 0, 0, 0, None, None, now, now),
             )
         conn.commit()
     finally:
@@ -90,6 +99,7 @@ def finish_run(
     domains_deleted: int = 0,
     domains_seen: int = 0,
     domains_reactivated: int = 0,
+    reason_code: str | None = None,
     error_message: str | None = None,
     finished_at: datetime | None = None,
     snapshot_date: str | None = None,
@@ -110,6 +120,7 @@ def finish_run(
                     domains_inserted,
                     domains_reactivated,
                     domains_deleted,
+                    reason_code,
                     error_message,
                     snapshot_date,
                     now,
@@ -134,8 +145,56 @@ def record_stats(db_url: str, stats: "RunStats") -> None:
         db_url,
         run_id,
         status="success" if stats.status == "ok" else "failed",
+        reason_code="success" if stats.status == "ok" else "unexpected_error",
         domains_inserted=stats.added_count,
         domains_deleted=stats.removed_count,
         domains_seen=stats.snapshot_count,
         error_message=stats.error_message or None,
     )
+
+
+def touch_run(db_url: str, run_id: str) -> None:
+    """Heartbeat a running row to keep updated_at fresh during long steps."""
+    now = datetime.now(timezone.utc)
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_TOUCH_SQL, (now, run_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def recover_stale_running_runs(
+    db_url: str,
+    source: str,
+    *,
+    stale_after_minutes: int,
+) -> int:
+    """Close orphaned running runs for source using updated_at heartbeat staleness."""
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ingestion_run
+                SET
+                    status = 'failed',
+                    reason_code = 'stale_recovered',
+                    error_message = COALESCE(
+                        NULLIF(error_message, ''),
+                        'Run recovered automatically after stale timeout'
+                    ),
+                    finished_at = now(),
+                    updated_at = now()
+                WHERE source = %s
+                  AND status = 'running'
+                  AND updated_at < (now() - (%s || ' minutes')::interval)
+                """,
+                (source, stale_after_minutes),
+            )
+            affected = cur.rowcount
+        conn.commit()
+        return affected
+    finally:
+        conn.close()

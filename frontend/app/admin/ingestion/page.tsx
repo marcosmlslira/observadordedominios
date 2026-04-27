@@ -24,6 +24,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, ingestionApi } from "@/lib/api"
 import type {
+  IngestionIncidentItem,
   IngestionCycleStatus,
   IngestionRun,
   OpenintelStatusResponse,
@@ -82,6 +83,18 @@ const STATUS_META: Record<CellStatus, { label: string; className: string; dot: s
     className: "border-border-subtle bg-card text-muted-foreground",
     dot: "bg-zinc-300 dark:bg-zinc-700",
   },
+}
+
+const REASON_CODE_META: Record<string, string> = {
+  success: "Execução concluída com sucesso",
+  skipped_idempotent: "Snapshot já processado anteriormente",
+  no_snapshot: "Snapshot não disponível para o TLD",
+  databricks_submit_error: "Falha ao submeter job no Databricks",
+  databricks_run_error: "Job do Databricks terminou com erro",
+  pg_load_error: "Falha ao carregar dados no PostgreSQL",
+  r2_marker_missing: "Marker esperado no R2 não foi encontrado",
+  stale_recovered: "Execução stale recuperada automaticamente",
+  unexpected_error: "Falha não classificada",
 }
 
 function localDateKey(date: Date): string {
@@ -152,6 +165,11 @@ function sourcePillLabel(source: string): string {
   return SOURCE_PILL_LABEL[source] ?? source.toUpperCase()
 }
 
+function reasonCodeLabel(reasonCode: string | null | undefined): string {
+  if (!reasonCode) return "-"
+  return REASON_CODE_META[reasonCode] ?? reasonCode
+}
+
 function normalizeTld(value: string): string {
   return value.trim().toLowerCase().replace(/^\./, "")
 }
@@ -185,6 +203,7 @@ export default function IngestionPage() {
   const [cycleStatus, setCycleStatus] = useState<IngestionCycleStatus | null>(null)
   const [openintelStatus, setOpenintelStatus] = useState<OpenintelStatusResponse | null>(null)
   const [tldStatuses, setTldStatuses] = useState<Record<string, TldStatusResponse | null>>({})
+  const [incidents, setIncidents] = useState<IngestionIncidentItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [manualTriggering, setManualTriggering] = useState(false)
@@ -206,7 +225,7 @@ export default function IngestionPage() {
     setError("")
 
     try {
-      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus] =
+      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus, incidentsData] =
         await Promise.all([
           api.get<IngestionRun[]>(`/v1/ingestion/runs?${params}`),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
@@ -215,6 +234,11 @@ export default function IngestionPage() {
           ingestionApi.getOpenintelStatus().catch(() => null),
           ingestionApi.getTldStatus("czds").catch(() => null),
           ingestionApi.getTldStatus("openintel").catch(() => null),
+          ingestionApi.getIncidents({ hours: 24, limit: 80 }).catch(() => ({
+            hours: 24,
+            total: 0,
+            items: [] as IngestionIncidentItem[],
+          })),
         ])
 
       setRuns(runsData.filter((run) => run.source === "czds" || run.source === "openintel"))
@@ -226,6 +250,7 @@ export default function IngestionPage() {
         czds: czdsStatus,
         openintel: openintelTldStatus,
       })
+      setIncidents(incidentsData.items ?? [])
       setLastFetchedAt(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar dados de ingestão")
@@ -299,11 +324,11 @@ export default function IngestionPage() {
       czds: new Set((tldStatuses.czds?.items ?? []).map((item) => item.tld)),
       openintel: new Set((tldStatuses.openintel?.items ?? []).map((item) => item.tld)),
     }
-    const rows = Array.from(tlds).map((tld) => {
-      const tldRuns = runs.filter((run) => run.tld === tld)
-      const latestRun = tldRuns[0]
-      const r2 = openintelByTld.get(tld)
-      const isQueued = queuedTlds.has(tld)
+      const rows = Array.from(tlds).map((tld) => {
+        const tldRuns = runs.filter((run) => run.tld === tld)
+        const latestRun = tldRuns[0]
+        const r2 = openintelByTld.get(tld)
+        const isQueued = queuedTlds.has(tld)
       const presentSources = new Set<string>(tldRuns.map((run) => run.source))
       if (statusesBySource.czds.has(tld)) presentSources.add("czds")
       if (statusesBySource.openintel.has(tld) || r2) presentSources.add("openintel")
@@ -312,6 +337,8 @@ export default function IngestionPage() {
           ? sourceFilter
           : SOURCE_PRIORITY.find((source) => presentSources.has(source))
       ) ?? latestRun?.source ?? "czds"
+      const statusSourceItems = tldStatuses[primarySource]?.items ?? []
+      const statusEntry = statusSourceItems.find((item) => item.tld === tld)
       const cells = dateKeys.map((key) => {
         const dayRuns = tldRuns.filter((run) => runDateKey(run.started_at) === key)
         const latestDayRun = dayRuns[0]
@@ -339,6 +366,7 @@ export default function IngestionPage() {
           latestFinishedAt: latestDayRun?.finished_at ?? null,
           sources: Array.from(new Set(dayRuns.map((run) => run.source))),
           error: dayRuns.find((run) => run.status === "failed")?.error_message ?? null,
+          reasonCode: dayRuns.find((run) => run.status === "failed")?.reason_code ?? null,
           r2,
         }
       })
@@ -346,11 +374,11 @@ export default function IngestionPage() {
       const failedDays = cells.filter((cell) => cell.status === "failed").length
       const attentionScore = failedDays + (isR2Pending(r2) ? 2 : 0) + (latestRun?.status === "running" ? 1 : 0)
       const currentStatus: StatusFilter =
-        latestRun?.status === "running" ? "running" :
-        latestRun?.status === "failed" || r2?.status === "failed" ? "failed" :
+        statusEntry?.execution_status_today === "running" ? "running" :
+        statusEntry?.execution_status_today === "failed" || r2?.status === "failed" ? "failed" :
         isR2Pending(r2) ? "attention" :
         isQueued ? "queued" :
-        latestRun?.status === "success" || latestRun?.status === "ok" ? "success" :
+        statusEntry?.execution_status_today === "success" ? "success" :
         "no_data"
 
       return {
@@ -359,6 +387,7 @@ export default function IngestionPage() {
         primarySource,
         currentStatus,
         latestRun,
+        statusEntry,
         r2,
         domainCount: domainCountByTld.get(tld) ?? 0,
         inserted: tldRuns.reduce((total, run) => total + (run.domains_inserted || 0), 0),
@@ -406,26 +435,28 @@ export default function IngestionPage() {
 
   const counters = useMemo(() => {
     const failedTlds = new Set<string>()
-    const runningTlds = new Set<string>()
     let inserted = 0
 
     runs.forEach((run) => {
       inserted += run.domains_inserted || 0
       if (run.status === "failed") failedTlds.add(run.tld)
-      if (run.status === "running") runningTlds.add(run.tld)
     })
 
     const delayedR2 = (openintelStatus?.items ?? []).filter((item) => item.is_enabled && item.status === "delayed")
     const failedR2 = (openintelStatus?.items ?? []).filter((item) => item.is_enabled && item.status === "failed")
 
+    const runningActive = summaries.reduce((acc, item) => acc + (item.running_active_count ?? item.running_now ?? 0), 0)
+    const runningStale = summaries.reduce((acc, item) => acc + (item.running_stale_count ?? 0), 0)
+
     return {
       failedTlds: failedTlds.size + failedR2.length,
-      runningTlds: runningTlds.size,
+      runningActive,
+      runningStale,
       queuedTlds: queuedTlds.size,
       r2Pending: delayedR2.length,
       inserted,
     }
-  }, [openintelStatus, queuedTlds, runs])
+  }, [openintelStatus, queuedTlds, runs, summaries])
 
   const r2AttentionItems = useMemo(() => {
     return (openintelStatus?.items ?? [])
@@ -502,10 +533,11 @@ export default function IngestionPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-6">
         <MetricCard icon={AlertTriangle} label="TLDs com atenção" value={formatCount(counters.failedTlds + counters.r2Pending)} tone="danger" />
         <MetricCard icon={XCircle} label="Falhas recentes" value={formatCount(counters.failedTlds)} tone="danger" />
-        <MetricCard icon={Loader2} label="Executando agora" value={formatCount(counters.runningTlds)} tone="info" spin={counters.runningTlds > 0} />
+        <MetricCard icon={Loader2} label="Executando agora" value={formatCount(counters.runningActive)} tone="info" spin={counters.runningActive > 0} />
+        <MetricCard icon={AlertTriangle} label="Executando stale" value={formatCount(counters.runningStale)} tone="danger" />
         <MetricCard icon={Clock3} label="Na fila CZDS" value={formatCount(counters.queuedTlds)} tone="neutral" />
         <MetricCard icon={Database} label="Domínios adicionados" value={formatCount(counters.inserted)} tone="success" />
       </div>
@@ -683,6 +715,36 @@ export default function IngestionPage() {
             </div>
           </section>
         </div>
+
+        <section className="rounded-lg border border-border-subtle bg-card">
+          <div className="border-b border-border-subtle px-4 py-3">
+            <h2 className="text-sm font-medium">Incidentes do ciclo (24h)</h2>
+            <p className="text-xs text-muted-foreground">Falhas e recoveries com reason code e run_id.</p>
+          </div>
+          {incidents.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-muted-foreground">Sem incidentes registrados na janela.</div>
+          ) : (
+            <div className="divide-y divide-border-subtle">
+              {incidents.slice(0, 25).map((incident) => (
+                <div key={incident.run_id} className="px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-medium">{incident.source}.{incident.tld}</span>
+                      <span className="rounded-full border border-border-subtle bg-muted/30 px-2 py-0.5 text-[11px]">
+                        {reasonCodeLabel(incident.reason_code)}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(incident.timestamp)}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">run_id: <span className="font-mono">{incident.run_id}</span></div>
+                  {incident.message && (
+                    <div className="mt-1 line-clamp-2 text-xs text-red-600 dark:text-red-300">{incident.message}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   )
@@ -735,13 +797,19 @@ function MetricCard({
 function Legend() {
   const items: CellStatus[] = ["success", "failed", "running", "queued", "delayed", "no_data"]
   return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item) => (
-        <span key={item} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className={`h-2 w-2 rounded-full ${STATUS_META[item].dot}`} />
-          {STATUS_META[item].label}
-        </span>
-      ))}
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span key={item} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={`h-2 w-2 rounded-full ${STATUS_META[item].dot}`} />
+            {STATUS_META[item].label}
+          </span>
+        ))}
+      </div>
+      <div className="text-[11px] text-muted-foreground">
+        Reason codes: `success`, `no_snapshot`, `databricks_submit_error`, `databricks_run_error`,
+        `pg_load_error`, `r2_marker_missing`, `stale_recovered`, `unexpected_error`.
+      </div>
     </div>
   )
 }
@@ -755,6 +823,12 @@ function RowCells({
     domainCount: number
     inserted: number
     attentionScore: number
+    statusEntry?: {
+      execution_status_today: string
+      functional_status: string
+      last_reason_code: string | null
+      last_error_message: string | null
+    }
     cells: Array<{
       key: string
       status: CellStatus
@@ -765,6 +839,7 @@ function RowCells({
       latestFinishedAt: string | null
       sources: string[]
       error: string | null
+      reasonCode: string | null
       r2?: OpenintelTldStatusItem
     }>
   }
@@ -774,7 +849,17 @@ function RowCells({
     <>
       <div
         className="sticky left-0 z-10 min-w-0 border-r border-border-subtle bg-card px-2 py-0.5"
-        title={`.${row.tld} • ${formatCount(row.domainCount)} domínios • ${formatCount(row.inserted)} novos`}
+        title={
+          [
+            `.${row.tld}`,
+            `${formatCount(row.domainCount)} domínios`,
+            `${formatCount(row.inserted)} novos`,
+            row.statusEntry ? `Status hoje: ${row.statusEntry.execution_status_today}` : null,
+            row.statusEntry ? `Funcional: ${row.statusEntry.functional_status}` : null,
+            row.statusEntry?.last_reason_code ? `Motivo: ${reasonCodeLabel(row.statusEntry.last_reason_code)}` : null,
+            row.statusEntry?.last_error_message ?? null,
+          ].filter(Boolean).join(" • ")
+        }
       >
         <div className="flex items-center gap-1 whitespace-nowrap text-[9px] leading-none">
           <span className="truncate font-mono text-xs font-medium">.{row.tld}</span>
@@ -805,6 +890,7 @@ function HeatmapCell({
     latestFinishedAt: string | null
     sources: string[]
     error: string | null
+    reasonCode: string | null
     r2?: OpenintelTldStatusItem
   }
 }) {
@@ -820,6 +906,7 @@ function HeatmapCell({
     cell.r2 && cell.status === "delayed"
       ? `R2 disponível ${cell.r2.last_available_snapshot_date}, importado ${cell.r2.last_ingested_snapshot_date ?? "-"}`
       : null,
+    cell.reasonCode ? `Reason: ${reasonCodeLabel(cell.reasonCode)}` : null,
     cell.error,
   ].filter(Boolean).join(" | ")
 

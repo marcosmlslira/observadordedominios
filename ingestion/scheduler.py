@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 _last_run: dict = {}
 _run_lock = threading.Lock()
 _run_in_progress = False
+_current_phase: str | None = None
 
 
 def _json_response(handler: BaseHTTPRequestHandler, status_code: int, payload: dict[str, Any]) -> None:
@@ -48,6 +49,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
             _json_response(self, 200, {
                 "status": "ok",
                 "run_in_progress": _run_in_progress,
+                "current_phase": _current_phase,
                 "last_run": _last_run,
                 "now": datetime.now(timezone.utc).isoformat(),
             })
@@ -90,7 +92,7 @@ def _start_health_server(port: int = 8080) -> None:
 
 
 def _run_daily_cycle(trigger: str = "schedule") -> None:
-    global _run_in_progress
+    global _run_in_progress, _current_phase
     acquired = _run_lock.acquire(blocking=False)
     if not acquired:
         log.warning("cycle trigger=%s ignored: already running", trigger)
@@ -107,6 +109,7 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
     try:
         # 1. OpenINTEL first
         try:
+            _current_phase = "openintel"
             oi_results = run_cycle("openintel", cfg)
             summary["openintel"] = {
                 "total": len(oi_results),
@@ -121,6 +124,7 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
 
         # 2. CZDS next (.com always last inside run_cycle)
         try:
+            _current_phase = "czds"
             czds_results = run_cycle("czds", cfg)
             summary["czds"] = {
                 "total": len(czds_results),
@@ -137,6 +141,7 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         _last_run.update(summary)
         log.info("=== daily ingestion cycle complete === %s", summary)
     finally:
+        _current_phase = None
         _run_in_progress = False
         _run_lock.release()
 
