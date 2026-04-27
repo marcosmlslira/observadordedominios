@@ -181,21 +181,6 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
 
-def _run_daily_cycle(trigger: str = "schedule") -> None:
-    global _run_in_progress, _current_phase
-    acquired = _run_lock.acquire(blocking=False)
-    if not acquired:
-        log.warning("cycle trigger=%s ignored: already running", trigger)
-        return
-
-    _run_in_progress = True
-    cfg = get_settings()
-    log.info("=== daily ingestion cycle starting (trigger=%s) ===", trigger)
-    summary: dict = {
-        "trigger": trigger,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }
-
     cycle_id: str | None = None
     if cfg.database_url:
         try:
@@ -342,6 +327,68 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         _run_in_progress = False
         _run_lock.release()
 
+
+
+# ── CZDS recovery job ─────────────────────────────────────────────────────────
+
+
+def _run_czds_recovery(trigger: str = "schedule_czds_recovery") -> None:
+    """CZDS-only recovery job scheduled at 08:00 UTC.
+
+    Runs the CZDS phase if it was skipped during the 04:00 daily cycle (e.g., because
+    OpenINTEL was interrupted by SIGTERM before CZDS could start).
+
+    Skips automatically if CZDS already completed successfully today.
+    """
+    global _run_in_progress, _current_phase
+
+    if _shutting_down:
+        log.info("czds recovery trigger=%s skipped: shutting down", trigger)
+        return
+
+    cfg = get_settings()
+
+    # Skip if CZDS already ran successfully today (common case: normal 04:00 cycle)
+    if cfg.database_url:
+        try:
+            from ingestion.observability.run_recorder import czds_ran_today  # noqa: PLC0415
+            if czds_ran_today(cfg.database_url):
+                log.info("czds recovery: already ran today — skipping")
+                return
+        except Exception as exc:  # noqa: BLE001
+            log.warning("czds recovery: could not check run history (non-fatal): %s", exc)
+
+    acquired = _run_lock.acquire(blocking=False)
+    if not acquired:
+        log.warning("czds recovery trigger=%s ignored: another cycle is running", trigger)
+        return
+
+    _run_in_progress = True
+    log.info("=== czds recovery cycle starting (trigger=%s) ===", trigger)
+    summary: dict = {"trigger": trigger, "started_at": datetime.now(timezone.utc).isoformat()}
+
+    try:
+        _current_phase = "czds"
+        czds_results = run_cycle("czds", cfg, stop_event=_stop_event)
+        summary["czds"] = {
+            "total": len(czds_results),
+            "ok": sum(1 for r in czds_results if r.status == "ok"),
+            "skipped": sum(1 for r in czds_results if r.status == "skipped"),
+            "errors": sum(1 for r in czds_results if r.status == "error"),
+        }
+        log.info("czds recovery done: %s", summary["czds"])
+    except Exception as exc:  # noqa: BLE001
+        log.exception("czds recovery cycle crashed: %s", exc)
+        summary["czds"] = {"error": str(exc)}
+    finally:
+        _current_phase = None
+        _run_in_progress = False
+        _run_lock.release()
+
+    summary["finished_at"] = datetime.now(timezone.utc).isoformat()
+    _last_run.update(summary)
+    log.info("=== czds recovery cycle complete === %s", summary)
+
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
@@ -383,7 +430,9 @@ def main() -> None:
     _scheduler = scheduler
     # 1 AM UTC-3 = 04:00 UTC
     scheduler.add_job(_run_daily_cycle, "cron", hour=4, minute=0, id="daily_ingestion")
-    log.info("scheduler configured — next run at 04:00 UTC (01:00 UTC-3)")
+    # Recovery job at 08:00 UTC — catches CZDS skips from interrupted 04:00 cycles
+    scheduler.add_job(_run_czds_recovery, "cron", hour=8, minute=0, id="czds_recovery")
+    log.info("scheduler configured — daily_ingestion=04:00 UTC, czds_recovery=08:00 UTC")
 
     try:
         scheduler.start()

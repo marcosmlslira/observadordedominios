@@ -8,6 +8,9 @@ Encoding: latin-1 (preserves all byte values 0-255 without loss).
 from __future__ import annotations
 
 import gzip
+import logging
+import random
+import time
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -17,6 +20,8 @@ import polars as pl
 import requests
 
 from ingestion.config.settings import Settings
+
+log = logging.getLogger(__name__)
 
 
 CZDS_BASE_URL = "https://czds-api.icann.org"
@@ -38,18 +43,41 @@ class CZDSClient:
     # ── Auth ──────────────────────────────────────────────────────────────────
 
     def authenticate(self) -> str:
+        """Authenticate with ICANN and return a bearer token.
+
+        Retries up to 5 times with exponential backoff on HTTP 429 (rate-limit).
+        """
         if not self._username or not self._password:
             raise ValueError("CZDS_USERNAME / CZDS_PASSWORD are required")
-        resp = requests.post(
-            self._auth_url,
-            json={"username": self._username, "password": self._password},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        token = resp.json().get("accessToken")
-        if not token:
-            raise RuntimeError("CZDS auth returned no accessToken")
-        return token
+
+        max_retries = 5
+        base_delay = 5.0
+        max_delay = 120.0
+
+        for attempt in range(max_retries + 1):
+            resp = requests.post(
+                self._auth_url,
+                json={"username": self._username, "password": self._password},
+                timeout=30,
+            )
+            if resp.status_code == 429 and attempt < max_retries:
+                retry_after = int(resp.headers.get("Retry-After", 0) or 0)
+                delay = max(float(retry_after), base_delay * (2 ** attempt))
+                jitter = delay * random.uniform(-0.25, 0.25)
+                delay = min(delay + jitter, max_delay)
+                log.warning(
+                    "czds auth rate-limited (429) attempt=%d/%d sleeping=%.1fs",
+                    attempt + 1, max_retries, delay,
+                )
+                time.sleep(delay)
+                continue
+            resp.raise_for_status()
+            token = resp.json().get("accessToken")
+            if not token:
+                raise RuntimeError("CZDS auth returned no accessToken")
+            return token
+
+        raise RuntimeError(f"CZDS auth: still rate-limited after {max_retries} retries")
 
     # ── TLD resolution ────────────────────────────────────────────────────────
 

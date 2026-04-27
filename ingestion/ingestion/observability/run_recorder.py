@@ -307,6 +307,25 @@ def recover_stale_running_cycles(db_url: str, *, stale_after_minutes: int) -> in
         conn.close()
 
 
+def czds_ran_today(db_url: str) -> bool:
+    """Return True if at least one CZDS run completed successfully today (UTC)."""
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1 FROM ingestion_run
+                WHERE source = 'czds'
+                  AND status = 'done'
+                  AND finished_at >= (NOW() AT TIME ZONE 'UTC')::date
+                LIMIT 1
+                """
+            )
+            return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
 def recover_stale_running_runs(
     db_url: str,
     source: str,
