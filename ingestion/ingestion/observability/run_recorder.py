@@ -165,6 +165,148 @@ def touch_run(db_url: str, run_id: str) -> None:
         conn.close()
 
 
+# ── Cycle-level tracking ──────────────────────────────────────────────────────
+
+
+_CYCLE_INSERT_SQL = """
+INSERT INTO ingestion_cycle (
+    cycle_id, started_at, status, triggered_by, tld_total
+) VALUES (
+    gen_random_uuid(), %s, 'running', %s, %s
+)
+RETURNING cycle_id::text
+"""
+
+_CYCLE_UPDATE_SQL = """
+UPDATE ingestion_cycle SET
+    status            = %s,
+    finished_at       = %s,
+    tld_success       = %s,
+    tld_failed        = %s,
+    tld_skipped       = %s,
+    tld_load_only     = %s,
+    last_heartbeat_at = %s
+WHERE cycle_id = %s::uuid
+"""
+
+_CYCLE_HEARTBEAT_SQL = """
+UPDATE ingestion_cycle
+SET last_heartbeat_at = %s
+WHERE cycle_id = %s::uuid
+"""
+
+
+def open_cycle(
+    db_url: str,
+    *,
+    triggered_by: str = "cron",
+    tld_total: int | None = None,
+    started_at: datetime | None = None,
+) -> str:
+    """Insert a new ingestion_cycle row with status='running'. Returns cycle_id (UUID str)."""
+    now = started_at or datetime.now(timezone.utc)
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_CYCLE_INSERT_SQL, (now, triggered_by, tld_total))
+            cycle_id = cur.fetchone()[0]
+        conn.commit()
+    finally:
+        conn.close()
+    log.debug("run_recorder open_cycle cycle_id=%s triggered_by=%s", cycle_id, triggered_by)
+    return cycle_id
+
+
+def close_cycle(
+    db_url: str,
+    cycle_id: str,
+    *,
+    status: str,
+    tld_success: int = 0,
+    tld_failed: int = 0,
+    tld_skipped: int = 0,
+    tld_load_only: int = 0,
+    finished_at: datetime | None = None,
+) -> None:
+    """Close an ingestion_cycle row with a terminal status."""
+    now = datetime.now(timezone.utc)
+    finished = finished_at or now
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                _CYCLE_UPDATE_SQL,
+                (status, finished, tld_success, tld_failed, tld_skipped, tld_load_only, now, cycle_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    log.debug("run_recorder close_cycle cycle_id=%s status=%s", cycle_id, status)
+
+
+def heartbeat_cycle(db_url: str, cycle_id: str) -> None:
+    """Refresh last_heartbeat_at on a running cycle row."""
+    now = datetime.now(timezone.utc)
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_CYCLE_HEARTBEAT_SQL, (now, cycle_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_last_cycle(db_url: str) -> dict | None:
+    """Return the most recent ingestion_cycle row as a dict, or None."""
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    cycle_id::text, started_at, finished_at, status, triggered_by,
+                    tld_total, tld_success, tld_failed, tld_skipped, tld_load_only,
+                    last_heartbeat_at
+                FROM ingestion_cycle
+                ORDER BY started_at DESC
+                LIMIT 1
+            """)
+            row = cur.fetchone()
+            if row is None:
+                return None
+            cols = [
+                "cycle_id", "started_at", "finished_at", "status", "triggered_by",
+                "tld_total", "tld_success", "tld_failed", "tld_skipped", "tld_load_only",
+                "last_heartbeat_at",
+            ]
+            return {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in zip(cols, row)}
+    finally:
+        conn.close()
+
+
+def recover_stale_running_cycles(db_url: str, *, stale_after_minutes: int) -> int:
+    """Close orphaned running cycles via heartbeat staleness."""
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ingestion_cycle
+                SET
+                    status = 'interrupted',
+                    finished_at = now(),
+                    last_heartbeat_at = now()
+                WHERE status = 'running'
+                  AND COALESCE(last_heartbeat_at, started_at) < (now() - (%s || ' minutes')::interval)
+                """,
+                (stale_after_minutes,),
+            )
+            affected = cur.rowcount
+        conn.commit()
+        return affected
+    finally:
+        conn.close()
+
+
 def recover_stale_running_runs(
     db_url: str,
     source: str,

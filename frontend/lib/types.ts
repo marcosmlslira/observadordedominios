@@ -291,6 +291,46 @@ export interface ManualCycleTriggerResponse {
   message: string
 }
 
+// ── Ingestion cycle audit (GET /v1/ingestion/cycles) ──────────────────────────
+
+export interface IngestionCycleItem {
+  cycle_id: string
+  started_at: string
+  finished_at: string | null
+  status: string
+  triggered_by: string
+  tld_total: number | null
+  tld_success: number
+  tld_failed: number
+  tld_skipped: number
+  tld_load_only: number
+  last_heartbeat_at: string | null
+}
+
+export interface IngestionCyclesResponse {
+  items: IngestionCycleItem[]
+  total: number
+}
+
+// ── TLD health (GET /v1/ingestion/tlds/health) ────────────────────────────────
+
+export interface TldHealthItem {
+  source: string
+  tld: string
+  last_status: string | null
+  last_reason_code: string | null
+  last_started_at: string | null
+  last_finished_at: string | null
+  domains_inserted: number | null
+  domains_seen: number | null
+  last_error_message: string | null
+}
+
+export interface TldHealthResponse {
+  items: TldHealthItem[]
+  total: number
+}
+
 export interface CzdsPolicyResponse {
   source: "database" | "env"
   tlds: string[]

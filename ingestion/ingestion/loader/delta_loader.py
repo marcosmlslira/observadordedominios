@@ -3,12 +3,13 @@
 Strategy:
   1. Read delta Parquet(s) from R2 for the given source + tld + snapshot_date.
   2. Convert snapshot_date string → added_day INTEGER (YYYYMMDD).
-  3. DETACH partition from parent so indexes can be managed independently.
-  4. Drop non-PK indexes before bulk load (major speedup, especially for GIN trigram).
-  5. Load shards in parallel (4 workers) using direct COPY into the detached partition.
-  6. Rebuild indexes after all shards are loaded.
-  7. ATTACH partition back to parent.
-  8. Repeat for delta_removed → domain_removed.
+  3. Load shards in parallel (4 workers). Each worker uses a connection-scoped TEMP
+     TABLE that is auto-dropped on disconnect — SIGKILL-safe, no permanent DDL.
+  4. Repeat for delta_removed → domain_removed.
+
+No DETACH/ATTACH/DROP INDEX/REBUILD in the daily hot path. Those operations are
+reserved for the provisioning step (ingestion/provisioning/provision_tld.py) which
+runs idempotently at worker boot.
 """
 
 from __future__ import annotations
@@ -43,24 +44,14 @@ def _partition_name(table: str, tld: str) -> str:
     return f"{table}_{safe_tld}"
 
 
-def _is_attached(conn, parent: str, partition: str) -> bool:
-    """Return True if partition is currently attached to parent."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT 1 FROM pg_inherits
-            WHERE inhrelid = %s::regclass AND inhparent = %s::regclass
-            """,
-            (partition, parent),
-        )
-        return cur.fetchone() is not None
-
-
 def _ensure_partition(conn, tld: str) -> None:
-    """Create domain and domain_removed partitions for a TLD if they don't exist."""
+    """Emergency utility — creates domain and domain_removed partitions if missing.
+
+    NOT called from the daily hot path. Use ingestion/provisioning/provision_tld.py
+    at worker boot instead. This function remains here for one-off repairs.
+    """
     safe_tld = tld.replace("-", "_").replace(".", "_")
     with conn.cursor() as cur:
-        # Check if partition already exists (might be detached standalone table)
         cur.execute(
             "SELECT 1 FROM pg_tables WHERE tablename = %s",
             (f"domain_{safe_tld}",),
@@ -78,66 +69,6 @@ def _ensure_partition(conn, tld: str) -> None:
                 f"CREATE TABLE domain_removed_{safe_tld} PARTITION OF domain_removed FOR VALUES IN ('{tld}')"
             )
     conn.commit()
-
-
-def _detach_partition(conn, parent: str, partition: str, tld: str) -> None:
-    """Detach partition from parent. No-op if already detached."""
-    if not _is_attached(conn, parent, partition):
-        log.info("loader %s already detached from %s", partition, parent)
-        return
-    with conn.cursor() as cur:
-        cur.execute(f"ALTER TABLE {parent} DETACH PARTITION {partition}")
-    conn.commit()
-    log.info("loader detached %s from %s", partition, parent)
-
-
-def _attach_partition(conn, parent: str, partition: str, tld: str) -> None:
-    """Re-attach partition to parent. No-op if already attached."""
-    if _is_attached(conn, parent, partition):
-        log.info("loader %s already attached to %s", partition, parent)
-        return
-    with conn.cursor() as cur:
-        cur.execute(
-            f"ALTER TABLE {parent} ATTACH PARTITION {partition} FOR VALUES IN ('{tld}')"
-        )
-    conn.commit()
-    log.info("loader attached %s back to %s", partition, parent)
-
-
-def _drop_standalone_indexes(conn, partition: str) -> list[str]:
-    """Drop non-PK indexes on a detached (standalone) partition. Returns DDL for rebuild."""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT indexname, indexdef
-            FROM pg_indexes
-            WHERE tablename = %s
-              AND indexname NOT IN (
-                SELECT conname FROM pg_constraint
-                WHERE conrelid = %s::regclass AND contype = 'p'
-              )
-            """,
-            (partition, partition),
-        )
-        rows = cur.fetchall()
-        ddls = []
-        for indexname, indexdef in rows:
-            cur.execute(f"DROP INDEX IF EXISTS {indexname}")
-            ddls.append(indexdef)
-            log.info("loader dropped index %s on %s", indexname, partition)
-    conn.commit()
-    return ddls
-
-
-def _rebuild_indexes(conn, ddls: list[str], partition: str) -> None:
-    """Rebuild previously dropped indexes on a partition."""
-    for ddl in ddls:
-        log.info("loader rebuilding index on %s ...", partition)
-        t0 = perf_counter()
-        with conn.cursor() as cur:
-            cur.execute(ddl)
-        conn.commit()
-        log.info("loader index rebuilt on %s in %.1fs", partition, perf_counter() - t0)
 
 
 @dataclass
@@ -296,7 +227,10 @@ def load_delta(
 ) -> dict:
     """Load a single (source, tld, snapshot_date) delta into PostgreSQL.
 
-    Returns dict with keys: added_loaded, removed_loaded, status.
+    Returns dict with keys: added_loaded, removed_loaded, status, timings.
+
+    No DDL (DETACH/DROP INDEX/REBUILD/ATTACH) is performed here.
+    Partitions must already exist (provisioned at worker boot via provision_tld.py).
 
     ``settings`` is used to create per-worker R2Storage instances (avoids
     sharing a single boto3 client across threads which causes TCP stalls).
@@ -330,43 +264,18 @@ def load_delta(
     domain_partition = _partition_name("domain", tld)
     removed_partition = _partition_name("domain_removed", tld)
 
-    conn = psycopg2.connect(database_url)
-    domain_detached = False
-    removed_detached = False
-    try:
-        t_partition = perf_counter()
-        _ensure_partition(conn, tld)
-        partition_seconds = perf_counter() - t_partition
-
-        # Detach so partition indexes become standalone and can be dropped/rebuilt
-        # independently without affecting sibling partitions.
-        _detach_partition(conn, "domain", domain_partition, tld)
-        domain_detached = True
-        _detach_partition(conn, "domain_removed", removed_partition, tld)
-        removed_detached = True
-
-        domain_index_ddls = _drop_standalone_indexes(conn, domain_partition)
-        removed_index_ddls = _drop_standalone_indexes(conn, removed_partition)
-    finally:
-        conn.close()
-
-    # Parallel shard loading — each worker uses its own connection
+    # Parallel shard loading — each worker uses its own connection and a
+    # connection-scoped TEMP TABLE (auto-dropped on disconnect, SIGKILL-safe)
     t_load_added = perf_counter()
-    try:
-        added_loaded = _parallel_load_shards(
-            database_url=database_url,
-            r2_settings=r2_settings,
-            keys=delta_keys,
-            partition=domain_partition,
-            columns=["name", "tld", "label", "added_day"],
-            added_day=added_day,
-            tld=tld,
-        )
-    except Exception:
-        # Re-attach before propagating so the DB stays consistent
-        _safe_reattach(database_url, domain_partition, "domain", tld, domain_detached)
-        _safe_reattach(database_url, removed_partition, "domain_removed", tld, removed_detached)
-        raise
+    added_loaded = _parallel_load_shards(
+        database_url=database_url,
+        r2_settings=r2_settings,
+        keys=delta_keys,
+        partition=domain_partition,
+        columns=["name", "tld", "label", "added_day"],
+        added_day=added_day,
+        tld=tld,
+    )
     load_added_seconds = perf_counter() - t_load_added
     log.info("loader inserted domain tld=%s added=%d in %.1fs", tld, added_loaded, load_added_seconds)
 
@@ -425,8 +334,6 @@ def load_delta(
                 removed_loaded = 0
         else:
             # No removed files at all yet raised — unexpected; propagate.
-            _safe_reattach(database_url, domain_partition, "domain", tld, domain_detached)
-            _safe_reattach(database_url, removed_partition, "domain_removed", tld, removed_detached)
             raise
 
     load_removed_seconds = perf_counter() - t_load_removed
@@ -434,21 +341,6 @@ def load_delta(
         "loader inserted domain_removed tld=%s removed=%d status=%s in %.1fs",
         tld, removed_loaded, load_status, load_removed_seconds,
     )
-
-    # Rebuild indexes and re-attach (always, even for partial loads)
-    conn = psycopg2.connect(database_url)
-    try:
-        t_index = perf_counter()
-        _rebuild_indexes(conn, domain_index_ddls, domain_partition)
-        _rebuild_indexes(conn, removed_index_ddls, removed_partition)
-        index_seconds = perf_counter() - t_index
-
-        _attach_partition(conn, "domain", domain_partition, tld)
-        domain_detached = False
-        _attach_partition(conn, "domain_removed", removed_partition, tld)
-        removed_detached = False
-    finally:
-        conn.close()
 
     return {
         "added_loaded": added_loaded,
@@ -459,29 +351,13 @@ def load_delta(
         "snapshot_date": snap_str,
         "timings": {
             "discover_seconds": round(discover_seconds, 3),
-            "ensure_partition_seconds": round(partition_seconds, 3),
             "load_added_seconds": round(load_added_seconds, 3),
             "load_removed_seconds": round(load_removed_seconds, 3),
-            "index_rebuild_seconds": round(index_seconds, 3),
             "total_seconds": round(
-                discover_seconds + partition_seconds + load_added_seconds
-                + load_removed_seconds + index_seconds, 3
+                discover_seconds + load_added_seconds + load_removed_seconds, 3
             ),
         },
     }
-
-
-def _safe_reattach(database_url: str, partition: str, parent: str, tld: str, was_detached: bool) -> None:
-    if not was_detached:
-        return
-    try:
-        conn = psycopg2.connect(database_url)
-        try:
-            _attach_partition(conn, parent, partition, tld)
-        finally:
-            conn.close()
-    except Exception as e:
-        log.error("loader failed to re-attach %s to %s: %s", partition, parent, e)
 
 
 def _read_parquet_or_empty(storage: R2Storage, key: str, required_columns: list[str]) -> pl.DataFrame:

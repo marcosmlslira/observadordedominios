@@ -159,6 +159,16 @@ export const ingestionApi = {
 
   triggerDailyCycle: () =>
     api.post<import("./types").ManualCycleTriggerResponse>("/v1/ingestion/trigger/daily-cycle"),
+
+  getCycles: (limit = 10) =>
+    api.get<import("./types").IngestionCyclesResponse>(`/v1/ingestion/cycles?limit=${limit}`),
+
+  getTldsHealth: (params?: { source?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.source) qs.set("source", params.source)
+    if (params?.limit != null) qs.set("limit", String(params.limit))
+    return api.get<import("./types").TldHealthResponse>(`/v1/ingestion/tlds/health?${qs}`)
+  },
 }
 
 // ── Ingestion Config API ──────────────────────────────────────

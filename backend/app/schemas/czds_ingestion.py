@@ -283,3 +283,43 @@ class IngestionIncidentsResponse(BaseModel):
     hours: int
     total: int
     items: list[IngestionIncidentItem]
+
+
+# ── Cycle audit + TLD health schemas ─────────────────────────────────────────
+
+
+class IngestionCycleItem(BaseModel):
+    cycle_id: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    status: str
+    triggered_by: str
+    tld_total: int | None = None
+    tld_success: int
+    tld_failed: int
+    tld_skipped: int
+    tld_load_only: int
+    last_heartbeat_at: datetime | None = None
+
+
+class IngestionCyclesResponse(BaseModel):
+    items: list[IngestionCycleItem]
+    total: int
+
+
+class TldHealthItem(BaseModel):
+    source: str
+    tld: str
+    last_status: str | None = None
+    last_reason_code: str | None = None
+    last_attempt_at: datetime | None = None
+    last_finished_at: datetime | None = None
+    domains_inserted: int | None = None
+    domains_deleted: int | None = None
+    domains_seen: int | None = None
+    last_error_message: str | None = None
+
+
+class TldHealthResponse(BaseModel):
+    items: list[TldHealthItem]
+    total: int

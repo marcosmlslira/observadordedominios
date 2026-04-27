@@ -15,6 +15,7 @@ Execution order within run_cycle():
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
@@ -175,6 +176,23 @@ def get_ordered_tlds(db_url: str, source: str, cfg: "Settings") -> list[str]:
 # ── Local processing ──────────────────────────────────────────────────────────
 
 
+def _log_mem(tld: str, source: str, phase: str, label: str, rss_start_kb: int | None = None) -> int | None:
+    """Log current RSS memory and return current rss_kb (Linux/macOS only; no-op on Windows)."""
+    try:
+        import resource  # noqa: PLC0415
+        rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if rss_start_kb is not None:
+            log.debug(
+                "mem[%s] tld=%s source=%s phase=%s rss_kb=%d delta_kb=%+d",
+                label, tld, source, phase, rss_kb, rss_kb - rss_start_kb,
+            )
+        else:
+            log.debug("mem[%s] tld=%s source=%s phase=%s rss_kb=%d", label, tld, source, phase, rss_kb)
+        return rss_kb
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _process_tld_local(
     source: str,
     tld: str,
@@ -188,6 +206,7 @@ def _process_tld_local(
     today_str = snapshot_date.isoformat()
     db_url = cfg.database_url
     run_id: str | None = None
+    _mem_start = _log_mem(tld, source, phase.value, "start")
 
     try:
         if db_url:
@@ -302,6 +321,7 @@ def _process_tld_local(
             if source == "openintel":
                 _reconcile_openintel_status(db_url, tld, snap_str)
 
+        _log_mem(tld, source, phase.value, "end", _mem_start)
         return TldResult(
             tld=tld,
             phase=phase,
@@ -314,6 +334,7 @@ def _process_tld_local(
     except Exception as exc:  # noqa: BLE001
         err = str(exc)
         log.error("tld=%s source=%s phase=%s error: %s", tld, source, phase.value, err, exc_info=True)
+        _log_mem(tld, source, phase.value, "error", _mem_start)
         if run_id and db_url:
             try:
                 finish_run(
@@ -644,10 +665,12 @@ def run_cycle(
     cfg: "Settings",
     *,
     snapshot_date: date | None = None,
+    stop_event: threading.Event | None = None,
 ) -> list[TldResult]:
     """Run the full ingestion cycle for one source.
 
     Returns one TldResult per TLD. Errors are isolated — one TLD failure never stops others.
+    If *stop_event* is set (SIGTERM received), no new TLD is started after the current one finishes.
     """
     from ingestion.storage.layout import Layout
     from ingestion.storage.r2 import R2Storage
@@ -797,6 +820,9 @@ def run_cycle(
 
     # ── Small TLDs: run locally, per-TLD isolation ────────────────────────────
     for tld in small_tlds:
+        if stop_event and stop_event.is_set():
+            log.info("stop_event set — aborting small TLDs at tld=%s", tld)
+            break
         phase = check_phase(db_url, storage, layout, source, tld, today)
         if phase == TldPhase.SKIP:
             log.info("tld=%s SKIP (already done today)", tld)
@@ -807,7 +833,7 @@ def run_cycle(
         results.append(r)
 
     # ── Large TLDs: check phases first, then route appropriately ─────────────
-    if large_tlds:
+    if large_tlds and not (stop_event and stop_event.is_set()):
         phases: dict[str, TldPhase] = {}
         pending_large: list[str] = []
         for tld in large_tlds:

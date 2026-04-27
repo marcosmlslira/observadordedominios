@@ -27,6 +27,9 @@ skills-lock.json
 
 # Local environment secrets
 backend/.env
+# Local credential sheets for runbooks (NEVER commit token values to docs/)
+*.credentials.local.md
+*.local.env
 
 # Local debugging artifacts
 czds_fix_logs.txt

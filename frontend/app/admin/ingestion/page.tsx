@@ -24,6 +24,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, ingestionApi } from "@/lib/api"
 import type {
+  IngestionCycleItem,
   IngestionIncidentItem,
   IngestionCycleStatus,
   IngestionRun,
@@ -204,6 +205,7 @@ export default function IngestionPage() {
   const [openintelStatus, setOpenintelStatus] = useState<OpenintelStatusResponse | null>(null)
   const [tldStatuses, setTldStatuses] = useState<Record<string, TldStatusResponse | null>>({})
   const [incidents, setIncidents] = useState<IngestionIncidentItem[]>([])
+  const [recentCycles, setRecentCycles] = useState<IngestionCycleItem[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [manualTriggering, setManualTriggering] = useState(false)
@@ -225,7 +227,7 @@ export default function IngestionPage() {
     setError("")
 
     try {
-      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus, incidentsData] =
+      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus, incidentsData, cyclesData] =
         await Promise.all([
           api.get<IngestionRun[]>(`/v1/ingestion/runs?${params}`),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
@@ -239,6 +241,7 @@ export default function IngestionPage() {
             total: 0,
             items: [] as IngestionIncidentItem[],
           })),
+          ingestionApi.getCycles(10).catch(() => ({ items: [] as IngestionCycleItem[], total: 0 })),
         ])
 
       setRuns(runsData.filter((run) => run.source === "czds" || run.source === "openintel"))
@@ -251,6 +254,7 @@ export default function IngestionPage() {
         openintel: openintelTldStatus,
       })
       setIncidents(incidentsData.items ?? [])
+      setRecentCycles(cyclesData.items ?? [])
       setLastFetchedAt(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar dados de ingestão")
@@ -718,6 +722,24 @@ export default function IngestionPage() {
 
         <section className="rounded-lg border border-border-subtle bg-card">
           <div className="border-b border-border-subtle px-4 py-3">
+            <h2 className="text-sm font-medium">Ciclos recentes</h2>
+            <p className="text-xs text-muted-foreground">
+              Últimos 10 ciclos diários — status, duração e contagem de TLDs por desfecho.
+            </p>
+          </div>
+          {recentCycles.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-muted-foreground">Sem ciclos registrados ainda.</div>
+          ) : (
+            <div className="divide-y divide-border-subtle">
+              {recentCycles.map((cycle) => (
+                <CycleRow key={cycle.cycle_id} cycle={cycle} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-border-subtle bg-card">
+          <div className="border-b border-border-subtle px-4 py-3">
             <h2 className="text-sm font-medium">Incidentes do ciclo (24h)</h2>
             <p className="text-xs text-muted-foreground">Falhas e recoveries com reason code e run_id.</p>
           </div>
@@ -947,6 +969,49 @@ function HeatmapCell({
           <span className="h-1.5 w-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
         )}
       </div>
+    </div>
+  )
+}
+
+const CYCLE_STATUS_META: Record<string, { label: string; className: string }> = {
+  running:     { label: "Executando", className: "bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-200" },
+  succeeded:   { label: "Sucesso",    className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200" },
+  failed:      { label: "Falha",      className: "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-200" },
+  interrupted: { label: "Interrompido", className: "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-200" },
+}
+
+function CycleRow({ cycle }: { cycle: IngestionCycleItem }) {
+  const meta = CYCLE_STATUS_META[cycle.status] ?? { label: cycle.status, className: "bg-muted text-muted-foreground" }
+  const duration = formatRunDuration(cycle.started_at, cycle.finished_at)
+  const total = cycle.tld_success + cycle.tld_failed + cycle.tld_skipped + cycle.tld_load_only
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm">
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.className}`}>
+        {meta.label}
+      </span>
+
+      <span className="text-muted-foreground">{formatDateTime(cycle.started_at)}</span>
+
+      {duration && (
+        <span className="font-mono text-xs text-muted-foreground">{duration}</span>
+      )}
+
+      <span className="text-xs text-muted-foreground">
+        gatilho: <span className="font-medium text-foreground">{cycle.triggered_by}</span>
+      </span>
+
+      <span className="ml-auto flex shrink-0 flex-wrap gap-x-3 text-xs text-muted-foreground">
+        <span className="text-emerald-700 dark:text-emerald-300">{cycle.tld_success} ok</span>
+        {cycle.tld_load_only > 0 && (
+          <span className="text-blue-700 dark:text-blue-300">{cycle.tld_load_only} load-only</span>
+        )}
+        {cycle.tld_skipped > 0 && <span>{cycle.tld_skipped} skip</span>}
+        {cycle.tld_failed > 0 && (
+          <span className="text-red-700 dark:text-red-300">{cycle.tld_failed} falha</span>
+        )}
+        <span className="text-muted-foreground">/ {cycle.tld_total ?? total} TLDs</span>
+      </span>
     </div>
   )
 }

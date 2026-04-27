@@ -10,6 +10,8 @@
 | 007 | Seed-first candidate retrieval + pausa LLM granular | done | .specs/todos/007/implementation_plan.md | 2026-04-25 |
 | 008 | Pipeline de Ingestão Automatizado: Orquestrador + Observabilidade | done | .specs/todos/008/plan.md | 2026-05-02 |
 | 009 | Correções de Confiabilidade no Monitoramento de Ingestão | in_progress | .specs/todos/009/plan.md | 2026-04-26 |
+| 010 | Catálogo de Problemas: Ciclo de Ingestão em Produção | in_progress | .specs/todos/010/plan.md | 2026-04-27 |
+| 011 | Ingestão "Boring": estabilização estrutural do ciclo diário | todo | .specs/todos/011/plan.md | 2026-04-27 |
 
 ## Legenda de status
 

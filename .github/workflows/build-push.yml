@@ -85,9 +85,12 @@ jobs:
           docker build -t "$IMAGE" ingestion/
           docker push "$IMAGE"
 
+  # NOTE: ingestion stack is deployed separately via docker-stack-infra (manual
+  # or coordinated trigger). This job only fires for backend/frontend changes so
+  # that a backend CI run never restarts the long-running ingestion worker.
   trigger-deploy:
-    needs: [build-backend, build-frontend, build-ingestion]
-    if: always() && (needs.build-backend.result == 'success' || needs.build-frontend.result == 'success' || needs.build-ingestion.result == 'success')
+    needs: [build-backend, build-frontend]
+    if: always() && (needs.build-backend.result == 'success' || needs.build-frontend.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Trigger deploy on docker-stack-infra

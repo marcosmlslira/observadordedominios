@@ -25,9 +25,13 @@ from app.schemas.czds_ingestion import (
     CheckpointResponse,
     CycleStatusResponse,
     HealthSummary,
+    IngestionCycleItem,
+    IngestionCyclesResponse,
     IngestionCycleStatusResponse,
     ScheduleEntry,
     TldCoverageResponse,
+    TldHealthItem,
+    TldHealthResponse,
     ErrorResponse,
     RunStatusResponse,
     SourceSummaryResponse,
@@ -952,3 +956,120 @@ def get_ingestion_incidents(
     ]
 
     return IngestionIncidentsResponse(hours=hours, total=len(items), items=items)
+
+
+# ── GET /v1/ingestion/cycles ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/cycles",
+    response_model=IngestionCyclesResponse,
+    summary="Last N ingestion cycles with status and TLD counters",
+)
+def get_ingestion_cycles(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+):
+    """Return the last *limit* rows from `ingestion_cycle` ordered by started_at DESC."""
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 200")
+
+    rows = db.execute(
+        text("""
+            SELECT
+                cycle_id::text,
+                started_at,
+                finished_at,
+                status,
+                triggered_by,
+                tld_total,
+                tld_success,
+                tld_failed,
+                tld_skipped,
+                tld_load_only,
+                last_heartbeat_at
+            FROM ingestion_cycle
+            ORDER BY started_at DESC
+            LIMIT :limit
+        """),
+        {"limit": limit},
+    ).fetchall()
+
+    items = [
+        IngestionCycleItem(
+            cycle_id=row.cycle_id,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            status=row.status,
+            triggered_by=row.triggered_by,
+            tld_total=row.tld_total,
+            tld_success=row.tld_success,
+            tld_failed=row.tld_failed,
+            tld_skipped=row.tld_skipped,
+            tld_load_only=row.tld_load_only,
+            last_heartbeat_at=row.last_heartbeat_at,
+        )
+        for row in rows
+    ]
+
+    return IngestionCyclesResponse(items=items, total=len(items))
+
+
+# ── GET /v1/ingestion/tlds/health ─────────────────────────────────────────────
+
+
+@router.get(
+    "/tlds/health",
+    response_model=TldHealthResponse,
+    summary="Last ingestion run per (source, tld) from tld_health_v",
+)
+def get_tld_health(
+    source: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Query `tld_health_v` for last-run status per TLD. Optionally filter by source."""
+    params: dict[str, object] = {}
+    source_clause = ""
+    if source:
+        if source not in {"czds", "openintel"}:
+            raise HTTPException(status_code=400, detail="source must be 'czds' or 'openintel'")
+        params["source"] = source
+        source_clause = "WHERE source = :source"
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                source,
+                tld,
+                last_status,
+                last_reason_code,
+                last_attempt_at,
+                last_finished_at,
+                domains_inserted,
+                domains_deleted,
+                domains_seen,
+                last_error_message
+            FROM tld_health_v
+            {source_clause}
+            ORDER BY source, tld
+        """),
+        params,
+    ).fetchall()
+
+    items = [
+        TldHealthItem(
+            source=row.source,
+            tld=row.tld,
+            last_status=row.last_status,
+            last_reason_code=row.last_reason_code,
+            last_attempt_at=row.last_attempt_at,
+            last_finished_at=row.last_finished_at,
+            domains_inserted=row.domains_inserted,
+            domains_deleted=row.domains_deleted,
+            domains_seen=row.domains_seen,
+            last_error_message=row.last_error_message,
+        )
+        for row in rows
+    ]
+
+    return TldHealthResponse(items=items, total=len(items))
