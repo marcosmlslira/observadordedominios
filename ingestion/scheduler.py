@@ -38,6 +38,7 @@ _current_phase: str | None = None
 
 _stop_event = threading.Event()
 _shutting_down = False
+_scheduler: Any = None  # set in main() so SIGTERM handler can stop it
 
 
 def _handle_sigterm(signum: int, frame: Any) -> None:
@@ -45,6 +46,12 @@ def _handle_sigterm(signum: int, frame: Any) -> None:
     _shutting_down = True
     _stop_event.set()
     log.warning("SIGTERM received — graceful shutdown initiated; finishing current TLD then exiting")
+    # Unblock BlockingScheduler.start() so the process can exit cleanly
+    if _scheduler is not None:
+        try:
+            _scheduler.shutdown(wait=False)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ── Stale heartbeat watchdog ──────────────────────────────────────────────────
@@ -371,7 +378,9 @@ def main() -> None:
 
     _start_health_server()
 
+    global _scheduler
     scheduler = BlockingScheduler(timezone="UTC")
+    _scheduler = scheduler
     # 1 AM UTC-3 = 04:00 UTC
     scheduler.add_job(_run_daily_cycle, "cron", hour=4, minute=0, id="daily_ingestion")
     log.info("scheduler configured — next run at 04:00 UTC (01:00 UTC-3)")
