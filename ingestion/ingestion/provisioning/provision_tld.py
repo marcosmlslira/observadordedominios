@@ -149,12 +149,15 @@ def provision_all_tlds(db_url: str) -> dict:
 
             for tld in tlds:
                 try:
-                    conn.execute("SAVEPOINT sp_provision_tld")
+                    with conn.cursor() as cur:
+                        cur.execute("SAVEPOINT sp_provision_tld")
                     result = _provision_single_tld(conn, tld)
-                    conn.execute("RELEASE SAVEPOINT sp_provision_tld")
+                    with conn.cursor() as cur:
+                        cur.execute("RELEASE SAVEPOINT sp_provision_tld")
                     all_created.extend(result["created"])
                 except Exception as exc:  # noqa: BLE001
-                    conn.execute("ROLLBACK TO SAVEPOINT sp_provision_tld")
+                    with conn.cursor() as cur:
+                        cur.execute("ROLLBACK TO SAVEPOINT sp_provision_tld")
                     log.error("provision: failed for tld=%s: %s", tld, exc)
                     errors.append((tld, str(exc)))
 
