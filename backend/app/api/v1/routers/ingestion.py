@@ -1408,7 +1408,7 @@ def dismiss_tld(
                  created_at, updated_at)
             VALUES
                 (gen_random_uuid(), :source, :tld, 'failed', 'full', :reason, :msg,
-                 now(), now(), :snap::date,
+                 now(), now(), CAST(:snap AS DATE),
                  0, 0, 0, 0,
                  now(), now())
         """),
