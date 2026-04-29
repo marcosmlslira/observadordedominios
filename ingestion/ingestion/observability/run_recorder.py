@@ -25,14 +25,14 @@ log = logging.getLogger(__name__)
 
 _INSERT_SQL = """
 INSERT INTO ingestion_run (
-    id, source, tld, status,
+    id, source, tld, status, phase,
     started_at, finished_at,
     domains_seen, domains_inserted, domains_reactivated, domains_deleted,
     reason_code,
     error_message,
     created_at, updated_at
 ) VALUES (
-    %s, %s, %s, %s,
+    %s, %s, %s, %s, %s,
     %s, %s,
     %s, %s, %s, %s,
     %s,
@@ -68,9 +68,13 @@ def create_run(
     source: str,
     tld: str,
     *,
+    phase: str = "full",
     started_at: datetime | None = None,
 ) -> str:
-    """Insert a new `ingestion_run` row with status='running'. Returns run_id (UUID str)."""
+    """Insert a new `ingestion_run` row with status='running'. Returns run_id (UUID str).
+
+    phase: 'full' (local path, covers R2+PG) | 'r2' (Databricks job) | 'pg' (PG load only)
+    """
     run_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
     started = started_at or now
@@ -80,13 +84,13 @@ def create_run(
         with conn.cursor() as cur:
             cur.execute(
                 _INSERT_SQL,
-                (run_id, source, tld, "running", started, None, 0, 0, 0, 0, None, None, now, now),
+                (run_id, source, tld, "running", phase, started, None, 0, 0, 0, 0, None, None, now, now),
             )
         conn.commit()
     finally:
         conn.close()
 
-    log.debug("run_recorder create run_id=%s source=%s tld=%s", run_id, source, tld)
+    log.debug("run_recorder create run_id=%s source=%s tld=%s phase=%s", run_id, source, tld, phase)
     return run_id
 
 

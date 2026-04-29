@@ -46,6 +46,12 @@ from app.schemas.czds_ingestion import (
     OpenintelGlobalCounts,
     OpenintelVisualStatus,
     ManualCycleTriggerResponse,
+    HeatmapResponse,
+    HeatmapTldRow,
+    TldDailyStatus,
+    DailySummaryResponse,
+    DailySummaryItem,
+    TldReloadResponse,
 )
 from app.services.tld_coverage import get_target_tlds, resolve_tld_coverages
 
@@ -1073,3 +1079,343 @@ def get_tld_health(
     ]
 
     return TldHealthResponse(items=items, total=len(items))
+
+
+# ── GET /v1/ingestion/heatmap ─────────────────────────────────────────────────
+
+
+@router.get(
+    "/heatmap",
+    response_model=HeatmapResponse,
+    summary="Dual-phase heatmap: r2_status and pg_status per TLD per day",
+)
+def get_heatmap(
+    source: str | None = None,
+    days: int = 14,
+    db: Session = Depends(get_db),
+):
+    """Return one row per TLD with a cell per calendar day containing r2_status and pg_status."""
+    if days < 1 or days > 90:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 90")
+    if source and source not in {"czds", "openintel"}:
+        raise HTTPException(status_code=400, detail="source must be 'czds' or 'openintel'")
+
+    today_utc = datetime.now(timezone.utc).date()
+    since = today_utc - timedelta(days=days - 1)
+
+    source_clause = "AND v.source = :source" if source else ""
+    params: dict[str, object] = {"since": since}
+    if source:
+        params["source"] = source
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                v.source,
+                v.tld,
+                v.day,
+                v.r2_status,
+                v.r2_reason,
+                v.pg_status,
+                v.pg_reason,
+                v.last_error,
+                v.duration_seconds,
+                v.domains_inserted,
+                v.domains_deleted,
+                COALESCE(dc.domain_count, 0) AS domain_count
+            FROM tld_daily_status_v v
+            LEFT JOIN LATERAL (
+                SELECT count(*) AS domain_count
+                FROM ingestion_tld_policy p
+                WHERE p.tld = v.tld AND p.source = v.source
+                LIMIT 1
+            ) dc ON true
+            WHERE v.day >= :since
+            {source_clause}
+            ORDER BY v.source, v.tld, v.day
+        """),
+        params,
+    ).fetchall()
+
+    # Resolve the running status for TLDs that have active ingestion_run rows today
+    running_keys: set[tuple[str, str]] = set()
+    running_rows = db.execute(
+        text("""
+            SELECT DISTINCT source, tld FROM ingestion_run
+            WHERE status = 'running' AND started_at::date = CURRENT_DATE
+        """),
+    ).fetchall()
+    for rr in running_rows:
+        running_keys.add((rr.source, rr.tld))
+
+    # Group by (source, tld)
+    from collections import defaultdict
+    tld_days: dict[tuple[str, str], list] = defaultdict(list)
+    tld_domain_count: dict[tuple[str, str], int] = {}
+    all_days = {(today_utc - timedelta(days=i)).isoformat() for i in range(days)}
+
+    for row in rows:
+        key = (row.source, row.tld)
+        tld_domain_count[key] = row.domain_count
+
+        def _resolve_phase(db_status: str | None, key: tuple, is_pg: bool) -> str:
+            if (key in running_keys):
+                return "running"
+            if db_status in ("success", "ok"):
+                return "ok"
+            if db_status == "failed":
+                return "failed"
+            if db_status == "running":
+                return "running"
+            if is_pg and db_status is None:
+                return "pending"
+            return "pending"
+
+        r2 = _resolve_phase(row.r2_status, key, is_pg=False)
+        pg = _resolve_phase(row.pg_status, key, is_pg=True)
+
+        tld_days[key].append(TldDailyStatus(
+            date=row.day,
+            r2_status=r2,
+            pg_status=pg,
+            r2_reason=row.r2_reason,
+            pg_reason=row.pg_reason,
+            error=row.last_error,
+            duration_seconds=row.duration_seconds,
+            domains_inserted=row.domains_inserted or 0,
+            domains_deleted=row.domains_deleted or 0,
+        ))
+
+    # Fill missing days with pending cells
+    day_strings = sorted(all_days)
+    heatmap_rows: list[HeatmapTldRow] = []
+    for (src, tld), cells in sorted(tld_days.items()):
+        filled = {c.date.isoformat(): c for c in cells}
+        full_cells = [
+            filled.get(d, TldDailyStatus(
+                date=d,
+                r2_status="pending",
+                pg_status="pending",
+            ))
+            for d in day_strings
+        ]
+        heatmap_rows.append(HeatmapTldRow(
+            tld=tld,
+            source=src,
+            domain_count=tld_domain_count.get((src, tld), 0),
+            days=full_cells,
+        ))
+
+    return HeatmapResponse(source=source, days=day_strings, rows=heatmap_rows)
+
+
+# ── GET /v1/ingestion/daily-summary ──────────────────────────────────────────
+
+
+@router.get(
+    "/daily-summary",
+    response_model=DailySummaryResponse,
+    summary="Aggregated ingestion stats per source per day",
+)
+def get_daily_summary(
+    source: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Per-day aggregated stats: % TLDs ok, duration, domains inserted, failures by phase."""
+    if source and source not in {"czds", "openintel"}:
+        raise HTTPException(status_code=400, detail="source must be 'czds' or 'openintel'")
+
+    today_utc = datetime.now(timezone.utc).date()
+    try:
+        date_from = datetime.strptime(from_date, "%Y-%m-%d").date() if from_date else today_utc - timedelta(days=13)
+        date_to = datetime.strptime(to_date, "%Y-%m-%d").date() if to_date else today_utc
+    except ValueError:
+        raise HTTPException(status_code=400, detail="dates must be YYYY-MM-DD")
+
+    source_clause = "AND v.source = :source" if source else ""
+    params: dict[str, object] = {"from_date": date_from, "to_date": date_to}
+    if source:
+        params["source"] = source
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                v.source,
+                v.day,
+                count(*)                                                          AS tld_total,
+                count(*) FILTER (WHERE v.r2_status IN ('success','ok'))           AS r2_ok,
+                count(*) FILTER (WHERE v.r2_status = 'failed')                    AS r2_failed,
+                count(*) FILTER (WHERE v.pg_status IN ('success','ok'))           AS pg_ok,
+                count(*) FILTER (WHERE v.pg_status = 'failed')                    AS pg_failed,
+                count(*) FILTER (WHERE v.pg_status IS NULL
+                                   AND v.r2_status IN ('success','ok'))           AS pg_pending,
+                sum(v.domains_inserted)                                            AS domains_inserted,
+                min(duration_seconds)                                              AS min_dur,
+                max(duration_seconds)                                              AS max_dur
+            FROM tld_daily_status_v v
+            WHERE v.day BETWEEN :from_date AND :to_date
+            {source_clause}
+            GROUP BY v.source, v.day
+            ORDER BY v.source, v.day DESC
+        """),
+        params,
+    ).fetchall()
+
+    items: list[DailySummaryItem] = []
+    for row in rows:
+        tld_total = row.tld_total or 0
+        pg_ok = row.pg_ok or 0
+        items.append(DailySummaryItem(
+            date=row.day,
+            source=row.source,
+            tld_total=tld_total,
+            r2_ok=row.r2_ok or 0,
+            r2_failed=row.r2_failed or 0,
+            pg_ok=pg_ok,
+            pg_failed=row.pg_failed or 0,
+            pg_pending=row.pg_pending or 0,
+            domains_inserted=row.domains_inserted or 0,
+            duration_seconds=row.max_dur,
+            pg_complete_pct=round(pg_ok / tld_total, 4) if tld_total else 0.0,
+        ))
+
+    return DailySummaryResponse(items=items)
+
+
+# ── POST /v1/ingestion/tld/{source}/{tld}/reload ──────────────────────────────
+
+
+def _dispatch_tld_action(
+    source: str,
+    tld: str,
+    action: str,
+    snapshot_date: str | None,
+    admin_email: str,
+) -> TldReloadResponse:
+    """Forward a per-TLD action request to the ingestion worker."""
+    urls = [u.strip() for u in settings.INGESTION_TRIGGER_URLS.split(",") if u.strip()]
+    if not urls:
+        return TldReloadResponse(
+            status="not_configured",
+            message="INGESTION_TRIGGER_URLS is empty — cannot dispatch to worker",
+        )
+
+    payload = json.dumps({
+        "source": source,
+        "tld": tld,
+        "snapshot_date": snapshot_date,
+        "requested_by": admin_email,
+    }).encode()
+
+    for url in urls:
+        parsed = urlsplit(url)
+        target = urlunsplit(parsed._replace(path=f"/tld/{action}"))
+        req = urlrequest.Request(
+            url=target,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        if settings.INGESTION_MANUAL_TRIGGER_TOKEN:
+            req.add_header("X-Ingestion-Trigger-Token", settings.INGESTION_MANUAL_TRIGGER_TOKEN)
+        try:
+            with urlrequest.urlopen(req, timeout=settings.INGESTION_TRIGGER_TIMEOUT_SECONDS) as resp:
+                body = json.loads(resp.read().decode() or "{}")
+                return TldReloadResponse(
+                    status="accepted",
+                    message=body.get("message", f"TLD {tld} {action} accepted"),
+                    run_id=body.get("run_id"),
+                )
+        except urlerror.HTTPError as exc:
+            if exc.code == 409:
+                return TldReloadResponse(status="already_running", message=f"TLD {tld} já está em execução")
+            raise HTTPException(status_code=502, detail=f"Worker error {exc.code}: {exc.read().decode()}")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=str(exc))
+
+    raise HTTPException(status_code=502, detail="No worker URLs reachable")
+
+
+@router.post(
+    "/tld/{source}/{tld}/reload",
+    response_model=TldReloadResponse,
+    summary="Reload PG from R2 for a specific TLD (LOAD_ONLY — no Databricks rerun)",
+)
+def reload_tld_pg(
+    source: str,
+    tld: str,
+    snapshot_date: str | None = None,
+    admin_email: str = Depends(get_current_admin),
+):
+    """Dispatch a LOAD_ONLY run to the ingestion worker for one TLD.
+
+    Use this when R2 already has the delta (r2_status=ok) but PG load failed or is pending.
+    Does NOT rerun Databricks or re-download zone files.
+    """
+    if source not in {"czds", "openintel"}:
+        raise HTTPException(status_code=400, detail="source must be 'czds' or 'openintel'")
+    return _dispatch_tld_action(source, tld, "reload", snapshot_date, admin_email)
+
+
+@router.post(
+    "/tld/{source}/{tld}/run",
+    response_model=TldReloadResponse,
+    summary="Full rerun (R2 + PG) for a specific TLD",
+)
+def run_tld(
+    source: str,
+    tld: str,
+    snapshot_date: str | None = None,
+    admin_email: str = Depends(get_current_admin),
+):
+    """Dispatch a FULL_RUN for one TLD to the ingestion worker.
+
+    Use this when R2 has no marker (r2_status=failed) and a complete rerun is needed.
+    """
+    if source not in {"czds", "openintel"}:
+        raise HTTPException(status_code=400, detail="source must be 'czds' or 'openintel'")
+    return _dispatch_tld_action(source, tld, "run", snapshot_date, admin_email)
+
+
+@router.post(
+    "/tld/{source}/{tld}/dismiss",
+    response_model=TldReloadResponse,
+    summary="Mark a TLD/day as no_snapshot (operator dismissal)",
+)
+def dismiss_tld(
+    source: str,
+    tld: str,
+    snapshot_date: str | None = None,
+    reason: str = "operator_dismissed",
+    admin_email: str = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Record a synthetic ingestion_run with reason_code='operator_dismissed'.
+
+    Use when you know the source truly had no snapshot for that day.
+    """
+    if source not in {"czds", "openintel"}:
+        raise HTTPException(status_code=400, detail="source must be 'czds' or 'openintel'")
+    snap = snapshot_date or datetime.now(timezone.utc).date().isoformat()
+    db.execute(
+        text("""
+            INSERT INTO ingestion_run
+                (id, source, tld, status, phase, reason_code, error_message,
+                 started_at, finished_at, snapshot_date,
+                 domains_seen, domains_inserted, domains_reactivated, domains_deleted,
+                 created_at, updated_at)
+            VALUES
+                (gen_random_uuid(), :source, :tld, 'failed', 'full', :reason, :msg,
+                 now(), now(), :snap::date,
+                 0, 0, 0, 0,
+                 now(), now())
+        """),
+        {"source": source, "tld": tld, "reason": reason, "msg": f"Dismissed by {admin_email}", "snap": snap},
+    )
+    db.commit()
+    return TldReloadResponse(
+        status="accepted",
+        message=f"TLD {tld} marcado como {reason} para {snap}",
+    )

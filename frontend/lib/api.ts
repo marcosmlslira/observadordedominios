@@ -169,6 +169,44 @@ export const ingestionApi = {
     if (params?.limit != null) qs.set("limit", String(params.limit))
     return api.get<import("./types").TldHealthResponse>(`/v1/ingestion/tlds/health?${qs}`)
   },
+
+  getHeatmap: (params?: { source?: string; days?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.source) qs.set("source", params.source)
+    if (params?.days != null) qs.set("days", String(params.days))
+    return api.get<import("./types").HeatmapResponse>(`/v1/ingestion/heatmap?${qs}`)
+  },
+
+  getDailySummary: (params?: { source?: string; from_date?: string; to_date?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.source) qs.set("source", params.source)
+    if (params?.from_date) qs.set("from_date", params.from_date)
+    if (params?.to_date) qs.set("to_date", params.to_date)
+    return api.get<import("./types").DailySummaryResponse>(`/v1/ingestion/daily-summary?${qs}`)
+  },
+
+  reloadTld: (source: string, tld: string, snapshotDate?: string) => {
+    const qs = snapshotDate ? `?snapshot_date=${snapshotDate}` : ""
+    return api.post<import("./types").TldReloadResponse>(
+      `/v1/ingestion/tld/${encodeURIComponent(source)}/${encodeURIComponent(tld)}/reload${qs}`
+    )
+  },
+
+  runTld: (source: string, tld: string, snapshotDate?: string) => {
+    const qs = snapshotDate ? `?snapshot_date=${snapshotDate}` : ""
+    return api.post<import("./types").TldReloadResponse>(
+      `/v1/ingestion/tld/${encodeURIComponent(source)}/${encodeURIComponent(tld)}/run${qs}`
+    )
+  },
+
+  dismissTld: (source: string, tld: string, snapshotDate?: string, reason?: string) => {
+    const qs = new URLSearchParams()
+    if (snapshotDate) qs.set("snapshot_date", snapshotDate)
+    if (reason) qs.set("reason", reason)
+    return api.post<import("./types").TldReloadResponse>(
+      `/v1/ingestion/tld/${encodeURIComponent(source)}/${encodeURIComponent(tld)}/dismiss?${qs}`
+    )
+  },
 }
 
 // ── Ingestion Config API ──────────────────────────────────────

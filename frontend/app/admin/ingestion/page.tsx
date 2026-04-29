@@ -8,6 +8,7 @@ import {
   Database,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Search,
   XCircle,
 } from "lucide-react"
@@ -24,21 +25,22 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, ingestionApi } from "@/lib/api"
 import type {
+  DailySummaryItem,
+  HeatmapResponse,
+  HeatmapTldRow,
   IngestionCycleItem,
-  IngestionIncidentItem,
   IngestionCycleStatus,
-  IngestionRun,
-  OpenintelStatusResponse,
-  OpenintelTldStatusItem,
+  IngestionIncidentItem,
+  PhaseStatus,
   SourceSummary,
-  TldDomainCount,
-  TldStatusResponse,
+  TldDailyStatus,
 } from "@/lib/types"
 
+// ── Types ──────────────────────────────────────────────────────────────────────
+
 type SourceFilter = "all" | "czds" | "openintel"
-type StatusFilter = "all" | "attention" | "success" | "failed" | "running" | "queued" | "no_data"
+type StatusFilter = "all" | "attention" | "pg_ok" | "pg_failed" | "pg_pending" | "running" | "no_data"
 type SortMode = "domains" | "attention" | "tld"
-type CellStatus = "success" | "failed" | "running" | "queued" | "delayed" | "no_data"
 
 const SOURCES: Array<{ value: SourceFilter; label: string }> = [
   { value: "all", label: "Todas as fontes" },
@@ -47,66 +49,48 @@ const SOURCES: Array<{ value: SourceFilter; label: string }> = [
 ]
 
 const PERIODS = [7, 14, 30, 60, 90]
-const SOURCE_PRIORITY: SourceFilter[] = ["czds", "openintel"]
-const SOURCE_PILL_LABEL: Record<string, string> = {
-  czds: "CZDS",
-  openintel: "OI",
+
+// ── Phase status visuals ────────────────────────────────────────────────────
+
+const R2_DOT: Record<PhaseStatus, string> = {
+  ok:          "bg-emerald-400",
+  pending:     "bg-zinc-300 dark:bg-zinc-600",
+  failed:      "bg-red-500",
+  running:     "bg-blue-400 animate-pulse",
+  no_snapshot: "bg-zinc-200 dark:bg-zinc-700",
 }
 
-const STATUS_META: Record<CellStatus, { label: string; className: string; dot: string }> = {
-  success: {
-    label: "Sucesso",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200",
-    dot: "bg-emerald-500",
-  },
-  failed: {
-    label: "Falha",
-    className: "border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200",
-    dot: "bg-red-500",
-  },
-  running: {
-    label: "Executando",
-    className: "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/35 dark:text-blue-200",
-    dot: "bg-blue-500",
-  },
-  queued: {
-    label: "Na fila",
-    className: "border-zinc-200 bg-zinc-50 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900/55 dark:text-zinc-200",
-    dot: "bg-zinc-400",
-  },
-  delayed: {
-    label: "R2 pendente",
-    className: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200",
-    dot: "bg-amber-500",
-  },
-  no_data: {
-    label: "Sem execução",
-    className: "border-border-subtle bg-card text-muted-foreground",
-    dot: "bg-zinc-300 dark:bg-zinc-700",
-  },
+const PG_DOT: Record<PhaseStatus, string> = {
+  ok:          "bg-emerald-600",
+  pending:     "bg-amber-400",
+  failed:      "bg-red-700",
+  running:     "bg-blue-600 animate-pulse",
+  no_snapshot: "bg-zinc-200 dark:bg-zinc-700",
 }
 
-const REASON_CODE_META: Record<string, string> = {
-  success: "Execução concluída com sucesso",
-  skipped_idempotent: "Snapshot já processado anteriormente",
-  no_snapshot: "Snapshot não disponível para o TLD",
-  databricks_submit_error: "Falha ao submeter job no Databricks",
-  databricks_run_error: "Job do Databricks terminou com erro",
-  pg_load_error: "Falha ao carregar dados no PostgreSQL",
-  r2_marker_missing: "Marker esperado no R2 não foi encontrado",
-  stale_recovered: "Execução stale recuperada automaticamente",
-  unexpected_error: "Falha não classificada",
+const PG_CELL_BG: Record<PhaseStatus, string> = {
+  ok:          "border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/35",
+  pending:     "border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/35",
+  failed:      "border-red-200 bg-red-50 dark:border-red-900/60 dark:bg-red-950/35",
+  running:     "border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/35",
+  no_snapshot: "border-border-subtle bg-card",
 }
+
+const PHASE_LABEL: Record<PhaseStatus, string> = {
+  ok:          "OK",
+  pending:     "Pendente",
+  failed:      "Falha",
+  running:     "Executando",
+  no_snapshot: "Sem snapshot",
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function localDateKey(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
-
-function runDateKey(value: string): string {
-  return localDateKey(new Date(value))
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
 }
 
 function addLocalDays(date: Date, days: number): Date {
@@ -119,22 +103,20 @@ function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
-function formatDateLabel(key: string): string {
-  const [year, month, day] = key.split("-").map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-  })
+function buildDateKeys(periodDays: number): string[] {
+  const today = startOfLocalDay(new Date())
+  const start = addLocalDays(today, -(periodDays - 1))
+  return Array.from({ length: periodDays }, (_, i) => localDateKey(addLocalDays(start, i)))
 }
 
-function formatDateTime(value: string | Date | null): string {
+function formatDateLabel(key: string): string {
+  const [year, month, day] = key.split("-").map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+}
+
+function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "-"
-  return new Date(value).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+  return new Date(value).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 }
 
 function formatCount(value: number): string {
@@ -143,67 +125,46 @@ function formatCount(value: number): string {
   return value.toLocaleString("pt-BR")
 }
 
-function formatRunDuration(startedAt: string | null, finishedAt: string | null): string | null {
-  if (!startedAt) return null
-  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now()
-  const seconds = Math.max(0, Math.floor((end - new Date(startedAt).getTime()) / 1000))
+function formatDuration(seconds: number | null | undefined): string | null {
+  if (!seconds || seconds < 0) return null
   if (seconds < 60) return `${seconds}s`
-
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`
-
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ${minutes % 60}m`
-
-  return `${Math.floor(hours / 24)}d ${hours % 24}h`
+  const m = Math.floor(seconds / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ${m % 60}m`
+  return `${Math.floor(h / 24)}d ${h % 24}h`
 }
 
-function sourceLabel(source: string): string {
-  return SOURCES.find((item) => item.value === source)?.label ?? source
+function normalizeTld(v: string): string {
+  return v.trim().toLowerCase().replace(/^\./, "")
 }
 
-function sourcePillLabel(source: string): string {
-  return SOURCE_PILL_LABEL[source] ?? source.toUpperCase()
+// ── Cell tooltip builder ────────────────────────────────────────────────────
+
+function buildCellTitle(tld: string, cell: TldDailyStatus): string {
+  return [
+    `.${tld} — ${cell.date}`,
+    `R2: ${PHASE_LABEL[cell.r2_status]}${cell.r2_reason ? ` (${cell.r2_reason})` : ""}`,
+    `PG: ${PHASE_LABEL[cell.pg_status]}${cell.pg_reason ? ` (${cell.pg_reason})` : ""}`,
+    cell.domains_inserted ? `${formatCount(cell.domains_inserted)} novos` : null,
+    cell.duration_seconds ? `Duração: ${formatDuration(cell.duration_seconds)}` : null,
+    cell.error ? `Erro: ${cell.error}` : null,
+  ].filter(Boolean).join(" | ")
 }
 
-function reasonCodeLabel(reasonCode: string | null | undefined): string {
-  if (!reasonCode) return "-"
-  return REASON_CODE_META[reasonCode] ?? reasonCode
-}
-
-function normalizeTld(value: string): string {
-  return value.trim().toLowerCase().replace(/^\./, "")
-}
-
-function buildPeriod(periodDays: number) {
-  const today = startOfLocalDay(new Date())
-  const start = addLocalDays(today, -(periodDays - 1))
-  const end = addLocalDays(today, 1)
-  return { start, end }
-}
-
-function buildDateKeys(periodDays: number): string[] {
-  const { start } = buildPeriod(periodDays)
-  return Array.from({ length: periodDays }, (_, index) => localDateKey(addLocalDays(start, index)))
-}
-
-function isR2Pending(item: OpenintelTldStatusItem | undefined): boolean {
-  return item?.status === "delayed"
-}
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function IngestionPage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all")
-  const [periodDays, setPeriodDays] = useState(7)
+  const [periodDays, setPeriodDays] = useState(14)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [sortMode, setSortMode] = useState<SortMode>("domains")
   const [tldQuery, setTldQuery] = useState("")
 
-  const [runs, setRuns] = useState<IngestionRun[]>([])
+  const [heatmap, setHeatmap] = useState<HeatmapResponse | null>(null)
+  const [dailySummary, setDailySummary] = useState<DailySummaryItem[]>([])
   const [summaries, setSummaries] = useState<SourceSummary[]>([])
-  const [domainCounts, setDomainCounts] = useState<TldDomainCount[]>([])
   const [cycleStatus, setCycleStatus] = useState<IngestionCycleStatus | null>(null)
-  const [openintelStatus, setOpenintelStatus] = useState<OpenintelStatusResponse | null>(null)
-  const [tldStatuses, setTldStatuses] = useState<Record<string, TldStatusResponse | null>>({})
   const [incidents, setIncidents] = useState<IngestionIncidentItem[]>([])
   const [recentCycles, setRecentCycles] = useState<IngestionCycleItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -213,48 +174,45 @@ export default function IngestionPage() {
   const [error, setError] = useState("")
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null)
 
-  const fetchData = useCallback(async (initial = false) => {
-    const { start, end } = buildPeriod(periodDays)
-    const params = new URLSearchParams({
-      limit: "2000",
-      started_from: start.toISOString(),
-      started_to: end.toISOString(),
-    })
-    if (sourceFilter !== "all") params.set("source", sourceFilter)
+  // cell action state
+  const [actionTld, setActionTld] = useState<{ source: string; tld: string; date: string; cell: TldDailyStatus } | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [actionMsg, setActionMsg] = useState("")
 
+  const dateKeys = useMemo(() => buildDateKeys(periodDays), [periodDays])
+  const todayKey = dateKeys[dateKeys.length - 1]
+  const fromDate = dateKeys[0]
+
+  const fetchData = useCallback(async (initial = false) => {
     if (initial) setLoading(true)
     setRefreshing(true)
     setError("")
 
+    const heatmapSource = sourceFilter !== "all" ? sourceFilter : undefined
+
     try {
-      const [runsData, summaryData, countsData, cycleData, openintelData, czdsStatus, openintelTldStatus, incidentsData, cyclesData] =
+      const [heatmapData, summaryData, cycleData, incidentsData, cyclesData, dailyData] =
         await Promise.all([
-          api.get<IngestionRun[]>(`/v1/ingestion/runs?${params}`),
+          ingestionApi.getHeatmap({ source: heatmapSource, days: periodDays }),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
-          api.get<TldDomainCount[]>("/v1/ingestion/domain-counts").catch(() => []),
           ingestionApi.getCycleStatus().catch(() => null),
-          ingestionApi.getOpenintelStatus().catch(() => null),
-          ingestionApi.getTldStatus("czds").catch(() => null),
-          ingestionApi.getTldStatus("openintel").catch(() => null),
           ingestionApi.getIncidents({ hours: 24, limit: 80 }).catch(() => ({
-            hours: 24,
-            total: 0,
-            items: [] as IngestionIncidentItem[],
+            hours: 24, total: 0, items: [] as IngestionIncidentItem[],
           })),
           ingestionApi.getCycles(10).catch(() => ({ items: [] as IngestionCycleItem[], total: 0 })),
+          ingestionApi.getDailySummary({
+            source: heatmapSource,
+            from_date: fromDate,
+            to_date: todayKey,
+          }).catch(() => ({ items: [] as DailySummaryItem[] })),
         ])
 
-      setRuns(runsData.filter((run) => run.source === "czds" || run.source === "openintel"))
+      setHeatmap(heatmapData)
       setSummaries(summaryData)
-      setDomainCounts(countsData)
       setCycleStatus(cycleData)
-      setOpenintelStatus(openintelData)
-      setTldStatuses({
-        czds: czdsStatus,
-        openintel: openintelTldStatus,
-      })
       setIncidents(incidentsData.items ?? [])
       setRecentCycles(cyclesData.items ?? [])
+      setDailySummary(dailyData.items ?? [])
       setLastFetchedAt(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar dados de ingestão")
@@ -262,7 +220,7 @@ export default function IngestionPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [periodDays, sourceFilter])
+  }, [periodDays, sourceFilter, fromDate, todayKey])
 
   useEffect(() => {
     void fetchData(true)
@@ -285,192 +243,96 @@ export default function IngestionPage() {
     }
   }, [fetchData])
 
-  const dateKeys = useMemo(() => buildDateKeys(periodDays), [periodDays])
-  const todayKey = dateKeys[dateKeys.length - 1]
+  // ── Summary by date ───────────────────────────────────────────────────────
 
-  const domainCountByTld = useMemo(() => {
-    return new Map(domainCounts.map((item) => [item.tld, item.count]))
-  }, [domainCounts])
+  const summaryByDate = useMemo(() => {
+    const map = new Map<string, DailySummaryItem[]>()
+    for (const item of dailySummary) {
+      const list = map.get(item.date) ?? []
+      list.push(item)
+      map.set(item.date, list)
+    }
+    return map
+  }, [dailySummary])
 
-  const openintelByTld = useMemo(() => {
-    return new Map((openintelStatus?.items ?? []).map((item) => [item.tld, item]))
-  }, [openintelStatus])
-
-  const queuedTlds = useMemo(() => {
-    if (!cycleStatus?.czds_cycle.is_active) return new Set<string>()
-    if (sourceFilter !== "all" && sourceFilter !== "czds") return new Set<string>()
-
-    const items = tldStatuses.czds?.items ?? []
-    const current = items.find((item) => item.tld === cycleStatus.czds_cycle.current_tld)
-    const currentPriority = current?.priority ?? 0
-
-    return new Set(
-      items
-        .filter((item) => (
-          item.is_enabled &&
-          item.status === "never_run" &&
-          item.tld !== cycleStatus.czds_cycle.current_tld &&
-          (item.priority ?? 0) > currentPriority
-        ))
-        .map((item) => item.tld),
-    )
-  }, [cycleStatus, sourceFilter, tldStatuses])
+  // ── Filtered/sorted rows ───────────────────────────────────────────────────
 
   const matrixRows = useMemo(() => {
-    const tlds = new Set<string>()
-    domainCounts.forEach((item) => tlds.add(item.tld))
-    runs.forEach((run) => tlds.add(run.tld))
-    openintelStatus?.items.forEach((item) => tlds.add(item.tld))
-    Object.values(tldStatuses).forEach((response) => response?.items.forEach((item) => tlds.add(item.tld)))
-
+    const rows = heatmap?.rows ?? []
     const query = normalizeTld(tldQuery)
-    const statusesBySource = {
-      czds: new Set((tldStatuses.czds?.items ?? []).map((item) => item.tld)),
-      openintel: new Set((tldStatuses.openintel?.items ?? []).map((item) => item.tld)),
-    }
-      const rows = Array.from(tlds).map((tld) => {
-        const tldRuns = runs.filter((run) => run.tld === tld)
-        const latestRun = tldRuns[0]
-        const r2 = openintelByTld.get(tld)
-        const isQueued = queuedTlds.has(tld)
-      const presentSources = new Set<string>(tldRuns.map((run) => run.source))
-      if (statusesBySource.czds.has(tld)) presentSources.add("czds")
-      if (statusesBySource.openintel.has(tld) || r2) presentSources.add("openintel")
-      const primarySource = (
-        sourceFilter !== "all"
-          ? sourceFilter
-          : SOURCE_PRIORITY.find((source) => presentSources.has(source))
-      ) ?? latestRun?.source ?? "czds"
-      const statusSourceItems = tldStatuses[primarySource]?.items ?? []
-      const statusEntry = statusSourceItems.find((item) => item.tld === tld)
-      const cells = dateKeys.map((key) => {
-        const dayRuns = tldRuns.filter((run) => runDateKey(run.started_at) === key)
-        const latestDayRun = dayRuns[0]
-        const inserted = dayRuns.reduce((total, run) => total + (run.domains_inserted || 0), 0)
-        const hasRunning = dayRuns.some((run) => run.status === "running")
-        const hasFailed = dayRuns.some((run) => run.status === "failed")
-        const hasSuccess = dayRuns.some((run) => run.status === "success" || run.status === "ok")
-        const availableOnThisDay = r2?.last_available_snapshot_date === key
-        const pendingR2OnThisDay = (sourceFilter === "all" || sourceFilter === "openintel") && availableOnThisDay && isR2Pending(r2)
-
-        let status: CellStatus = "no_data"
-        if (hasRunning) status = "running"
-        else if (hasFailed) status = "failed"
-        else if (pendingR2OnThisDay) status = "delayed"
-        else if (hasSuccess) status = "success"
-        else if (key === todayKey && isQueued) status = "queued"
-
-        return {
-          key,
-          status,
-          inserted,
-          runs: dayRuns.length,
-          duration: latestDayRun ? formatRunDuration(latestDayRun.started_at, latestDayRun.finished_at) : null,
-          latestStartedAt: latestDayRun?.started_at ?? null,
-          latestFinishedAt: latestDayRun?.finished_at ?? null,
-          sources: Array.from(new Set(dayRuns.map((run) => run.source))),
-          error: dayRuns.find((run) => run.status === "failed")?.error_message ?? null,
-          reasonCode: dayRuns.find((run) => run.status === "failed")?.reason_code ?? null,
-          r2,
-        }
-      })
-
-      const failedDays = cells.filter((cell) => cell.status === "failed").length
-      const attentionScore = failedDays + (isR2Pending(r2) ? 2 : 0) + (latestRun?.status === "running" ? 1 : 0)
-      const currentStatus: StatusFilter =
-        statusEntry?.execution_status_today === "running" ? "running" :
-        statusEntry?.execution_status_today === "failed" || r2?.status === "failed" ? "failed" :
-        isR2Pending(r2) ? "attention" :
-        isQueued ? "queued" :
-        statusEntry?.execution_status_today === "success" ? "success" :
-        "no_data"
-
-      return {
-        tld,
-        cells,
-        primarySource,
-        currentStatus,
-        latestRun,
-        statusEntry,
-        r2,
-        domainCount: domainCountByTld.get(tld) ?? 0,
-        inserted: tldRuns.reduce((total, run) => total + (run.domains_inserted || 0), 0),
-        failedDays,
-        attentionScore,
-      }
-    })
 
     return rows
       .filter((row) => !query || row.tld.includes(query))
       .filter((row) => {
         if (statusFilter === "all") return true
-        if (statusFilter === "attention") {
-          return row.currentStatus === "failed" || row.currentStatus === "attention" || row.failedDays > 0
-        }
-        return row.currentStatus === statusFilter
+        const today = row.days.find((d) => d.date === todayKey)
+        if (!today) return statusFilter === "no_data"
+        if (statusFilter === "pg_ok") return today.pg_status === "ok"
+        if (statusFilter === "pg_failed") return today.pg_status === "failed"
+        if (statusFilter === "pg_pending") return today.pg_status === "pending" && today.r2_status === "ok"
+        if (statusFilter === "running") return today.pg_status === "running" || today.r2_status === "running"
+        if (statusFilter === "attention") return today.pg_status === "failed" || today.r2_status === "failed" || today.pg_status === "pending"
+        return true
       })
+      .filter((row) => sourceFilter === "all" || row.source === sourceFilter)
       .sort((a, b) => {
         if (sortMode === "tld") return a.tld.localeCompare(b.tld)
-        if (sortMode === "attention") return b.attentionScore - a.attentionScore || b.domainCount - a.domainCount
-        return b.domainCount - a.domainCount || a.tld.localeCompare(b.tld)
+        const aFails = a.days.filter((d) => d.pg_status === "failed" || d.r2_status === "failed").length
+        const bFails = b.days.filter((d) => d.pg_status === "failed" || d.r2_status === "failed").length
+        if (sortMode === "attention") return bFails - aFails || b.domain_count - a.domain_count
+        return b.domain_count - a.domain_count || a.tld.localeCompare(b.tld)
       })
-  }, [
-    dateKeys,
-    domainCountByTld,
-    domainCounts,
-    openintelByTld,
-    openintelStatus,
-    queuedTlds,
-    runs,
-    sortMode,
-    sourceFilter,
-    statusFilter,
-    tldQuery,
-    tldStatuses,
-    todayKey,
-  ])
+  }, [heatmap, tldQuery, statusFilter, sourceFilter, sortMode, todayKey])
 
-  const visibleRows = tldQuery.trim() ? matrixRows : matrixRows.slice(0, 180)
-  const nextSchedules = useMemo(() => {
-    return (cycleStatus?.schedules ?? [])
-      .filter((schedule) => schedule.mode === "cron" && schedule.next_run_at)
-      .sort((a, b) => new Date(a.next_run_at ?? 0).getTime() - new Date(b.next_run_at ?? 0).getTime())
-  }, [cycleStatus])
+  const visibleRows = tldQuery.trim() ? matrixRows : matrixRows.slice(0, 200)
+
+  // ── Counter cards ─────────────────────────────────────────────────────────
 
   const counters = useMemo(() => {
-    const failedTlds = new Set<string>()
-    let inserted = 0
+    const todayRows = (heatmap?.rows ?? []).map((r) => r.days.find((d) => d.date === todayKey))
+    const pgOk = todayRows.filter((d) => d?.pg_status === "ok").length
+    const pgFailed = todayRows.filter((d) => d?.pg_status === "failed").length
+    const pgPending = todayRows.filter((d) => d?.pg_status === "pending" && d?.r2_status === "ok").length
+    const r2Failed = todayRows.filter((d) => d?.r2_status === "failed").length
+    const running = todayRows.filter((d) => d?.r2_status === "running" || d?.pg_status === "running").length
+    const inserted = dailySummary
+      .filter((d) => d.date === todayKey)
+      .reduce((acc, d) => acc + d.domains_inserted, 0)
+    return { pgOk, pgFailed, pgPending, r2Failed, running, inserted }
+  }, [heatmap, dailySummary, todayKey])
 
-    runs.forEach((run) => {
-      inserted += run.domains_inserted || 0
-      if (run.status === "failed") failedTlds.add(run.tld)
-    })
+  // ── Cell actions ──────────────────────────────────────────────────────────
 
-    const delayedR2 = (openintelStatus?.items ?? []).filter((item) => item.is_enabled && item.status === "delayed")
-    const failedR2 = (openintelStatus?.items ?? []).filter((item) => item.is_enabled && item.status === "failed")
+  const handleCellClick = (row: HeatmapTldRow, cell: TldDailyStatus) => {
+    if (cell.pg_status === "pending" && cell.r2_status === "pending" && !cell.error) return
+    setActionTld({ source: row.source, tld: row.tld, date: cell.date, cell })
+    setActionMsg("")
+  }
 
-    const runningActive = summaries.reduce((acc, item) => acc + (item.running_active_count ?? item.running_now ?? 0), 0)
-    const runningStale = summaries.reduce((acc, item) => acc + (item.running_stale_count ?? 0), 0)
-
-    return {
-      failedTlds: failedTlds.size + failedR2.length,
-      runningActive,
-      runningStale,
-      queuedTlds: queuedTlds.size,
-      r2Pending: delayedR2.length,
-      inserted,
+  const handleCellAction = async (action: "reload" | "run" | "dismiss") => {
+    if (!actionTld) return
+    setActionLoading(true)
+    setActionMsg("")
+    try {
+      const { source, tld, date } = actionTld
+      let result
+      if (action === "reload") result = await ingestionApi.reloadTld(source, tld, date)
+      else if (action === "run") result = await ingestionApi.runTld(source, tld, date)
+      else result = await ingestionApi.dismissTld(source, tld, date)
+      setActionMsg(result.message)
+      setTimeout(() => void fetchData(false), 3000)
+    } catch (err) {
+      setActionMsg(err instanceof Error ? err.message : "Erro ao executar ação")
+    } finally {
+      setActionLoading(false)
     }
-  }, [openintelStatus, queuedTlds, runs, summaries])
+  }
 
-  const r2AttentionItems = useMemo(() => {
-    return (openintelStatus?.items ?? [])
-      .filter((item) => item.is_enabled && ["delayed", "failed", "no_data"].includes(item.status))
-      .sort((a, b) => {
-        const priority = { failed: 0, delayed: 1, no_data: 2 }
-        return (priority[a.status as keyof typeof priority] ?? 3) - (priority[b.status as keyof typeof priority] ?? 3)
-      })
-      .slice(0, 10)
-  }, [openintelStatus])
+  const nextSchedules = useMemo(() => {
+    return (cycleStatus?.schedules ?? [])
+      .filter((s) => s.mode === "cron" && s.next_run_at)
+      .sort((a, b) => new Date(a.next_run_at ?? 0).getTime() - new Date(b.next_run_at ?? 0).getTime())
+  }, [cycleStatus])
 
   if (loading) {
     return (
@@ -479,8 +341,8 @@ export default function IngestionPage() {
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96 max-w-full" />
         </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          {[1, 2, 3, 4, 5].map((item) => <Skeleton key={item} className="h-28 rounded-lg" />)}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-28 rounded-lg" />)}
         </div>
         <Skeleton className="h-[520px] rounded-lg" />
       </div>
@@ -489,6 +351,7 @@ export default function IngestionPage() {
 
   return (
     <div className="space-y-5">
+      {/* ── Header ── */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -496,13 +359,10 @@ export default function IngestionPage() {
             {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Matriz por data e TLD com execuções recentes, fila CZDS e disponibilidade OpenINTEL/R2.
+            Heatmap dual-fase (R2 · PG) por TLD e data. Clique em uma célula para reprocessar.
           </p>
         </div>
-
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>Atualiza a cada 1 minuto</span>
-          <span className="hidden h-1 w-1 rounded-full bg-border-strong sm:block" />
           <span>Última leitura: {formatDateTime(lastFetchedAt)}</span>
           <Button onClick={() => void triggerDailyCycle()} disabled={manualTriggering || refreshing}>
             {manualTriggering ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-2 h-3.5 w-3.5" />}
@@ -514,13 +374,14 @@ export default function IngestionPage() {
           </Button>
         </div>
       </div>
+
       {nextSchedules.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
           <span className="mr-1 text-xs">Próximas:</span>
-          {nextSchedules.map((schedule) => (
-            <span key={schedule.source} className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-muted/35 px-2 py-0.5">
-              <span className="font-medium">{sourcePillLabel(schedule.source)}</span>
-              <span>{formatDateTime(schedule.next_run_at)}</span>
+          {nextSchedules.map((s) => (
+            <span key={s.source} className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-muted/35 px-2 py-0.5">
+              <span className="font-medium">{s.source.toUpperCase()}</span>
+              <span>{formatDateTime(s.next_run_at)}</span>
             </span>
           ))}
         </div>
@@ -537,67 +398,55 @@ export default function IngestionPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-6">
-        <MetricCard icon={AlertTriangle} label="TLDs com atenção" value={formatCount(counters.failedTlds + counters.r2Pending)} tone="danger" />
-        <MetricCard icon={XCircle} label="Falhas recentes" value={formatCount(counters.failedTlds)} tone="danger" />
-        <MetricCard icon={Loader2} label="Executando agora" value={formatCount(counters.runningActive)} tone="info" spin={counters.runningActive > 0} />
-        <MetricCard icon={AlertTriangle} label="Executando stale" value={formatCount(counters.runningStale)} tone="danger" />
-        <MetricCard icon={Clock3} label="Na fila CZDS" value={formatCount(counters.queuedTlds)} tone="neutral" />
-        <MetricCard icon={Database} label="Domínios adicionados" value={formatCount(counters.inserted)} tone="success" />
+      {/* ── Counter cards ── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        <MetricCard icon={CheckCircle2} label="PG ok hoje" value={formatCount(counters.pgOk)} tone="success" />
+        <MetricCard icon={XCircle} label="PG falhou hoje" value={formatCount(counters.pgFailed)} tone="danger" />
+        <MetricCard icon={Database} label="R2 falhou hoje" value={formatCount(counters.r2Failed)} tone="danger" />
+        <MetricCard icon={Clock3} label="PG pendente" value={formatCount(counters.pgPending)} tone="warning" />
+        <MetricCard icon={Loader2} label="Executando" value={formatCount(counters.running)} tone="info" spin={counters.running > 0} />
+        <MetricCard icon={CheckCircle2} label="Domínios inseridos" value={formatCount(counters.inserted)} tone="success" />
       </div>
 
+      {/* ── Filters ── */}
       <div className="rounded-lg border border-border-subtle bg-card p-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <FilterField label="Período">
-            <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
-              <SelectTrigger className="h-10">
-                <SelectValue />
-              </SelectTrigger>
+            <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {PERIODS.map((period) => (
-                  <SelectItem key={period} value={String(period)}>
-                    Últimos {period} dias
-                  </SelectItem>
-                ))}
+                {PERIODS.map((p) => <SelectItem key={p} value={String(p)}>Últimos {p} dias</SelectItem>)}
               </SelectContent>
             </Select>
           </FilterField>
 
           <FilterField label="Fonte">
-            <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as SourceFilter)}>
-              <SelectTrigger className="h-10">
-                <SelectValue />
-              </SelectTrigger>
+            <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v as SourceFilter)}>
+              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {SOURCES.map((source) => (
-                  <SelectItem key={source.value} value={source.value}>{source.label}</SelectItem>
-                ))}
+                {SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </FilterField>
 
-          <FilterField label="Status atual">
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger className="h-10">
-                <SelectValue />
-              </SelectTrigger>
+          <FilterField label="Status (PG hoje)">
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="attention">Precisa atenção</SelectItem>
-                <SelectItem value="failed">Falha</SelectItem>
-                <SelectItem value="success">Sucesso</SelectItem>
+                <SelectItem value="pg_ok">PG ok</SelectItem>
+                <SelectItem value="pg_failed">PG falhou</SelectItem>
+                <SelectItem value="pg_pending">R2 ok, PG pendente</SelectItem>
                 <SelectItem value="running">Executando</SelectItem>
-                <SelectItem value="queued">Na fila</SelectItem>
                 <SelectItem value="no_data">Sem execução</SelectItem>
               </SelectContent>
             </Select>
           </FilterField>
 
           <FilterField label="Ordenação">
-            <Select value={sortMode} onValueChange={(value) => setSortMode(value as SortMode)}>
-              <SelectTrigger className="h-10">
-                <SelectValue />
-              </SelectTrigger>
+            <Select value={sortMode} onValueChange={(v) => setSortMode(v as SortMode)}>
+              <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="domains">Qtd. de domínios</SelectItem>
                 <SelectItem value="attention">Atenção primeiro</SelectItem>
@@ -611,8 +460,8 @@ export default function IngestionPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={tldQuery}
-                onChange={(event) => setTldQuery(event.target.value)}
-                placeholder="Buscar por com, br, app..."
+                onChange={(e) => setTldQuery(e.target.value)}
+                placeholder="Buscar por com, br, app…"
                 className="h-10 pl-9"
               />
             </div>
@@ -620,145 +469,170 @@ export default function IngestionPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        <section className="w-full min-w-0 rounded-lg border border-border-subtle bg-card">
-          <div className="flex flex-col gap-2 border-b border-border-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-sm font-medium">Heatmap de ingestão</h2>
-              <p className="text-xs text-muted-foreground">
-                {visibleRows.length} de {matrixRows.length} TLDs visíveis · eixo X por data, eixo Y por TLD
-              </p>
+      {/* ── Heatmap ── */}
+      <section className="w-full min-w-0 rounded-lg border border-border-subtle bg-card">
+        <div className="flex flex-col gap-2 border-b border-border-subtle px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-medium">Heatmap de ingestão — dual-fase</h2>
+            <p className="text-xs text-muted-foreground">
+              {visibleRows.length} de {matrixRows.length} TLDs · ●R2 ●PG · clique na célula para reprocessar
+            </p>
+          </div>
+          <PhaseLegend />
+        </div>
+
+        <div className="max-h-[74vh] overflow-auto">
+          <div
+            className="grid min-w-max"
+            style={{ gridTemplateColumns: `160px repeat(${dateKeys.length}, minmax(68px, 1fr))` }}
+          >
+            {/* Header row — TLD label */}
+            <div className="sticky left-0 top-0 z-20 border-b border-r border-border-subtle bg-card px-3 py-2 text-xs font-medium text-muted-foreground">
+              TLD
             </div>
-            <Legend />
+
+            {/* Header row — date columns with daily aggregate */}
+            {dateKeys.map((key) => {
+              const items = summaryByDate.get(key) ?? []
+              const tldTotal = items.reduce((acc, d) => acc + d.tld_total, 0)
+              const pgOk = items.reduce((acc, d) => acc + d.pg_ok, 0)
+              const pgFail = items.reduce((acc, d) => acc + d.pg_failed, 0)
+              const inserted = items.reduce((acc, d) => acc + d.domains_inserted, 0)
+              const maxDur = items.reduce((max, d) => Math.max(max, d.duration_seconds ?? 0), 0)
+              const pct = tldTotal > 0 ? Math.round((pgOk / tldTotal) * 100) : null
+
+              return (
+                <div key={key} className="sticky top-0 z-10 border-b border-border-subtle bg-card px-1 py-1 text-center">
+                  <div className="text-xs font-medium text-muted-foreground">{formatDateLabel(key)}</div>
+                  {pct !== null && (
+                    <div className={`text-[10px] font-semibold leading-tight ${pct >= 90 ? "text-emerald-600 dark:text-emerald-400" : pct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                      {pct}%
+                    </div>
+                  )}
+                  {maxDur > 0 && (
+                    <div className="text-[9px] text-muted-foreground">{formatDuration(maxDur)}</div>
+                  )}
+                  {inserted > 0 && (
+                    <div className="text-[9px] text-emerald-600 dark:text-emerald-400">{formatCount(inserted)}</div>
+                  )}
+                  {pgFail > 0 && (
+                    <div className="text-[9px] font-medium text-red-600 dark:text-red-400">{pgFail}✗</div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Data rows */}
+            {visibleRows.map((row) => (
+              <HeatmapRow
+                key={`${row.source}-${row.tld}`}
+                row={row}
+                dateKeys={dateKeys}
+                onCellClick={(cell) => handleCellClick(row, cell)}
+              />
+            ))}
           </div>
 
-          <div className="max-h-[74vh] overflow-auto">
-            <div
-              className="grid min-w-max"
-              style={{ gridTemplateColumns: `150px repeat(${dateKeys.length}, minmax(62px, 1fr))` }}
-            >
-              <div className="sticky left-0 top-0 z-20 border-b border-r border-border-subtle bg-card px-3 py-2 text-xs font-medium text-muted-foreground">
-                TLD
-              </div>
-              {dateKeys.map((key) => (
-                <div key={key} className="sticky top-0 z-10 border-b border-border-subtle bg-card px-2 py-2 text-center text-xs font-medium text-muted-foreground">
-                  {formatDateLabel(key)}
-                </div>
-              ))}
-
-              {visibleRows.map((row) => (
-                <RowCells key={row.tld} row={row} dateKeys={dateKeys} />
-              ))}
+          {visibleRows.length === 0 && (
+            <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              Nenhum TLD encontrado para os filtros atuais.
             </div>
+          )}
+        </div>
+      </section>
 
-            {visibleRows.length === 0 && (
-              <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-                Nenhum TLD encontrado para os filtros atuais.
+      {/* ── Cell action panel ── */}
+      {actionTld && (
+        <section className="rounded-lg border border-border-subtle bg-card">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+            <div>
+              <h2 className="text-sm font-medium">
+                Ações — <span className="font-mono">.{actionTld.tld}</span> · {actionTld.date}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                R2: <span className="font-medium">{PHASE_LABEL[actionTld.cell.r2_status]}</span>
+                {" · "}
+                PG: <span className="font-medium">{PHASE_LABEL[actionTld.cell.pg_status]}</span>
+              </p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setActionTld(null)}>✕</Button>
+          </div>
+          <div className="p-4 space-y-3">
+            {actionTld.cell.error && (
+              <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
+                {actionTld.cell.error}
               </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {actionTld.cell.r2_status === "ok" && (
+                <Button
+                  size="sm"
+                  onClick={() => void handleCellAction("reload")}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-2 h-3.5 w-3.5" />}
+                  Reload PG (sem Databricks)
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void handleCellAction("run")}
+                disabled={actionLoading}
+              >
+                Rerun completo (R2 + PG)
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void handleCellAction("dismiss")}
+                disabled={actionLoading}
+                className="text-muted-foreground"
+              >
+                Marcar como sem snapshot
+              </Button>
+            </div>
+            {actionMsg && (
+              <p className="text-xs text-muted-foreground">{actionMsg}</p>
             )}
           </div>
         </section>
+      )}
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <section className="rounded-lg border border-border-subtle bg-card">
-            <div className="border-b border-border-subtle px-4 py-3">
-              <h2 className="text-sm font-medium">R2 / OpenINTEL</h2>
-              <p className="text-xs text-muted-foreground">{openintelStatus?.overall_message ?? "Sem leitura do status OpenINTEL."}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 p-3 text-sm">
-              <R2Count label="Pendente" value={openintelStatus?.status_counts.delayed ?? 0} tone="warning" />
-              <R2Count label="Falha" value={openintelStatus?.status_counts.failed ?? 0} tone="danger" />
-              <R2Count label="Importado novo" value={openintelStatus?.status_counts.new_snapshot_ingested ?? 0} tone="success" />
-              <R2Count label="Em dia" value={openintelStatus?.status_counts.up_to_date_no_new_snapshot ?? 0} tone="neutral" />
-            </div>
-            <div className="border-t border-border-subtle">
-              {r2AttentionItems.length === 0 ? (
-                <div className="px-4 py-4 text-sm text-muted-foreground">Nenhum snapshot pendente ou falha no R2.</div>
-              ) : (
-                <div className="divide-y divide-border-subtle">
-                  {r2AttentionItems.map((item) => (
-                    <div key={item.tld} className="px-4 py-3 text-sm">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono font-medium">.{item.tld}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${item.status === "failed" ? "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-200" : item.status === "delayed" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-200" : "bg-muted text-muted-foreground"}`}>
-                          {item.status_reason}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Disponível: {item.last_available_snapshot_date ?? "-"} · Importado: {item.last_ingested_snapshot_date ?? "-"}
-                      </div>
-                      {item.last_error_message && (
-                        <div className="mt-1 line-clamp-2 text-xs text-red-600 dark:text-red-300">{item.last_error_message}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-border-subtle bg-card">
-            <div className="border-b border-border-subtle px-4 py-3">
-              <h2 className="text-sm font-medium">Fontes</h2>
-              <p className="text-xs text-muted-foreground">Resumo do contrato `/v1/ingestion/summary`.</p>
-            </div>
-            <div className="divide-y divide-border-subtle">
-              {summaries.map((summary) => (
-                <div key={summary.source} className="px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium">{sourceLabel(summary.source)}</span>
-                    <span className="text-xs text-muted-foreground">{summary.mode ?? "-"}</span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span>{formatCount(summary.running_now)} rodando</span>
-                    <span>{formatCount(summary.failed_runs)} falhas</span>
-                    <span>último: {formatDateTime(summary.last_run_at)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
+      {/* ── Cycles + Incidents ── */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-border-subtle bg-card">
           <div className="border-b border-border-subtle px-4 py-3">
             <h2 className="text-sm font-medium">Ciclos recentes</h2>
-            <p className="text-xs text-muted-foreground">
-              Últimos 10 ciclos diários — status, duração e contagem de TLDs por desfecho.
-            </p>
+            <p className="text-xs text-muted-foreground">Últimos 10 ciclos diários.</p>
           </div>
           {recentCycles.length === 0 ? (
             <div className="px-4 py-4 text-sm text-muted-foreground">Sem ciclos registrados ainda.</div>
           ) : (
             <div className="divide-y divide-border-subtle">
-              {recentCycles.map((cycle) => (
-                <CycleRow key={cycle.cycle_id} cycle={cycle} />
-              ))}
+              {recentCycles.map((cycle) => <CycleRow key={cycle.cycle_id} cycle={cycle} />)}
             </div>
           )}
         </section>
 
         <section className="rounded-lg border border-border-subtle bg-card">
           <div className="border-b border-border-subtle px-4 py-3">
-            <h2 className="text-sm font-medium">Incidentes do ciclo (24h)</h2>
-            <p className="text-xs text-muted-foreground">Falhas e recoveries com reason code e run_id.</p>
+            <h2 className="text-sm font-medium">Incidentes (24h)</h2>
+            <p className="text-xs text-muted-foreground">Falhas com reason code e run_id.</p>
           </div>
           {incidents.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-muted-foreground">Sem incidentes registrados na janela.</div>
+            <div className="px-4 py-4 text-sm text-muted-foreground">Sem incidentes registrados.</div>
           ) : (
             <div className="divide-y divide-border-subtle">
-              {incidents.slice(0, 25).map((incident) => (
+              {incidents.slice(0, 20).map((incident) => (
                 <div key={incident.run_id} className="px-4 py-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-medium">{incident.source}.{incident.tld}</span>
-                      <span className="rounded-full border border-border-subtle bg-muted/30 px-2 py-0.5 text-[11px]">
-                        {reasonCodeLabel(incident.reason_code)}
-                      </span>
-                    </div>
+                    <span className="font-mono font-medium">{incident.source}.{incident.tld}</span>
+                    <span className="rounded-full border border-border-subtle bg-muted/30 px-2 py-0.5 text-[11px]">
+                      {incident.reason_code ?? "-"}
+                    </span>
                     <span className="text-xs text-muted-foreground">{formatDateTime(incident.timestamp)}</span>
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">run_id: <span className="font-mono">{incident.run_id}</span></div>
                   {incident.message && (
                     <div className="mt-1 line-clamp-2 text-xs text-red-600 dark:text-red-300">{incident.message}</div>
                   )}
@@ -768,9 +642,33 @@ export default function IngestionPage() {
           )}
         </section>
       </div>
+
+      {/* ── Source summaries ── */}
+      <section className="rounded-lg border border-border-subtle bg-card">
+        <div className="border-b border-border-subtle px-4 py-3">
+          <h2 className="text-sm font-medium">Fontes</h2>
+        </div>
+        <div className="divide-y divide-border-subtle">
+          {summaries.map((summary) => (
+            <div key={summary.source} className="px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{summary.source}</span>
+                <span className="text-xs text-muted-foreground">{summary.mode ?? "-"}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>{formatCount(summary.running_now)} rodando</span>
+                <span>{formatCount(summary.failed_runs)} falhas</span>
+                <span>último: {formatDateTime(summary.last_run_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -791,14 +689,15 @@ function MetricCard({
   icon: typeof AlertTriangle
   label: string
   value: string
-  tone: "danger" | "info" | "success" | "neutral"
+  tone: "danger" | "info" | "success" | "neutral" | "warning"
   spin?: boolean
 }) {
   const toneClass = {
-    danger: "text-red-600 bg-red-50 dark:text-red-300 dark:bg-red-950/35",
-    info: "text-blue-600 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/35",
+    danger:  "text-red-600 bg-red-50 dark:text-red-300 dark:bg-red-950/35",
+    info:    "text-blue-600 bg-blue-50 dark:text-blue-300 dark:bg-blue-950/35",
     success: "text-emerald-600 bg-emerald-50 dark:text-emerald-300 dark:bg-emerald-950/35",
     neutral: "text-muted-foreground bg-muted",
+    warning: "text-amber-600 bg-amber-50 dark:text-amber-300 dark:bg-amber-950/35",
   }[tone]
 
   return (
@@ -816,173 +715,145 @@ function MetricCard({
   )
 }
 
-function Legend() {
-  const items: CellStatus[] = ["success", "failed", "running", "queued", "delayed", "no_data"]
+function PhaseLegend() {
   return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap gap-2">
-        {items.map((item) => (
-          <span key={item} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={`h-2 w-2 rounded-full ${STATUS_META[item].dot}`} />
-            {STATUS_META[item].label}
-          </span>
-        ))}
-      </div>
-      <div className="text-[11px] text-muted-foreground">
-        Reason codes: `success`, `no_snapshot`, `databricks_submit_error`, `databricks_run_error`,
-        `pg_load_error`, `r2_marker_missing`, `stale_recovered`, `unexpected_error`.
-      </div>
+    <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+      <span className="flex items-center gap-1">
+        <span className="inline-flex gap-0.5">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          <span className="h-2 w-2 rounded-full bg-emerald-600" />
+        </span>
+        Ok (R2·PG)
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex gap-0.5">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          <span className="h-2 w-2 rounded-full bg-amber-400" />
+        </span>
+        R2 ok, PG pendente
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex gap-0.5">
+          <span className="h-2 w-2 rounded-full bg-emerald-400" />
+          <span className="h-2 w-2 rounded-full bg-red-700" />
+        </span>
+        R2 ok, PG falhou
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-flex gap-0.5">
+          <span className="h-2 w-2 rounded-full bg-red-500" />
+          <span className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+        </span>
+        R2 falhou
+      </span>
     </div>
   )
 }
 
-function RowCells({
+function HeatmapRow({
   row,
+  dateKeys,
+  onCellClick,
 }: {
-  row: {
-    tld: string
-    primarySource: string
-    domainCount: number
-    inserted: number
-    attentionScore: number
-    statusEntry?: {
-      execution_status_today: string
-      functional_status: string
-      last_reason_code: string | null
-      last_error_message: string | null
-    }
-    cells: Array<{
-      key: string
-      status: CellStatus
-      inserted: number
-      runs: number
-      duration: string | null
-      latestStartedAt: string | null
-      latestFinishedAt: string | null
-      sources: string[]
-      error: string | null
-      reasonCode: string | null
-      r2?: OpenintelTldStatusItem
-    }>
-  }
+  row: HeatmapTldRow
   dateKeys: string[]
+  onCellClick: (cell: TldDailyStatus) => void
 }) {
+  const cellByDate = useMemo(() => {
+    const map = new Map<string, TldDailyStatus>()
+    for (const d of row.days) map.set(d.date, d)
+    return map
+  }, [row.days])
+
   return (
     <>
-      <div
-        className="sticky left-0 z-10 min-w-0 border-r border-border-subtle bg-card px-2 py-0.5"
-        title={
-          [
-            `.${row.tld}`,
-            `${formatCount(row.domainCount)} domínios`,
-            `${formatCount(row.inserted)} novos`,
-            row.statusEntry ? `Status hoje: ${row.statusEntry.execution_status_today}` : null,
-            row.statusEntry ? `Funcional: ${row.statusEntry.functional_status}` : null,
-            row.statusEntry?.last_reason_code ? `Motivo: ${reasonCodeLabel(row.statusEntry.last_reason_code)}` : null,
-            row.statusEntry?.last_error_message ?? null,
-          ].filter(Boolean).join(" • ")
-        }
-      >
+      <div className="sticky left-0 z-10 min-w-0 border-r border-border-subtle bg-card px-2 py-0.5">
         <div className="flex items-center gap-1 whitespace-nowrap text-[9px] leading-none">
           <span className="truncate font-mono text-xs font-medium">.{row.tld}</span>
           <span className="shrink-0 rounded-full border border-border-subtle bg-muted/30 px-1 py-0.5 text-[8px] font-medium leading-none text-muted-foreground">
-            {sourcePillLabel(row.primarySource)}
+            {row.source === "czds" ? "CZDS" : "OI"}
           </span>
-          <span className="shrink-0 text-muted-foreground">{formatCount(row.domainCount)}d • {formatCount(row.inserted)}n</span>
-          {row.attentionScore > 0 && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+          {row.domain_count > 0 && (
+            <span className="shrink-0 text-muted-foreground">{formatCount(row.domain_count)}d</span>
+          )}
         </div>
       </div>
-      {row.cells.map((cell) => (
-        <HeatmapCell key={`${row.tld}-${cell.key}`} cell={cell} />
-      ))}
+
+      {dateKeys.map((key) => {
+        const cell = cellByDate.get(key) ?? {
+          date: key, r2_status: "pending" as PhaseStatus, pg_status: "pending" as PhaseStatus,
+          r2_reason: null, pg_reason: null, error: null, duration_seconds: null,
+          domains_inserted: 0, domains_deleted: 0,
+        }
+        return (
+          <DualPhaseCell
+            key={`${row.tld}-${key}`}
+            tld={row.tld}
+            cell={cell}
+            onClick={() => onCellClick(cell)}
+          />
+        )
+      })}
     </>
   )
 }
 
-function HeatmapCell({
+function DualPhaseCell({
+  tld,
   cell,
+  onClick,
 }: {
-  cell: {
-    key: string
-    status: CellStatus
-    inserted: number
-    runs: number
-    duration: string | null
-    latestStartedAt: string | null
-    latestFinishedAt: string | null
-    sources: string[]
-    error: string | null
-    reasonCode: string | null
-    r2?: OpenintelTldStatusItem
-  }
+  tld: string
+  cell: TldDailyStatus
+  onClick: () => void
 }) {
-  const meta = STATUS_META[cell.status]
-  const title = [
-    meta.label,
-    cell.runs ? `Execuções no dia: ${cell.runs}` : null,
-    cell.sources.length ? `Fontes: ${cell.sources.join(", ")}` : null,
-    cell.inserted ? `${cell.inserted.toLocaleString("pt-BR")} domínios adicionados` : null,
-    cell.duration ? `Duração: ${cell.duration}` : null,
-    cell.latestStartedAt ? `Início: ${formatDateTime(cell.latestStartedAt)}` : null,
-    cell.latestFinishedAt ? `Fim: ${formatDateTime(cell.latestFinishedAt)}` : null,
-    cell.r2 && cell.status === "delayed"
-      ? `R2 disponível ${cell.r2.last_available_snapshot_date}, importado ${cell.r2.last_ingested_snapshot_date ?? "-"}`
-      : null,
-    cell.reasonCode ? `Reason: ${reasonCodeLabel(cell.reasonCode)}` : null,
-    cell.error,
-  ].filter(Boolean).join(" | ")
+  const isActive = cell.pg_status !== "pending" || cell.r2_status !== "pending" || !!cell.error
+  const bgClass = PG_CELL_BG[cell.pg_status]
+  const title = buildCellTitle(tld, cell)
 
   return (
     <div className="border-b border-border-subtle p-px">
-      <div
+      <button
+        type="button"
         title={title}
-        className={`flex h-7 min-w-0 items-center justify-center rounded-md border px-1 text-center text-[9px] leading-none transition-colors ${meta.className}`}
+        onClick={isActive ? onClick : undefined}
+        className={`flex h-8 w-full min-w-0 flex-col items-center justify-center rounded-md border px-1 transition-colors ${bgClass} ${isActive ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
       >
-        {cell.status === "running" ? (
-          <div className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {cell.duration && <span className="font-mono tabular-nums">{cell.duration}</span>}
-          </div>
-        ) : cell.status === "failed" ? (
-          <div className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
-            <XCircle className="h-3 w-3" />
-            <span className="truncate">falha</span>
-            {cell.duration && <span className="font-mono tabular-nums">{cell.duration}</span>}
-          </div>
-        ) : cell.status === "queued" ? (
-          <div className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
-            <Clock3 className="h-3 w-3" />
-            <span className="truncate">fila</span>
-          </div>
-        ) : cell.status === "delayed" ? (
-          <div className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
-            <Database className="h-3 w-3" />
-            <span className="truncate">R2</span>
-          </div>
-        ) : cell.status === "success" ? (
-          <div className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
-            <CheckCircle2 className="h-3 w-3" />
-            <span className="font-mono tabular-nums">{cell.inserted ? formatCount(cell.inserted) : "0"}</span>
-            {cell.duration && <span className="font-mono tabular-nums">{cell.duration}</span>}
-          </div>
-        ) : (
-          <span className="h-1.5 w-1.5 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-        )}
-      </div>
+        {/* Phase dots: R2 (top) · PG (bottom) */}
+        <div className="flex items-center gap-0.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${R2_DOT[cell.r2_status]}`} />
+          <span className={`h-1.5 w-1.5 rounded-full ${PG_DOT[cell.pg_status]}`} />
+        </div>
+
+        {/* Content label */}
+        {cell.pg_status === "ok" && cell.domains_inserted > 0 ? (
+          <span className="mt-0.5 font-mono text-[8px] tabular-nums text-emerald-800 dark:text-emerald-300">
+            {formatCount(cell.domains_inserted)}
+          </span>
+        ) : cell.pg_status === "running" || cell.r2_status === "running" ? (
+          <Loader2 className="mt-0.5 h-2.5 w-2.5 animate-spin text-blue-600" />
+        ) : cell.pg_status === "failed" ? (
+          <XCircle className="mt-0.5 h-2.5 w-2.5 text-red-700" />
+        ) : cell.pg_status === "pending" && cell.r2_status === "ok" ? (
+          <Clock3 className="mt-0.5 h-2.5 w-2.5 text-amber-600" />
+        ) : null}
+      </button>
     </div>
   )
 }
 
 const CYCLE_STATUS_META: Record<string, { label: string; className: string }> = {
-  running:     { label: "Executando", className: "bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-200" },
-  succeeded:   { label: "Sucesso",    className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200" },
-  failed:      { label: "Falha",      className: "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-200" },
-  interrupted: { label: "Interrompido", className: "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-200" },
+  running:     { label: "Executando",  className: "bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-200" },
+  succeeded:   { label: "Sucesso",     className: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200" },
+  failed:      { label: "Falha",       className: "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-200" },
+  interrupted: { label: "Interrompido",className: "bg-amber-50 text-amber-700 dark:bg-amber-950/35 dark:text-amber-200" },
 }
 
 function CycleRow({ cycle }: { cycle: IngestionCycleItem }) {
   const meta = CYCLE_STATUS_META[cycle.status] ?? { label: cycle.status, className: "bg-muted text-muted-foreground" }
-  const duration = formatRunDuration(cycle.started_at, cycle.finished_at)
+  const dur = cycle.started_at && cycle.finished_at
+    ? formatDuration(Math.floor((new Date(cycle.finished_at).getTime() - new Date(cycle.started_at).getTime()) / 1000))
+    : null
   const total = cycle.tld_success + cycle.tld_failed + cycle.tld_skipped + cycle.tld_load_only
 
   return (
@@ -990,44 +861,18 @@ function CycleRow({ cycle }: { cycle: IngestionCycleItem }) {
       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${meta.className}`}>
         {meta.label}
       </span>
-
       <span className="text-muted-foreground">{formatDateTime(cycle.started_at)}</span>
-
-      {duration && (
-        <span className="font-mono text-xs text-muted-foreground">{duration}</span>
-      )}
-
+      {dur && <span className="font-mono text-xs text-muted-foreground">{dur}</span>}
       <span className="text-xs text-muted-foreground">
         gatilho: <span className="font-medium text-foreground">{cycle.triggered_by}</span>
       </span>
-
       <span className="ml-auto flex shrink-0 flex-wrap gap-x-3 text-xs text-muted-foreground">
         <span className="text-emerald-700 dark:text-emerald-300">{cycle.tld_success} ok</span>
-        {cycle.tld_load_only > 0 && (
-          <span className="text-blue-700 dark:text-blue-300">{cycle.tld_load_only} load-only</span>
-        )}
+        {cycle.tld_load_only > 0 && <span className="text-blue-700 dark:text-blue-300">{cycle.tld_load_only} load-only</span>}
         {cycle.tld_skipped > 0 && <span>{cycle.tld_skipped} skip</span>}
-        {cycle.tld_failed > 0 && (
-          <span className="text-red-700 dark:text-red-300">{cycle.tld_failed} falha</span>
-        )}
+        {cycle.tld_failed > 0 && <span className="text-red-700 dark:text-red-300">{cycle.tld_failed} falha</span>}
         <span className="text-muted-foreground">/ {cycle.tld_total ?? total} TLDs</span>
       </span>
-    </div>
-  )
-}
-
-function R2Count({ label, value, tone }: { label: string; value: number; tone: "warning" | "danger" | "success" | "neutral" }) {
-  const toneClass = {
-    warning: "text-amber-700 dark:text-amber-300",
-    danger: "text-red-700 dark:text-red-300",
-    success: "text-emerald-700 dark:text-emerald-300",
-    neutral: "text-muted-foreground",
-  }[tone]
-
-  return (
-    <div className="rounded-md border border-border-subtle p-3">
-      <div className={`font-mono text-xl font-semibold tabular-nums ${toneClass}`}>{formatCount(value)}</div>
-      <div className="mt-1 text-xs text-muted-foreground">{label}</div>
     </div>
   )
 }

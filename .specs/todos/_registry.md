@@ -12,6 +12,8 @@
 | 009 | Correções de Confiabilidade no Monitoramento de Ingestão | in_progress | .specs/todos/009/plan.md | 2026-04-26 |
 | 010 | Catálogo de Problemas: Ciclo de Ingestão em Produção | in_progress | .specs/todos/010/plan.md | 2026-04-27 |
 | 011 | Ingestão "Boring": estabilização estrutural do ciclo diário | todo | .specs/todos/011/plan.md | 2026-04-27 |
+| 012 | Incidente 29/04: 16 TLDs com falha + API 500 em tld-status openintel | todo | .specs/todos/012/plan.md | 2026-04-29 |
+| 013 | Ingestão dual-fase: visibilidade R2 ↔ PostgreSQL e reprocessamento granular por TLD | todo | .specs/todos/013/plan.md | 2026-04-29 |
 
 ## Legenda de status
 

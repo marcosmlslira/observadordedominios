@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
@@ -32,6 +33,8 @@ from ingestion.config.settings import Settings
 log = logging.getLogger(__name__)
 
 _PARALLEL_WORKERS = 4
+_SHARD_MAX_RETRIES = 3
+_SHARD_RETRY_BACKOFF = (2.0, 5.0, 15.0)  # seconds between attempts
 
 
 def _date_to_int(d: str) -> int:
@@ -135,30 +138,52 @@ def _load_shard_worker(args: _ShardArgs) -> int:
 
     # ── A1: Idempotent load via staging table ─────────────────────────────
     # COPY into a temporary table (no PK constraints), then INSERT into the
-    # real partition with ON CONFLICT DO NOTHING.  This makes LOAD_ONLY reruns
-    # and recovery from partial failures safe without duplicate-key errors.
-    conn = psycopg2.connect(args.database_url)
-    try:
-        with conn.cursor() as cur:
-            stage = f"_stage_{args.partition}_{args.shard_idx}"
-            cur.execute(
-                f"CREATE TEMP TABLE {stage} (LIKE {args.partition} INCLUDING DEFAULTS)"
-                f" ON COMMIT DROP"
+    # real partition with ON CONFLICT DO NOTHING.  Retried up to _SHARD_MAX_RETRIES
+    # times on OperationalError (server closed the connection / max_connections).
+    last_exc: Exception | None = None
+    for attempt in range(_SHARD_MAX_RETRIES):
+        if attempt > 0:
+            delay = _SHARD_RETRY_BACKOFF[min(attempt - 1, len(_SHARD_RETRY_BACKOFF) - 1)]
+            log.warning(
+                "loader shard retry %d/%d tld=%s shard=%d delay=%.0fs err=%s",
+                attempt, _SHARD_MAX_RETRIES - 1, args.tld, args.shard_idx, delay, last_exc,
             )
-            cur.copy_expert(
-                f"COPY {stage} ({col_list}) FROM STDIN"
-                f" WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')",
-                buf,
-            )
-            cur.execute(
-                f"INSERT INTO {args.partition} ({col_list})"
-                f" SELECT {col_list} FROM {stage}"
-                f" ON CONFLICT DO NOTHING"
-            )
-            inserted = cur.rowcount
-        conn.commit()
-    finally:
-        conn.close()
+            time.sleep(delay)
+            buf.seek(0)  # rewind for retry
+        conn = psycopg2.connect(args.database_url)
+        try:
+            with conn.cursor() as cur:
+                stage = f"_stage_{args.partition}_{args.shard_idx}"
+                cur.execute(
+                    f"CREATE TEMP TABLE {stage} (LIKE {args.partition} INCLUDING DEFAULTS)"
+                    f" ON COMMIT DROP"
+                )
+                cur.copy_expert(
+                    f"COPY {stage} ({col_list}) FROM STDIN"
+                    f" WITH (FORMAT text, DELIMITER E'\\t', NULL '\\N')",
+                    buf,
+                )
+                cur.execute(
+                    f"INSERT INTO {args.partition} ({col_list})"
+                    f" SELECT {col_list} FROM {stage}"
+                    f" ON CONFLICT DO NOTHING"
+                )
+                inserted = cur.rowcount
+            conn.commit()
+            break  # success — exit retry loop
+        except psycopg2.OperationalError as exc:
+            last_exc = exc
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            if attempt == _SHARD_MAX_RETRIES - 1:
+                raise
+        finally:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
 
     with args.counter_lock:
         args.total_counter[0] += inserted

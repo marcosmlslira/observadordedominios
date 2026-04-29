@@ -210,7 +210,7 @@ def _process_tld_local(
 
     try:
         if db_url:
-            run_id = create_run(db_url, source, tld)
+            run_id = create_run(db_url, source, tld, phase="full" if phase == TldPhase.FULL_RUN else "pg")
             touch_run(db_url, run_id)
 
         domains_seen = domains_inserted = domains_deleted = 0
@@ -370,6 +370,7 @@ def _load_tld_from_r2(
         # Find the actual snapshot date from R2 markers (OpenINTEL lags 2-5 days)
         snap_str = today_str
         if check_marker:
+
             today = date.fromisoformat(today_str)
             actual_date = _find_latest_marker_date(storage, layout, source, tld, today)
             if actual_date is None:
@@ -396,7 +397,7 @@ def _load_tld_from_r2(
 
         if db_url:
             if run_id is None:
-                run_id = create_run(db_url, source, tld)
+                run_id = create_run(db_url, source, tld, phase="pg")
             touch_run(db_url, run_id)
             load_result = load_delta(
                 database_url=db_url,
@@ -480,7 +481,7 @@ def _submit_databricks_batch(
     if cfg.database_url:
         for tld in tlds:
             try:
-                run_id = create_run(cfg.database_url, source, tld)
+                run_id = create_run(cfg.database_url, source, tld, phase="r2")
                 run_ids[tld] = run_id
                 touch_run(cfg.database_url, run_id)
             except Exception as exc:  # noqa: BLE001
@@ -540,8 +541,20 @@ def _submit_databricks_batch(
             results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
         return results
 
-    # Databricks job succeeded — load PG per TLD, checking R2 markers for safety
+    # Databricks job succeeded — close phase='r2' runs, then load PG per TLD
     for tld in tlds:
+        r2_run_id = run_ids.get(tld)
+        if r2_run_id and cfg.database_url:
+            try:
+                finish_run(
+                    cfg.database_url,
+                    r2_run_id,
+                    status="success",
+                    reason_code="databricks_batch_ok",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        # create a fresh phase='pg' run for the actual PG load step
         r = _load_tld_from_r2(
             source,
             tld,
@@ -550,7 +563,7 @@ def _submit_databricks_batch(
             storage,
             layout,
             check_marker=True,
-            existing_run_id=run_ids.get(tld),
+            existing_run_id=None,  # always create a new phase='pg' run
         )
         results.append(r)
     return results
@@ -606,19 +619,27 @@ def _process_large_tlds(
     # .com: always solo, always last
     for tld in com_tlds:
         log.info("databricks solo: source=%s tld=%s (always last)", source, tld)
-        run_id: str | None = None
+        r2_run_id: str | None = None
         try:
             if cfg.database_url:
-                run_id = create_run(cfg.database_url, source, tld)
-                touch_run(cfg.database_url, run_id)
+                r2_run_id = create_run(cfg.database_url, source, tld, phase="r2")
+                touch_run(cfg.database_url, r2_run_id)
             result = submitter.submit(
                 source,
                 tld,
                 snapshot_date=today_str,
                 wait=True,
-                on_poll=(lambda: run_id and cfg.database_url and touch_run(cfg.database_url, run_id)),
+                on_poll=(lambda: r2_run_id and cfg.database_url and touch_run(cfg.database_url, r2_run_id)),
             )
             if result.get("status") == "ok":
+                # close phase='r2' run, then create a fresh phase='pg' run
+                if r2_run_id and cfg.database_url:
+                    finish_run(
+                        cfg.database_url,
+                        r2_run_id,
+                        status="success",
+                        reason_code="databricks_solo_ok",
+                    )
                 r = _load_tld_from_r2(
                     source,
                     tld,
@@ -627,14 +648,14 @@ def _process_large_tlds(
                     storage,
                     layout,
                     check_marker=True,
-                    existing_run_id=run_id,
+                    existing_run_id=None,  # creates a new phase='pg' run
                 )
             else:
                 err = f"Databricks run failed (result_state={result.get('result_state', 'UNKNOWN')})"
-                if run_id and cfg.database_url:
+                if r2_run_id and cfg.database_url:
                     finish_run(
                         cfg.database_url,
-                        run_id,
+                        r2_run_id,
                         status="failed",
                         reason_code="databricks_run_error",
                         error_message=err,
@@ -643,10 +664,10 @@ def _process_large_tlds(
         except Exception as exc:  # noqa: BLE001
             err = str(exc)
             log.error("databricks solo tld=%s error: %s", tld, err, exc_info=True)
-            if run_id and cfg.database_url:
+            if r2_run_id and cfg.database_url:
                 finish_run(
                     cfg.database_url,
-                    run_id,
+                    r2_run_id,
                     status="failed",
                     reason_code="databricks_submit_error",
                     error_message=err,
@@ -757,30 +778,37 @@ def run_cycle(
                         )
                     )
             for tld in com_tlds:
-                run_id: str | None = None
+                r2_run_id_db: str | None = None
                 try:
                     if db_url:
-                        run_id = create_run(db_url, source, tld)
-                        touch_run(db_url, run_id)
+                        r2_run_id_db = create_run(db_url, source, tld, phase="r2")
+                        touch_run(db_url, r2_run_id_db)
                     result = submitter.submit(
                         source,
                         tld,
                         snapshot_date=today_str,
                         wait=True,
-                        on_poll=(lambda: run_id and db_url and touch_run(db_url, run_id)),
+                        on_poll=(lambda: r2_run_id_db and db_url and touch_run(db_url, r2_run_id_db)),
                     )
                     if result.get("status") != "ok":
                         err = f"Databricks run failed (result_state={result.get('result_state', 'UNKNOWN')})"
-                        if run_id and db_url:
+                        if r2_run_id_db and db_url:
                             finish_run(
                                 db_url,
-                                run_id,
+                                r2_run_id_db,
                                 status="failed",
                                 reason_code="databricks_run_error",
                                 error_message=err,
                             )
                         results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
                         continue
+                    if r2_run_id_db and db_url:
+                        finish_run(
+                            db_url,
+                            r2_run_id_db,
+                            status="success",
+                            reason_code="databricks_solo_ok",
+                        )
                     results.append(
                         _load_tld_from_r2(
                             source,
@@ -790,15 +818,15 @@ def run_cycle(
                             storage,
                             layout,
                             check_marker=True,
-                            existing_run_id=run_id,
+                            existing_run_id=None,  # new phase='pg' run
                         )
                     )
                 except Exception as exc:  # noqa: BLE001
                     err = str(exc)
-                    if run_id and db_url:
+                    if r2_run_id_db and db_url:
                         finish_run(
                             db_url,
-                            run_id,
+                            r2_run_id_db,
                             status="failed",
                             reason_code="databricks_submit_error",
                             error_message=err,

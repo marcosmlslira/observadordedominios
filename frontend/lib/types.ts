@@ -708,6 +708,60 @@ export interface IngestionIncidentsResponse {
   items: IngestionIncidentItem[]
 }
 
+// ── Dual-phase heatmap types ─────────────────────────
+
+export type PhaseStatus = "ok" | "pending" | "failed" | "running" | "no_snapshot"
+
+export interface TldDailyStatus {
+  date: string
+  r2_status: PhaseStatus
+  pg_status: PhaseStatus
+  r2_reason: string | null
+  pg_reason: string | null
+  error: string | null
+  duration_seconds: number | null
+  domains_inserted: number
+  domains_deleted: number
+}
+
+export interface HeatmapTldRow {
+  tld: string
+  source: string
+  domain_count: number
+  days: TldDailyStatus[]
+}
+
+export interface HeatmapResponse {
+  source: string | null
+  days: string[]
+  rows: HeatmapTldRow[]
+}
+
+export interface DailySummaryItem {
+  date: string
+  source: string
+  tld_total: number
+  r2_ok: number
+  r2_failed: number
+  pg_ok: number
+  pg_failed: number
+  pg_pending: number
+  no_snapshot: number
+  duration_seconds: number | null
+  domains_inserted: number
+  pg_complete_pct: number
+}
+
+export interface DailySummaryResponse {
+  items: DailySummaryItem[]
+}
+
+export interface TldReloadResponse {
+  status: "accepted" | "already_running" | "not_configured"
+  message: string
+  run_id: string | null
+}
+
 // ── Monitoring Pipeline ─────────────────────────────
 
 export interface DomainCheckDetail {

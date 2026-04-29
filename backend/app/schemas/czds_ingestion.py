@@ -235,7 +235,7 @@ class OpenintelStatusResponse(BaseModel):
 
 # ── Unified TLD Status (Phase 5A) ─────────────────────────────────────────────
 
-TldStatusCategory = Literal["ok", "running", "failed", "never_run"]
+TldStatusCategory = Literal["ok", "running", "failed", "never_run", "partial", "never_attempted"]
 
 
 class TldStatusItem(BaseModel):
@@ -323,3 +323,58 @@ class TldHealthItem(BaseModel):
 class TldHealthResponse(BaseModel):
     items: list[TldHealthItem]
     total: int
+
+
+# ── Dual-phase heatmap schemas (Sprint 3) ─────────────────────────────────────
+
+PhaseStatus = Literal["ok", "pending", "failed", "running", "no_snapshot"]
+
+
+class TldDailyStatus(BaseModel):
+    date: date
+    r2_status: PhaseStatus
+    pg_status: PhaseStatus
+    r2_reason: str | None = None
+    pg_reason: str | None = None
+    error: str | None = None
+    duration_seconds: int | None = None
+    domains_inserted: int = 0
+    domains_deleted: int = 0
+
+
+class HeatmapTldRow(BaseModel):
+    tld: str
+    source: str
+    domain_count: int = 0
+    days: list[TldDailyStatus]
+
+
+class HeatmapResponse(BaseModel):
+    source: str | None
+    days: list[str]
+    rows: list[HeatmapTldRow]
+
+
+class DailySummaryItem(BaseModel):
+    date: date
+    source: str
+    tld_total: int = 0
+    r2_ok: int = 0
+    r2_failed: int = 0
+    pg_ok: int = 0
+    pg_failed: int = 0
+    pg_pending: int = 0
+    no_snapshot: int = 0
+    duration_seconds: int | None = None
+    domains_inserted: int = 0
+    pg_complete_pct: float = 0.0
+
+
+class DailySummaryResponse(BaseModel):
+    items: list[DailySummaryItem]
+
+
+class TldReloadResponse(BaseModel):
+    status: Literal["accepted", "already_running", "not_configured"]
+    message: str
+    run_id: str | None = None

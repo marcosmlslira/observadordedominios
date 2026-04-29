@@ -128,32 +128,113 @@ class _HealthHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def _check_token(self, cfg) -> bool:
+        if cfg.manual_trigger_token:
+            given = self.headers.get("X-Ingestion-Trigger-Token") or ""
+            if given != cfg.manual_trigger_token:
+                _json_response(self, 401, {"status": "unauthorized"})
+                return False
+        return True
+
+    def _read_json_body(self) -> dict:
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length) if length else b"{}"
+            return json.loads(raw) if raw else {}
+        except Exception:  # noqa: BLE001
+            return {}
+
     def do_POST(self) -> None:
-        if self.path != "/run-now":
-            self.send_response(404)
-            self.end_headers()
-            return
+        cfg = get_settings()
 
         if _shutting_down:
             _json_response(self, 503, {"status": "shutting_down"})
             return
 
-        cfg = get_settings()
-        if cfg.manual_trigger_token:
-            given_token = self.headers.get("X-Ingestion-Trigger-Token") or ""
-            if given_token != cfg.manual_trigger_token:
-                _json_response(self, 401, {"status": "unauthorized"})
-                return
-
-        if _run_in_progress:
-            _json_response(self, 409, {"status": "already_running"})
+        if not self._check_token(cfg):
             return
 
-        threading.Thread(target=lambda: _run_daily_cycle(trigger="manual"), daemon=True).start()
-        _json_response(self, 202, {"status": "accepted"})
+        if self.path == "/run-now":
+            if _run_in_progress:
+                _json_response(self, 409, {"status": "already_running"})
+                return
+            threading.Thread(target=lambda: _run_daily_cycle(trigger="manual"), daemon=True).start()
+            _json_response(self, 202, {"status": "accepted"})
+            return
+
+        if self.path in ("/tld/reload", "/tld/run"):
+            body = self._read_json_body()
+            source = body.get("source")
+            tld = body.get("tld")
+            snapshot_date = body.get("snapshot_date")
+            if not source or not tld:
+                _json_response(self, 400, {"status": "error", "message": "source and tld are required"})
+                return
+            if source not in {"czds", "openintel"}:
+                _json_response(self, 400, {"status": "error", "message": "invalid source"})
+                return
+
+            action = "reload" if self.path == "/tld/reload" else "run"
+
+            def _run_tld_action() -> None:
+                _run_single_tld(
+                    source=source,
+                    tld=tld,
+                    action=action,
+                    snapshot_date=snapshot_date,
+                )
+
+            threading.Thread(target=_run_tld_action, daemon=True).start()
+            _json_response(self, 202, {"status": "accepted", "message": f"TLD {tld} {action} enqueued"})
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
     def log_message(self, *args) -> None:  # silence access log
         pass
+
+
+def _run_single_tld(
+    source: str,
+    tld: str,
+    action: str,
+    snapshot_date: str | None,
+) -> None:
+    """Run reload (LOAD_ONLY) or full run for a single TLD.
+
+    Called from the HTTP handler in a daemon thread. Errors are logged but not raised.
+    """
+    from datetime import date as _date
+    from ingestion.orchestrator.pipeline import (
+        TldPhase,
+        _find_latest_marker_date,
+        _process_tld_local,
+        _load_tld_from_r2,
+        check_phase,
+    )
+    from ingestion.storage.layout import Layout
+    from ingestion.storage.r2 import R2Storage
+
+    cfg = get_settings()
+    storage = R2Storage(cfg)
+    layout = Layout(cfg.r2_prefix)
+    today = _date.fromisoformat(snapshot_date) if snapshot_date else _date.today()
+
+    log.info("single_tld action=%s source=%s tld=%s date=%s", action, source, tld, today)
+
+    try:
+        if action == "reload":
+            _load_tld_from_r2(
+                source, tld, today.isoformat(), cfg, storage, layout,
+                check_marker=True, existing_run_id=None,
+            )
+        else:
+            phase = check_phase(cfg.database_url, storage, layout, source, tld, today)
+            _process_tld_local(source, tld, phase, cfg, storage, layout, today)
+        log.info("single_tld done action=%s source=%s tld=%s", action, source, tld)
+    except Exception as exc:  # noqa: BLE001
+        log.error("single_tld error action=%s source=%s tld=%s: %s", action, source, tld, exc, exc_info=True)
 
 
 def _start_health_server(port: int = 8080) -> None:
@@ -327,7 +408,7 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         _run_in_progress = False
         _run_lock.release()
 
-
+
 
 # ── CZDS recovery job ─────────────────────────────────────────────────────────
 
