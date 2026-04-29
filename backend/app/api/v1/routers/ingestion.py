@@ -1154,22 +1154,24 @@ def get_heatmap(
     tld_domain_count: dict[tuple[str, str], int] = {}
     all_days = {(today_utc - timedelta(days=i)).isoformat() for i in range(days)}
 
+    def _resolve_phase(db_status: str | None, key: tuple, is_pg: bool) -> str:
+        if key in running_keys:
+            return "running"
+        if db_status in ("success", "ok"):
+            return "ok"
+        if db_status == "failed":
+            return "failed"
+        if db_status == "running":
+            return "running"
+        if db_status is None:
+            # PG-NULL: R2 ran but PG hasn't loaded yet → pending (amber)
+            # R2-NULL: only a PG run exists for this day, R2 was done externally → no_snapshot (grey)
+            return "pending" if is_pg else "no_snapshot"
+        return "pending"
+
     for row in rows:
         key = (row.source, row.tld)
         tld_domain_count[key] = row.domain_count
-
-        def _resolve_phase(db_status: str | None, key: tuple, is_pg: bool) -> str:
-            if (key in running_keys):
-                return "running"
-            if db_status in ("success", "ok"):
-                return "ok"
-            if db_status == "failed":
-                return "failed"
-            if db_status == "running":
-                return "running"
-            if is_pg and db_status is None:
-                return "pending"
-            return "pending"
 
         r2 = _resolve_phase(row.r2_status, key, is_pg=False)
         pg = _resolve_phase(row.pg_status, key, is_pg=True)
