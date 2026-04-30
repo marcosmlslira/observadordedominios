@@ -87,7 +87,7 @@ def upgrade() -> None:
     op.execute(_VIEW_SQL)
     op.execute("""
         CREATE INDEX IF NOT EXISTS ix_ict_cycle_day
-            ON ingestion_cycle ((started_at::date) DESC)
+            ON ingestion_cycle (((started_at AT TIME ZONE 'UTC')::date) DESC)
     """)
 
 
