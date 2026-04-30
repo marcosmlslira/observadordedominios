@@ -51,6 +51,8 @@ from app.schemas.czds_ingestion import (
     TldDailyStatus,
     DailySummaryResponse,
     DailySummaryItem,
+    PolicyCoverageSourceItem,
+    PolicyCoverageResponse,
     TldReloadResponse,
 )
 from app.services.tld_coverage import get_target_tlds, resolve_tld_coverages
@@ -1269,6 +1271,59 @@ def get_daily_summary(
         ))
 
     return DailySummaryResponse(items=items)
+
+
+@router.get(
+    "/policy-coverage",
+    response_model=PolicyCoverageResponse,
+    summary="Aggregated policy execution coverage per source for a specific date",
+)
+def get_policy_coverage(
+    date: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Aggregation of policy status from tld_daily_policy_status_v.
+
+    Differentiates between planned, successful, failed, and not reached (missed) TLDs.
+    """
+    today_utc = datetime.now(timezone.utc).date()
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d").date() if date else today_utc
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+
+    rows = db.execute(
+        text("""
+            SELECT
+                source,
+                count(*)                                                              AS enabled_total,
+                count(*) FILTER (WHERE policy_status NOT IN ('planned', 'not_reached')) AS attempted_today,
+                count(*) FILTER (WHERE policy_status = 'success')                     AS success_today,
+                count(*) FILTER (WHERE policy_status = 'failed')                      AS failed_today,
+                count(*) FILTER (WHERE policy_status = 'not_reached')                  AS not_reached_today
+            FROM tld_daily_policy_status_v
+            WHERE day = :target_date
+            GROUP BY source
+            ORDER BY source
+        """),
+        {"target_date": target_date},
+    ).fetchall()
+
+    items = []
+    for r in rows:
+        total = r.enabled_total or 0
+        success = r.success_today or 0
+        items.append(PolicyCoverageSourceItem(
+            source=r.source,
+            enabled_total=total,
+            attempted_today=r.attempted_today or 0,
+            success_today=success,
+            failed_today=r.failed_today or 0,
+            not_reached_today=r.not_reached_today or 0,
+            policy_coverage_pct=round(success / total, 4) if total > 0 else 0.0,
+        ))
+
+    return PolicyCoverageResponse(date=target_date, items=items)
 
 
 # ── POST /v1/ingestion/tld/{source}/{tld}/reload ──────────────────────────────

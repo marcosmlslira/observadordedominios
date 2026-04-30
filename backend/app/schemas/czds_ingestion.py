@@ -374,6 +374,21 @@ class DailySummaryResponse(BaseModel):
     items: list[DailySummaryItem]
 
 
+class PolicyCoverageSourceItem(BaseModel):
+    source: str
+    enabled_total: int
+    attempted_today: int
+    success_today: int
+    failed_today: int
+    not_reached_today: int
+    policy_coverage_pct: float
+
+
+class PolicyCoverageResponse(BaseModel):
+    date: date
+    items: list[PolicyCoverageSourceItem]
+
+
 class TldReloadResponse(BaseModel):
     status: Literal["accepted", "already_running", "not_configured"]
     message: str
