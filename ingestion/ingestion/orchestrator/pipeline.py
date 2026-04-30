@@ -31,10 +31,13 @@ if TYPE_CHECKING:
 from ingestion.databricks.submitter import LARGE_TLDS, DatabricksSubmitter
 from ingestion.loader.delta_loader import load_delta
 from ingestion.observability.run_recorder import (
+    close_cycle_tld_pending,
     create_run,
     finish_run,
+    plan_cycle_tlds,
     recover_stale_running_runs,
     touch_run,
+    update_cycle_tld,
 )
 
 log = logging.getLogger(__name__)
@@ -201,17 +204,32 @@ def _process_tld_local(
     storage: "R2Storage",
     layout: "Layout",
     snapshot_date: date,
+    *,
+    cycle_id: str | None = None,
 ) -> TldResult:
     """Execute one TLD locally (FULL_RUN or LOAD_ONLY). Isolated — never raises."""
+    from datetime import datetime, timezone as _tz  # noqa: PLC0415
     today_str = snapshot_date.isoformat()
     db_url = cfg.database_url
     run_id: str | None = None
     _mem_start = _log_mem(tld, source, phase.value, "start")
+    _tld_started_at = datetime.now(_tz.utc)
 
     try:
         if db_url:
             run_id = create_run(db_url, source, tld, phase="full" if phase == TldPhase.FULL_RUN else "pg")
             touch_run(db_url, run_id)
+            if cycle_id:
+                try:
+                    update_cycle_tld(
+                        db_url, cycle_id, source, tld,
+                        execution_status="running",
+                        pg_run_id=run_id if phase == TldPhase.LOAD_ONLY else None,
+                        r2_run_id=run_id if phase == TldPhase.FULL_RUN else None,
+                        started_at=_tld_started_at,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
         domains_seen = domains_inserted = domains_deleted = 0
 
@@ -254,6 +272,16 @@ def _process_tld_local(
                         reason_code="no_snapshot",
                         error_message="No snapshot available for this TLD/date",
                     )
+                if cycle_id and db_url:
+                    try:
+                        update_cycle_tld(
+                            db_url, cycle_id, source, tld,
+                            execution_status="skipped",
+                            reason_code="no_snapshot",
+                            started_at=_tld_started_at,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                 return TldResult(
                     tld=tld,
                     phase=phase,
@@ -316,6 +344,18 @@ def _process_tld_local(
                     domains_deleted=domains_deleted,
                     snapshot_date=snap_str,
                 )
+            if cycle_id:
+                try:
+                    update_cycle_tld(
+                        db_url, cycle_id, source, tld,
+                        execution_status="success",
+                        reason_code=_run_reason,
+                        snapshot_date=snap_str,
+                        pg_run_id=run_id,
+                        started_at=_tld_started_at,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
             # ── A3: Reconcile openintel_tld_status after successful load ──
             if source == "openintel":
@@ -346,6 +386,18 @@ def _process_tld_local(
                 )
             except Exception:  # noqa: BLE001
                 pass
+        if cycle_id and db_url:
+            try:
+                update_cycle_tld(
+                    db_url, cycle_id, source, tld,
+                    execution_status="failed",
+                    reason_code="tld_runner_error",
+                    error_message=err[:500],
+                    pg_run_id=run_id,
+                    started_at=_tld_started_at,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         return TldResult(tld=tld, phase=phase, status="error", error=err)
 
 
@@ -362,6 +414,10 @@ def _load_tld_from_r2(
     *,
     check_marker: bool = False,
     existing_run_id: str | None = None,
+    cycle_id: str | None = None,
+    databricks_run_id: int | None = None,
+    databricks_run_url: str | None = None,
+    databricks_result_state: str | None = None,
 ) -> TldResult:
     """Load one TLD from R2 into PG (post-Databricks step). Returns TldResult."""
     db_url = cfg.database_url
@@ -432,6 +488,20 @@ def _load_tld_from_r2(
                 domains_deleted=removed,
                 snapshot_date=snap_str,
             )
+            if cycle_id:
+                try:
+                    update_cycle_tld(
+                        db_url, cycle_id, source, tld,
+                        execution_status="success",
+                        reason_code=run_reason,
+                        snapshot_date=snap_str,
+                        pg_run_id=run_id,
+                        databricks_run_id=databricks_run_id,
+                        databricks_run_url=databricks_run_url,
+                        databricks_result_state=databricks_result_state,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
             # ── A3: Reconcile openintel_tld_status after successful load ──
             if source == "openintel":
                 _reconcile_openintel_status(db_url, tld, snap_str)
@@ -462,6 +532,25 @@ def _load_tld_from_r2(
                 )
             except Exception:  # noqa: BLE001
                 pass
+        if cycle_id and db_url:
+            try:
+                _err_reason = (
+                    "databricks_contract_violation" if "databricks_contract_violation" in err
+                    else "r2_marker_missing" if "marker missing" in err.lower()
+                    else "pg_load_error"
+                )
+                update_cycle_tld(
+                    db_url, cycle_id, source, tld,
+                    execution_status="failed",
+                    reason_code=_err_reason,
+                    error_message=err[:500],
+                    pg_run_id=run_id,
+                    databricks_run_id=databricks_run_id,
+                    databricks_run_url=databricks_run_url,
+                    databricks_result_state=databricks_result_state,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         return TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err)
 
 
@@ -473,6 +562,8 @@ def _submit_databricks_batch(
     storage: "R2Storage",
     layout: "Layout",
     today_str: str,
+    *,
+    cycle_id: str | None = None,
 ) -> list[TldResult]:
     """Submit one batch Databricks run for a list of TLDs, then load PG per-TLD."""
     log.info("databricks batch: source=%s tlds=%s", source, tlds)
@@ -484,6 +575,15 @@ def _submit_databricks_batch(
                 run_id = create_run(cfg.database_url, source, tld, phase="r2")
                 run_ids[tld] = run_id
                 touch_run(cfg.database_url, run_id)
+                if cycle_id:
+                    try:
+                        update_cycle_tld(
+                            cfg.database_url, cycle_id, source, tld,
+                            execution_status="running",
+                            r2_run_id=run_id,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception as exc:  # noqa: BLE001
                 log.warning("failed to create tracking run for %s/%s: %s", source, tld, exc)
 
@@ -496,6 +596,10 @@ def _submit_databricks_batch(
             except Exception:
                 pass
 
+    db_run_id: int | None = None
+    db_run_url: str | None = None
+    db_result_state: str | None = None
+
     try:
         result = submitter.submit_batch(
             source,
@@ -504,8 +608,13 @@ def _submit_databricks_batch(
             wait=True,
             on_poll=_heartbeat,
         )
+        # Capture Databricks metadata for all TLDs in this batch
+        db_run_id = result.get("run_id")
+        db_run_url = result.get("run_page_url")
+        db_result_state = result.get("result_state")
+
         if result.get("status") != "ok":
-            err = f"Databricks batch failed (result_state={result.get('result_state', 'UNKNOWN')})"
+            err = f"Databricks batch failed (result_state={db_result_state or 'UNKNOWN'})"
             log.error(err)
             for tld in tlds:
                 run_id = run_ids.get(tld)
@@ -519,6 +628,20 @@ def _submit_databricks_batch(
                             error_message=err,
                         )
                     except Exception:
+                        pass
+                if cycle_id and cfg.database_url:
+                    try:
+                        update_cycle_tld(
+                            cfg.database_url, cycle_id, source, tld,
+                            execution_status="failed",
+                            reason_code="databricks_run_error",
+                            error_message=err[:500],
+                            r2_run_id=run_ids.get(tld),
+                            databricks_run_id=db_run_id,
+                            databricks_run_url=db_run_url,
+                            databricks_result_state=db_result_state,
+                        )
+                    except Exception:  # noqa: BLE001
                         pass
                 results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
             return results
@@ -537,6 +660,17 @@ def _submit_databricks_batch(
                         error_message=err,
                     )
                 except Exception:
+                    pass
+            if cycle_id and cfg.database_url:
+                try:
+                    update_cycle_tld(
+                        cfg.database_url, cycle_id, source, tld,
+                        execution_status="failed",
+                        reason_code="databricks_submit_error",
+                        error_message=err[:500],
+                        r2_run_id=run_ids.get(tld),
+                    )
+                except Exception:  # noqa: BLE001
                     pass
             results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
         return results
@@ -564,6 +698,10 @@ def _submit_databricks_batch(
             layout,
             check_marker=True,
             existing_run_id=None,  # always create a new phase='pg' run
+            cycle_id=cycle_id,
+            databricks_run_id=db_run_id,
+            databricks_run_url=db_run_url,
+            databricks_result_state=db_result_state,
         )
         results.append(r)
     return results
@@ -577,6 +715,8 @@ def _process_large_tlds(
     storage: "R2Storage",
     layout: "Layout",
     snapshot_date: date,
+    *,
+    cycle_id: str | None = None,
 ) -> list[TldResult]:
     """Handle all large TLDs: LOAD_ONLY locally, FULL_RUN via Databricks batch."""
     today_str = snapshot_date.isoformat()
@@ -586,7 +726,7 @@ def _process_large_tlds(
     load_only = [t for t in large_tlds if phases[t] == TldPhase.LOAD_ONLY]
     for tld in load_only:
         log.info("large tld=%s LOAD_ONLY (local)", tld)
-        r = _process_tld_local(source, tld, TldPhase.LOAD_ONLY, cfg, storage, layout, snapshot_date)
+        r = _process_tld_local(source, tld, TldPhase.LOAD_ONLY, cfg, storage, layout, snapshot_date, cycle_id=cycle_id)
         results.append(r)
 
     # FULL_RUN: need Databricks — group non-.com together, .com last (czds only)
@@ -612,7 +752,7 @@ def _process_large_tlds(
                 len(chunk),
             )
             batch_results = _submit_databricks_batch(
-                source, chunk, submitter, cfg, storage, layout, today_str
+                source, chunk, submitter, cfg, storage, layout, today_str, cycle_id=cycle_id
             )
             results.extend(batch_results)
 
@@ -624,6 +764,11 @@ def _process_large_tlds(
             if cfg.database_url:
                 r2_run_id = create_run(cfg.database_url, source, tld, phase="r2")
                 touch_run(cfg.database_url, r2_run_id)
+                if cycle_id:
+                    try:
+                        update_cycle_tld(cfg.database_url, cycle_id, source, tld, execution_status="running", r2_run_id=r2_run_id)
+                    except Exception:  # noqa: BLE001
+                        pass
             result = submitter.submit(
                 source,
                 tld,
@@ -631,6 +776,10 @@ def _process_large_tlds(
                 wait=True,
                 on_poll=(lambda: r2_run_id and cfg.database_url and touch_run(cfg.database_url, r2_run_id)),
             )
+            _db_run_id = result.get("run_id")
+            _db_run_url = result.get("run_page_url")
+            _db_result_state = result.get("result_state")
+
             if result.get("status") == "ok":
                 # close phase='r2' run, then create a fresh phase='pg' run
                 if r2_run_id and cfg.database_url:
@@ -649,9 +798,13 @@ def _process_large_tlds(
                     layout,
                     check_marker=True,
                     existing_run_id=None,  # creates a new phase='pg' run
+                    cycle_id=cycle_id,
+                    databricks_run_id=_db_run_id,
+                    databricks_run_url=_db_run_url,
+                    databricks_result_state=_db_result_state,
                 )
             else:
-                err = f"Databricks run failed (result_state={result.get('result_state', 'UNKNOWN')})"
+                err = f"Databricks run failed (result_state={_db_result_state or 'UNKNOWN'})"
                 if r2_run_id and cfg.database_url:
                     finish_run(
                         cfg.database_url,
@@ -660,6 +813,20 @@ def _process_large_tlds(
                         reason_code="databricks_run_error",
                         error_message=err,
                     )
+                if cycle_id and cfg.database_url:
+                    try:
+                        update_cycle_tld(
+                            cfg.database_url, cycle_id, source, tld,
+                            execution_status="failed",
+                            reason_code="databricks_run_error",
+                            error_message=err[:500],
+                            r2_run_id=r2_run_id,
+                            databricks_run_id=_db_run_id,
+                            databricks_run_url=_db_run_url,
+                            databricks_result_state=_db_result_state,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                 r = TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err)
         except Exception as exc:  # noqa: BLE001
             err = str(exc)
@@ -672,6 +839,17 @@ def _process_large_tlds(
                     reason_code="databricks_submit_error",
                     error_message=err,
                 )
+            if cycle_id and cfg.database_url:
+                try:
+                    update_cycle_tld(
+                        cfg.database_url, cycle_id, source, tld,
+                        execution_status="failed",
+                        reason_code="databricks_submit_error",
+                        error_message=err[:500],
+                        r2_run_id=r2_run_id,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
             r = TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err)
         results.append(r)
 
@@ -687,6 +865,7 @@ def run_cycle(
     *,
     snapshot_date: date | None = None,
     stop_event: threading.Event | None = None,
+    cycle_id: str | None = None,
 ) -> list[TldResult]:
     """Run the full ingestion cycle for one source.
 
@@ -724,6 +903,21 @@ def run_cycle(
     if max_tlds:
         all_tlds = all_tlds[:max_tlds]
 
+    # Register the full plan upfront so every TLD has a row from the start
+    if db_url and cycle_id and all_tlds:
+        try:
+            plan_cycle_tlds(
+                db_url,
+                cycle_id,
+                source,
+                [
+                    {"tld": t, "planned_position": i, "planned_phase": "full_run"}
+                    for i, t in enumerate(all_tlds, start=1)
+                ],
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("plan_cycle_tlds failed (non-fatal): %s", exc)
+
     small_tlds = [t for t in all_tlds if t not in LARGE_TLDS]
     large_tlds = [t for t in all_tlds if t in LARGE_TLDS]
 
@@ -748,6 +942,11 @@ def run_cycle(
             phase = check_phase(db_url, storage, layout, source, tld, today)
             if phase == TldPhase.SKIP:
                 results.append(TldResult(tld=tld, phase=phase, status="skipped"))
+                if db_url and cycle_id:
+                    try:
+                        update_cycle_tld(db_url, cycle_id, source, tld, execution_status="skipped", reason_code="already_done_today")
+                    except Exception:  # noqa: BLE001
+                        pass
                 continue
             databricks_targets.append(tld)
 
@@ -775,6 +974,7 @@ def run_cycle(
                             storage,
                             layout,
                             today_str,
+                            cycle_id=cycle_id,
                         )
                     )
             for tld in com_tlds:
@@ -783,6 +983,11 @@ def run_cycle(
                     if db_url:
                         r2_run_id_db = create_run(db_url, source, tld, phase="r2")
                         touch_run(db_url, r2_run_id_db)
+                        if cycle_id:
+                            try:
+                                update_cycle_tld(db_url, cycle_id, source, tld, execution_status="running", r2_run_id=r2_run_id_db)
+                            except Exception:  # noqa: BLE001
+                                pass
                     result = submitter.submit(
                         source,
                         tld,
@@ -790,47 +995,42 @@ def run_cycle(
                         wait=True,
                         on_poll=(lambda: r2_run_id_db and db_url and touch_run(db_url, r2_run_id_db)),
                     )
+                    _db_run_id2 = result.get("run_id")
+                    _db_run_url2 = result.get("run_page_url")
+                    _db_result_state2 = result.get("result_state")
                     if result.get("status") != "ok":
-                        err = f"Databricks run failed (result_state={result.get('result_state', 'UNKNOWN')})"
+                        err = f"Databricks run failed (result_state={_db_result_state2 or 'UNKNOWN'})"
                         if r2_run_id_db and db_url:
-                            finish_run(
-                                db_url,
-                                r2_run_id_db,
-                                status="failed",
-                                reason_code="databricks_run_error",
-                                error_message=err,
-                            )
+                            finish_run(db_url, r2_run_id_db, status="failed", reason_code="databricks_run_error", error_message=err)
+                        if cycle_id and db_url:
+                            try:
+                                update_cycle_tld(db_url, cycle_id, source, tld, execution_status="failed", reason_code="databricks_run_error", error_message=err[:500], r2_run_id=r2_run_id_db, databricks_run_id=_db_run_id2, databricks_run_url=_db_run_url2, databricks_result_state=_db_result_state2)
+                            except Exception:  # noqa: BLE001
+                                pass
                         results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
                         continue
                     if r2_run_id_db and db_url:
-                        finish_run(
-                            db_url,
-                            r2_run_id_db,
-                            status="success",
-                            reason_code="databricks_solo_ok",
-                        )
+                        finish_run(db_url, r2_run_id_db, status="success", reason_code="databricks_solo_ok")
                     results.append(
                         _load_tld_from_r2(
-                            source,
-                            tld,
-                            today_str,
-                            cfg,
-                            storage,
-                            layout,
+                            source, tld, today_str, cfg, storage, layout,
                             check_marker=True,
-                            existing_run_id=None,  # new phase='pg' run
+                            existing_run_id=None,
+                            cycle_id=cycle_id,
+                            databricks_run_id=_db_run_id2,
+                            databricks_run_url=_db_run_url2,
+                            databricks_result_state=_db_result_state2,
                         )
                     )
                 except Exception as exc:  # noqa: BLE001
                     err = str(exc)
                     if r2_run_id_db and db_url:
-                        finish_run(
-                            db_url,
-                            r2_run_id_db,
-                            status="failed",
-                            reason_code="databricks_submit_error",
-                            error_message=err,
-                        )
+                        finish_run(db_url, r2_run_id_db, status="failed", reason_code="databricks_submit_error", error_message=err)
+                    if cycle_id and db_url:
+                        try:
+                            update_cycle_tld(db_url, cycle_id, source, tld, execution_status="failed", reason_code="databricks_submit_error", error_message=err[:500], r2_run_id=r2_run_id_db)
+                        except Exception:  # noqa: BLE001
+                            pass
                     results.append(TldResult(tld=tld, phase=TldPhase.FULL_RUN, status="error", error=err))
 
         ok = sum(1 for r in results if r.status == "ok")
@@ -855,9 +1055,14 @@ def run_cycle(
         if phase == TldPhase.SKIP:
             log.info("tld=%s SKIP (already done today)", tld)
             results.append(TldResult(tld=tld, phase=phase, status="skipped"))
+            if db_url and cycle_id:
+                try:
+                    update_cycle_tld(db_url, cycle_id, source, tld, execution_status="skipped", reason_code="already_done_today")
+                except Exception:  # noqa: BLE001
+                    pass
             continue
         log.info("tld=%s phase=%s (local)", tld, phase.value)
-        r = _process_tld_local(source, tld, phase, cfg, storage, layout, today)
+        r = _process_tld_local(source, tld, phase, cfg, storage, layout, today, cycle_id=cycle_id)
         results.append(r)
 
     # ── Large TLDs: check phases first, then route appropriately ─────────────
@@ -869,6 +1074,11 @@ def run_cycle(
             if phase == TldPhase.SKIP:
                 log.info("tld=%s SKIP (already done today)", tld)
                 results.append(TldResult(tld=tld, phase=phase, status="skipped"))
+                if db_url and cycle_id:
+                    try:
+                        update_cycle_tld(db_url, cycle_id, source, tld, execution_status="skipped", reason_code="already_done_today")
+                    except Exception:  # noqa: BLE001
+                        pass
             else:
                 phases[tld] = phase
                 pending_large.append(tld)
@@ -882,17 +1092,23 @@ def run_cycle(
                 )
                 for tld in pending_large:
                     if phases[tld] == TldPhase.FULL_RUN:
+                        err = "DATABRICKS_HOST/TOKEN not configured"
                         results.append(TldResult(
                             tld=tld, phase=TldPhase.FULL_RUN, status="error",
-                            error="DATABRICKS_HOST/TOKEN not configured",
+                            error=err,
                         ))
+                        if db_url and cycle_id:
+                            try:
+                                update_cycle_tld(db_url, cycle_id, source, tld, execution_status="failed", reason_code="databricks_submit_error", error_message=err)
+                            except Exception:  # noqa: BLE001
+                                pass
                     else:
                         # LOAD_ONLY can still run locally
-                        r = _process_tld_local(source, tld, TldPhase.LOAD_ONLY, cfg, storage, layout, today)
+                        r = _process_tld_local(source, tld, TldPhase.LOAD_ONLY, cfg, storage, layout, today, cycle_id=cycle_id)
                         results.append(r)
             else:
                 large_results = _process_large_tlds(
-                    source, pending_large, phases, cfg, storage, layout, today
+                    source, pending_large, phases, cfg, storage, layout, today, cycle_id=cycle_id
                 )
                 results.extend(large_results)
 

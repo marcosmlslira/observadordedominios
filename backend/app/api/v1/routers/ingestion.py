@@ -467,53 +467,38 @@ def trigger_daily_cycle(
 def get_cycle_status(
     db: Session = Depends(get_db),
 ):
-    """Derive the CZDS cycle state from existing run + policy data."""
-    policy_repo = CzdsPolicyRepository(db)
+    """Derive the CZDS cycle state from ingestion_tld_policy + ingestion_run."""
+    config_repo = IngestionConfigRepository(db)
     run_repo = IngestionRunRepository(db)
 
-    all_policies = policy_repo.list_all()
-    enabled_policies = [p for p in all_policies if p.is_enabled]
-    total_tlds = len(enabled_policies)
+    # Total enabled TLDs from canonical policy table (source of truth for the pipeline)
+    czds_policies = config_repo.list_tld_policies("czds")
+    total_tlds = sum(1 for p in czds_policies if p.is_enabled)
 
-    # Find today's CZDS runs (since midnight UTC or earliest running)
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    czds_runs = run_repo.list_runs(limit=500, source="czds")
-    today_runs = [r for r in czds_runs if r.started_at >= today_start]
-
-    completed = [r for r in today_runs if r.status == "success"]
-    failed = [r for r in today_runs if r.status == "failed"]
-    running = [r for r in today_runs if r.status == "running"]
-
-    # Skipped = suspended or in cooldown
     now = datetime.now(timezone.utc)
-    suspended_tlds = [
-        p for p in enabled_policies
-        if p.suspended_until and p.suspended_until > now
-    ]
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    current_tld = running[0].tld if running else None
-    is_active = len(running) > 0
-    cycle_started_at = min((r.started_at for r in today_runs), default=None)
+    # Aggregate today's runs in a single SQL query — no row-count limit
+    agg = run_repo.get_today_runs_agg("czds", today_start)
 
-    # Average duration of completed runs today
-    durations = []
-    for r in completed:
-        if r.finished_at and r.started_at:
-            durations.append((r.finished_at - r.started_at).total_seconds())
-    avg_duration = sum(durations) / len(durations) if durations else None
+    completed_count = agg["completed"]
+    failed_count = agg["failed"]
+    is_active = agg["running"] > 0
+    current_tld = agg["current_tld"]
+    cycle_started_at = agg["cycle_started_at"]
+    avg_duration = agg["avg_duration_s"]
 
     # Estimate completion
     estimated_completion = None
     if is_active and avg_duration and total_tlds > 0:
-        done_count = len(completed) + len(failed)
-        remaining = max(0, total_tlds - done_count - len(suspended_tlds))
+        done_count = completed_count + failed_count
+        remaining = max(0, total_tlds - done_count)
         if remaining > 0:
             estimated_completion = now + timedelta(seconds=avg_duration * remaining)
 
-    # Health summary across ALL policies (not just today)
-    tlds_failing = sum(1 for p in enabled_policies if (p.failure_count or 0) > 0)
-    tlds_suspended_count = len(suspended_tlds)
-    tlds_ok = total_tlds - tlds_failing - tlds_suspended_count
+    # Health: TLDs with any failure today
+    tlds_failing = failed_count
+    tlds_ok = max(0, total_tlds - tlds_failing)
 
     # Schedules (active sources only; cron comes from persisted source config)
     active_crons = _active_cron_map(db)
@@ -536,9 +521,9 @@ def get_cycle_status(
         czds_cycle=CycleStatusResponse(
             is_active=is_active,
             total_tlds=total_tlds,
-            completed_tlds=len(completed),
-            failed_tlds=len(failed),
-            skipped_tlds=len(suspended_tlds),
+            completed_tlds=completed_count,
+            failed_tlds=failed_count,
+            skipped_tlds=0,
             current_tld=current_tld,
             cycle_started_at=cycle_started_at,
             estimated_completion_at=estimated_completion,
@@ -547,8 +532,8 @@ def get_cycle_status(
         schedules=schedules,
         health=HealthSummary(
             total_tlds_enabled=total_tlds,
-            tlds_ok=max(0, tlds_ok),
-            tlds_suspended=tlds_suspended_count,
+            tlds_ok=tlds_ok,
+            tlds_suspended=0,
             tlds_failing=tlds_failing,
         ),
     )

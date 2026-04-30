@@ -267,12 +267,18 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         try:
             from ingestion.observability.run_recorder import (
                 close_cycle,
+                count_enabled_tlds,
                 heartbeat_cycle,
                 open_cycle,
                 recover_stale_running_cycles,
             )
             recover_stale_running_cycles(cfg.database_url, stale_after_minutes=60)
-            cycle_id = open_cycle(cfg.database_url, triggered_by=trigger)
+            tld_total: int | None = None
+            try:
+                tld_total = count_enabled_tlds(cfg.database_url)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("could not count enabled TLDs (non-fatal): %s", exc)
+            cycle_id = open_cycle(cfg.database_url, triggered_by=trigger, tld_total=tld_total)
             log.info("cycle tracking started cycle_id=%s", cycle_id)
         except Exception as exc:  # noqa: BLE001
             log.warning("cycle open failed (non-fatal): %s", exc)
@@ -326,7 +332,7 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         if not _stop_event.is_set():
             try:
                 _current_phase = "openintel"
-                oi_results = run_cycle("openintel", cfg, stop_event=_stop_event)
+                oi_results = run_cycle("openintel", cfg, stop_event=_stop_event, cycle_id=cycle_id)
                 _count_results(oi_results)
                 summary["openintel"] = {
                     "total": len(oi_results),
@@ -338,6 +344,15 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
             except Exception as exc:  # noqa: BLE001
                 log.exception("openintel cycle crashed: %s", exc)
                 summary["openintel"] = {"error": str(exc)}
+                # Close any openintel TLDs still planned — CZDS will still run
+                if cfg.database_url and cycle_id:
+                    try:
+                        from ingestion.observability.run_recorder import close_cycle_tld_pending  # noqa: PLC0415
+                        _nr = close_cycle_tld_pending(cfg.database_url, cycle_id, reason_code="source_crashed", source="openintel")
+                        if _nr:
+                            log.warning("openintel crash: closed %d not_reached TLD rows", _nr)
+                    except Exception:  # noqa: BLE001
+                        pass
         else:
             log.info("openintel skipped (shutting down)")
             summary["openintel"] = {"skipped": "shutting_down"}
@@ -346,7 +361,7 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
         if not _stop_event.is_set():
             try:
                 _current_phase = "czds"
-                czds_results = run_cycle("czds", cfg, stop_event=_stop_event)
+                czds_results = run_cycle("czds", cfg, stop_event=_stop_event, cycle_id=cycle_id)
                 _count_results(czds_results)
                 summary["czds"] = {
                     "total": len(czds_results),
@@ -386,6 +401,16 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
             pass
 
         if cfg.database_url and cycle_id:
+            try:
+                from ingestion.observability.run_recorder import close_cycle_tld_pending  # noqa: PLC0415
+                # Close any TLD rows still in 'planned'/'running' — these were not reached
+                # before the cycle ended (SIGTERM, source crash, or max_tlds cap).
+                _nr_reason = "worker_shutdown" if _shutting_down else "cycle_interrupted"
+                not_reached = close_cycle_tld_pending(cfg.database_url, cycle_id, reason_code=_nr_reason)
+                if not_reached:
+                    log.warning("cycle closed %d not_reached TLDs (reason=%s)", not_reached, _nr_reason)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("close_cycle_tld_pending failed (non-fatal): %s", exc)
             try:
                 close_cycle(
                     cfg.database_url,

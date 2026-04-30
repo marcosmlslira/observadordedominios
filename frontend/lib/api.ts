@@ -185,6 +185,12 @@ export const ingestionApi = {
     return api.get<import("./types").DailySummaryResponse>(`/v1/ingestion/daily-summary?${qs}`)
   },
 
+  getPolicyCoverage: (params?: { date?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.date) qs.set("date", params.date)
+    return api.get<import("./types").PolicyCoverageResponse>(`/v1/ingestion/policy-coverage?${qs}`)
+  },
+
   reloadTld: (source: string, tld: string, snapshotDate?: string) => {
     const qs = snapshotDate ? `?snapshot_date=${snapshotDate}` : ""
     return api.post<import("./types").TldReloadResponse>(

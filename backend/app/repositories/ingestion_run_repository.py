@@ -93,6 +93,33 @@ class IngestionRunRepository:
             .all()
         )
 
+    def get_today_runs_agg(self, source: str, today_start: datetime) -> dict:
+        """Return aggregated counts of today's runs for a source without a row-count limit."""
+        row = self.db.execute(
+            text("""
+                SELECT
+                    count(*) FILTER (WHERE status = 'success') AS completed,
+                    count(*) FILTER (WHERE status = 'failed')  AS failed,
+                    count(*) FILTER (WHERE status = 'running') AS running,
+                    min(started_at) AS cycle_started_at,
+                    avg(EXTRACT(EPOCH FROM (finished_at - started_at)))
+                        FILTER (WHERE status = 'success' AND finished_at IS NOT NULL) AS avg_duration_s,
+                    (array_agg(tld) FILTER (WHERE status = 'running'))[1] AS current_tld
+                FROM ingestion_run
+                WHERE source = :source
+                  AND started_at >= :today_start
+            """),
+            {"source": source, "today_start": today_start},
+        ).fetchone()
+        return {
+            "completed": row.completed or 0,
+            "failed": row.failed or 0,
+            "running": row.running or 0,
+            "cycle_started_at": row.cycle_started_at,
+            "avg_duration_s": float(row.avg_duration_s) if row.avg_duration_s else None,
+            "current_tld": row.current_tld,
+        }
+
     def get_source_summary(self) -> list[dict]:
         """Aggregate stats per ingestion source."""
         rows = self.db.execute(

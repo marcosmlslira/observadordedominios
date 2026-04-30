@@ -33,6 +33,8 @@ ingestion/observability/run_log.py
 ingestion/observability/run_recorder.py
 ingestion/orchestrator/__init__.py
 ingestion/orchestrator/pipeline.py
+ingestion/provisioning/__init__.py
+ingestion/provisioning/provision_tld.py
 ingestion/runners/__init__.py
 ingestion/runners/czds_runner.py
 ingestion/runners/openintel_runner.py
@@ -45,3 +47,4 @@ ingestion/sources/openintel/client.py
 ingestion/storage/__init__.py
 ingestion/storage/layout.py
 ingestion/storage/r2.py
+tests/test_ingestion_pipeline_resilience.py

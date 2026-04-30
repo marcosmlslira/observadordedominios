@@ -32,6 +32,7 @@ import type {
   IngestionCycleStatus,
   IngestionIncidentItem,
   PhaseStatus,
+  PolicyCoverageResponse,
   SourceSummary,
   TldDailyStatus,
 } from "@/lib/types"
@@ -39,7 +40,7 @@ import type {
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type SourceFilter = "all" | "czds" | "openintel"
-type StatusFilter = "all" | "attention" | "pg_ok" | "pg_failed" | "pg_pending" | "running" | "no_data"
+type StatusFilter = "all" | "attention" | "pg_ok" | "pg_failed" | "pg_pending" | "running" | "no_data" | "not_reached"
 type SortMode = "domains" | "attention" | "tld"
 
 const SOURCES: Array<{ value: SourceFilter; label: string }> = [
@@ -146,6 +147,8 @@ function buildCellTitle(tld: string, cell: TldDailyStatus): string {
     `.${tld} — ${cell.date}`,
     `R2: ${PHASE_LABEL[cell.r2_status]}${cell.r2_reason ? ` (${cell.r2_reason})` : ""}`,
     `PG: ${PHASE_LABEL[cell.pg_status]}${cell.pg_reason ? ` (${cell.pg_reason})` : ""}`,
+    cell.policy_status ? `Política: ${cell.policy_status}` : null,
+    cell.reason_code ? `Reason: ${cell.reason_code}` : null,
     cell.domains_inserted ? `${formatCount(cell.domains_inserted)} novos` : null,
     cell.duration_seconds ? `Duração: ${formatDuration(cell.duration_seconds)}` : null,
     cell.error ? `Erro: ${cell.error}` : null,
@@ -164,6 +167,7 @@ export default function IngestionPage() {
   const [heatmap, setHeatmap] = useState<HeatmapResponse | null>(null)
   const [dailySummary, setDailySummary] = useState<DailySummaryItem[]>([])
   const [summaries, setSummaries] = useState<SourceSummary[]>([])
+  const [policyCoverage, setPolicyCoverage] = useState<PolicyCoverageResponse | null>(null)
   const [cycleStatus, setCycleStatus] = useState<IngestionCycleStatus | null>(null)
   const [incidents, setIncidents] = useState<IngestionIncidentItem[]>([])
   const [recentCycles, setRecentCycles] = useState<IngestionCycleItem[]>([])
@@ -191,7 +195,7 @@ export default function IngestionPage() {
     const heatmapSource = sourceFilter !== "all" ? sourceFilter : undefined
 
     try {
-      const [heatmapData, summaryData, cycleData, incidentsData, cyclesData, dailyData] =
+      const [heatmapData, summaryData, cycleData, incidentsData, cyclesData, dailyData, policyData] =
         await Promise.all([
           ingestionApi.getHeatmap({ source: heatmapSource, days: periodDays }),
           api.get<SourceSummary[]>("/v1/ingestion/summary"),
@@ -205,6 +209,7 @@ export default function IngestionPage() {
             from_date: fromDate,
             to_date: todayKey,
           }).catch(() => ({ items: [] as DailySummaryItem[] })),
+          ingestionApi.getPolicyCoverage({ date: todayKey }).catch(() => null),
         ])
 
       setHeatmap(heatmapData)
@@ -213,6 +218,7 @@ export default function IngestionPage() {
       setIncidents(incidentsData.items ?? [])
       setRecentCycles(cyclesData.items ?? [])
       setDailySummary(dailyData.items ?? [])
+      setPolicyCoverage(policyData)
       setLastFetchedAt(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao carregar dados de ingestão")
@@ -271,6 +277,7 @@ export default function IngestionPage() {
         if (statusFilter === "pg_failed") return today.pg_status === "failed"
         if (statusFilter === "pg_pending") return today.pg_status === "pending" && today.r2_status === "ok"
         if (statusFilter === "running") return today.pg_status === "running" || today.r2_status === "running"
+        if (statusFilter === "not_reached") return today.policy_status === "not_reached" || today.policy_status === "not_started"
         if (statusFilter === "attention") return today.pg_status === "failed" || today.r2_status === "failed" || today.pg_status === "pending"
         return true
       })
@@ -298,8 +305,12 @@ export default function IngestionPage() {
     const inserted = dailySummary
       .filter((d) => d.date === todayKey)
       .reduce((acc, d) => acc + d.domains_inserted, 0)
-    return { pgOk, pgFailed, pgPending, r2Failed, running, inserted }
-  }, [heatmap, dailySummary, todayKey])
+    const policyNotReached = policyCoverage?.items?.reduce((acc, item) => acc + (item.not_reached_today ?? 0), 0) ?? 0
+    const policyEnabled = policyCoverage?.items?.reduce((acc, item) => acc + (item.enabled_total ?? 0), 0) ?? 0
+    const policySuccess = policyCoverage?.items?.reduce((acc, item) => acc + (item.success_today ?? 0), 0) ?? 0
+    const policyPct = policyEnabled > 0 ? Math.round((policySuccess / policyEnabled) * 100) : null
+    return { pgOk, pgFailed, pgPending, r2Failed, running, inserted, policyNotReached, policyEnabled, policySuccess, policyPct }
+  }, [heatmap, dailySummary, todayKey, policyCoverage])
 
   // ── Cell actions ──────────────────────────────────────────────────────────
 
@@ -361,6 +372,20 @@ export default function IngestionPage() {
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Heatmap dual-fase (R2 · PG) por TLD e data. Clique em uma célula para reprocessar.
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-muted/35 px-2 py-0.5">
+              Execução hoje:
+              <span className="font-semibold">{counters.pgOk}/{heatmap?.rows?.length ?? 0}</span>
+              <span className="text-muted-foreground">
+                ({(heatmap?.rows?.length ?? 0) > 0 ? Math.round((counters.pgOk / (heatmap?.rows?.length ?? 1)) * 100) : 0}%)
+              </span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle bg-muted/35 px-2 py-0.5">
+              Cobertura política:
+              <span className="font-semibold">{counters.policySuccess}/{counters.policyEnabled}</span>
+              <span className="text-muted-foreground">({counters.policyPct ?? 0}%)</span>
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>Última leitura: {formatDateTime(lastFetchedAt)}</span>
@@ -399,13 +424,14 @@ export default function IngestionPage() {
       )}
 
       {/* ── Counter cards ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-7">
         <MetricCard icon={CheckCircle2} label="PG ok hoje" value={formatCount(counters.pgOk)} tone="success" />
         <MetricCard icon={XCircle} label="PG falhou hoje" value={formatCount(counters.pgFailed)} tone="danger" />
         <MetricCard icon={Database} label="R2 falhou hoje" value={formatCount(counters.r2Failed)} tone="danger" />
         <MetricCard icon={Clock3} label="PG pendente" value={formatCount(counters.pgPending)} tone="warning" />
         <MetricCard icon={Loader2} label="Executando" value={formatCount(counters.running)} tone="info" spin={counters.running > 0} />
         <MetricCard icon={CheckCircle2} label="Domínios inseridos" value={formatCount(counters.inserted)} tone="success" />
+        <MetricCard icon={Clock3} label="Sem run (política)" value={formatCount(counters.policyNotReached)} tone="neutral" />
       </div>
 
       {/* ── Filters ── */}
@@ -438,6 +464,7 @@ export default function IngestionPage() {
                 <SelectItem value="pg_ok">PG ok</SelectItem>
                 <SelectItem value="pg_failed">PG falhou</SelectItem>
                 <SelectItem value="pg_pending">R2 ok, PG pendente</SelectItem>
+                <SelectItem value="not_reached">Habilitado sem run hoje</SelectItem>
                 <SelectItem value="running">Executando</SelectItem>
                 <SelectItem value="no_data">Sem execução</SelectItem>
               </SelectContent>
@@ -499,14 +526,26 @@ export default function IngestionPage() {
               const pgFail = items.reduce((acc, d) => acc + d.pg_failed, 0)
               const inserted = items.reduce((acc, d) => acc + d.domains_inserted, 0)
               const maxDur = items.reduce((max, d) => Math.max(max, d.duration_seconds ?? 0), 0)
-              const pct = tldTotal > 0 ? Math.round((pgOk / tldTotal) * 100) : null
+              const executionPct = tldTotal > 0 ? Math.round((pgOk / tldTotal) * 100) : null
+              const policyTotal = items.reduce((acc, d) => acc + (d.policy_total ?? 0), 0)
+              const policySuccessCount = items.reduce((acc, d) => {
+                if (d.policy_success_count != null) return acc + d.policy_success_count
+                if (d.policy_total != null && d.policy_success_pct != null) return acc + Math.round(d.policy_total * d.policy_success_pct)
+                return acc
+              }, 0)
+              const policyPct = policyTotal > 0 ? Math.round((policySuccessCount / policyTotal) * 100) : null
 
               return (
                 <div key={key} className="sticky top-0 z-10 border-b border-border-subtle bg-card px-1 py-1 text-center">
                   <div className="text-xs font-medium text-muted-foreground">{formatDateLabel(key)}</div>
-                  {pct !== null && (
-                    <div className={`text-[10px] font-semibold leading-tight ${pct >= 90 ? "text-emerald-600 dark:text-emerald-400" : pct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
-                      {pct}%
+                  {executionPct !== null && (
+                    <div className={`text-[10px] font-semibold leading-tight ${executionPct >= 90 ? "text-emerald-600 dark:text-emerald-400" : executionPct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                      Exec {executionPct}%
+                    </div>
+                  )}
+                  {policyPct !== null && (
+                    <div className={`text-[10px] font-semibold leading-tight ${policyPct >= 90 ? "text-emerald-700 dark:text-emerald-300" : policyPct >= 70 ? "text-amber-700 dark:text-amber-300" : "text-red-700 dark:text-red-300"}`}>
+                      Pol {policyPct}%
                     </div>
                   )}
                   {maxDur > 0 && (
@@ -562,6 +601,16 @@ export default function IngestionPage() {
               <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/35 dark:text-red-200">
                 {actionTld.cell.error}
               </div>
+            )}
+            {actionTld.cell.databricks_run_url && (
+              <a
+                href={actionTld.cell.databricks_run_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex text-xs font-medium text-blue-700 underline underline-offset-2 dark:text-blue-300"
+              >
+                Abrir execução Databricks
+              </a>
             )}
             <div className="flex flex-wrap gap-2">
               {actionTld.cell.r2_status === "ok" && (
@@ -808,7 +857,10 @@ function DualPhaseCell({
   onClick: () => void
 }) {
   const isActive = cell.pg_status !== "pending" || cell.r2_status !== "pending" || !!cell.error
-  const bgClass = PG_CELL_BG[cell.pg_status]
+  const policyPending = cell.policy_status === "not_reached" || cell.policy_status === "not_started"
+  const bgClass = policyPending
+    ? "border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900/40"
+    : PG_CELL_BG[cell.pg_status]
   const title = buildCellTitle(tld, cell)
 
   return (
@@ -836,6 +888,8 @@ function DualPhaseCell({
           <XCircle className="mt-0.5 h-2.5 w-2.5 text-red-700" />
         ) : cell.pg_status === "pending" && cell.r2_status === "ok" ? (
           <Clock3 className="mt-0.5 h-2.5 w-2.5 text-amber-600" />
+        ) : policyPending ? (
+          <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400" />
         ) : null}
       </button>
     </div>

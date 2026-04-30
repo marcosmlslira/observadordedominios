@@ -311,6 +311,20 @@ def recover_stale_running_cycles(db_url: str, *, stale_after_minutes: int) -> in
         conn.close()
 
 
+def count_enabled_tlds(db_url: str) -> int:
+    """Return total number of enabled TLDs across all sources in ingestion_tld_policy."""
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM ingestion_tld_policy WHERE is_enabled = true"
+            )
+            row = cur.fetchone()
+            return row[0] if row else 0
+    finally:
+        conn.close()
+
+
 def czds_ran_today(db_url: str) -> bool:
     """Return True if at least one CZDS run completed successfully today (UTC)."""
     conn = psycopg2.connect(db_url)
@@ -320,12 +334,178 @@ def czds_ran_today(db_url: str) -> bool:
                 """
                 SELECT 1 FROM ingestion_run
                 WHERE source = 'czds'
-                  AND status = 'done'
+                  AND status = 'success'
                   AND finished_at >= (NOW() AT TIME ZONE 'UTC')::date
                 LIMIT 1
                 """
             )
             return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+# ── ingestion_cycle_tld helpers ──────────────────────────────────────────────
+
+
+def plan_cycle_tlds(
+    db_url: str,
+    cycle_id: str,
+    source: str,
+    tlds: list[dict],
+) -> None:
+    """Insert one 'planned' row per TLD at cycle start.
+
+    Each item in `tlds` must have: tld (str), priority (int|None),
+    planned_position (int), planned_phase (str).
+    Uses ON CONFLICT DO NOTHING so retries are safe.
+    """
+    if not tlds:
+        return
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.executemany(
+                """
+                INSERT INTO ingestion_cycle_tld
+                    (cycle_id, source, tld, priority, planned_position,
+                     planned_phase, execution_status)
+                VALUES (%s, %s, %s, %s, %s, %s, 'planned')
+                ON CONFLICT (cycle_id, source, tld) DO NOTHING
+                """,
+                [
+                    (
+                        cycle_id,
+                        source,
+                        t["tld"],
+                        t.get("priority"),
+                        t.get("planned_position"),
+                        t.get("planned_phase", "full_run"),
+                    )
+                    for t in tlds
+                ],
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_cycle_tld(
+    db_url: str,
+    cycle_id: str,
+    source: str,
+    tld: str,
+    *,
+    execution_status: str,
+    reason_code: str | None = None,
+    error_message: str | None = None,
+    snapshot_date: str | None = None,
+    r2_marker_date: str | None = None,
+    r2_run_id: str | None = None,
+    pg_run_id: str | None = None,
+    databricks_run_id: int | None = None,
+    databricks_run_url: str | None = None,
+    databricks_result_state: str | None = None,
+    started_at: datetime | None = None,
+) -> None:
+    """Update an existing cycle_tld row to a terminal (or running) status."""
+    conn = psycopg2.connect(db_url)
+    now = datetime.now(timezone.utc)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ingestion_cycle_tld
+                SET
+                    execution_status        = %s,
+                    reason_code             = %s,
+                    error_message           = %s,
+                    snapshot_date           = %s,
+                    r2_marker_date          = %s,
+                    r2_run_id               = COALESCE(%s::uuid, r2_run_id),
+                    pg_run_id               = COALESCE(%s::uuid, pg_run_id),
+                    databricks_run_id       = COALESCE(%s, databricks_run_id),
+                    databricks_run_url      = COALESCE(%s, databricks_run_url),
+                    databricks_result_state = COALESCE(%s, databricks_result_state),
+                    started_at              = COALESCE(%s, started_at),
+                    finished_at             = CASE
+                        WHEN %s NOT IN ('planned', 'running') THEN %s
+                        ELSE finished_at END,
+                    duration_seconds        = CASE
+                        WHEN %s NOT IN ('planned', 'running') AND started_at IS NOT NULL
+                        THEN EXTRACT(EPOCH FROM (%s - COALESCE(%s, started_at)))::INT
+                        ELSE duration_seconds END
+                WHERE cycle_id = %s::uuid
+                  AND source   = %s
+                  AND tld      = %s
+                """,
+                (
+                    execution_status,
+                    reason_code,
+                    error_message,
+                    snapshot_date,
+                    r2_marker_date,
+                    r2_run_id,
+                    pg_run_id,
+                    databricks_run_id,
+                    databricks_run_url,
+                    databricks_result_state,
+                    started_at,
+                    # finished_at CASE
+                    execution_status, now,
+                    # duration CASE
+                    execution_status, now, started_at,
+                    # WHERE
+                    cycle_id, source, tld,
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def close_cycle_tld_pending(
+    db_url: str,
+    cycle_id: str,
+    *,
+    reason_code: str = "not_reached",
+    source: str | None = None,
+) -> int:
+    """Mark 'planned'/'running' cycle_tld rows as 'not_reached'.
+
+    Pass `source` to restrict to a single source (e.g. when only openintel crashed).
+    Returns count of rows updated.
+    """
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            if source:
+                cur.execute(
+                    """
+                    UPDATE ingestion_cycle_tld
+                    SET execution_status = 'not_reached',
+                        reason_code      = %s,
+                        finished_at      = now()
+                    WHERE cycle_id = %s::uuid
+                      AND source   = %s
+                      AND execution_status IN ('planned', 'running')
+                    """,
+                    (reason_code, cycle_id, source),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE ingestion_cycle_tld
+                    SET execution_status = 'not_reached',
+                        reason_code      = %s,
+                        finished_at      = now()
+                    WHERE cycle_id = %s::uuid
+                      AND execution_status IN ('planned', 'running')
+                    """,
+                    (reason_code, cycle_id),
+                )
+            affected = cur.rowcount
+        conn.commit()
+        return affected
     finally:
         conn.close()
 

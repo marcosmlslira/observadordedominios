@@ -711,6 +711,15 @@ export interface IngestionIncidentsResponse {
 // ── Dual-phase heatmap types ─────────────────────────
 
 export type PhaseStatus = "ok" | "pending" | "failed" | "running" | "no_snapshot"
+export type PolicyExecutionStatus =
+  | "planned"
+  | "running"
+  | "success"
+  | "failed"
+  | "skipped"
+  | "not_reached"
+  | "interrupted"
+  | "not_started"
 
 export interface TldDailyStatus {
   date: string
@@ -722,6 +731,9 @@ export interface TldDailyStatus {
   duration_seconds: number | null
   domains_inserted: number
   domains_deleted: number
+  policy_status?: PolicyExecutionStatus | null
+  reason_code?: string | null
+  databricks_run_url?: string | null
 }
 
 export interface HeatmapTldRow {
@@ -750,10 +762,29 @@ export interface DailySummaryItem {
   duration_seconds: number | null
   domains_inserted: number
   pg_complete_pct: number
+  policy_total?: number
+  policy_success_pct?: number
+  policy_success_count?: number
+  not_reached_count?: number
 }
 
 export interface DailySummaryResponse {
   items: DailySummaryItem[]
+}
+
+export interface PolicyCoverageSourceItem {
+  source: string
+  enabled_total: number
+  attempted_today: number
+  success_today: number
+  failed_today: number
+  not_reached_today: number
+  policy_coverage_pct: number
+}
+
+export interface PolicyCoverageResponse {
+  date: string
+  items: PolicyCoverageSourceItem[]
 }
 
 export interface TldReloadResponse {
