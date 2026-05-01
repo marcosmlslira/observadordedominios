@@ -29,6 +29,7 @@ ingestion/loader/__init__.py
 ingestion/loader/delta_loader.py
 ingestion/observability/__init__.py
 ingestion/observability/logger.py
+ingestion/observability/reason_codes.py
 ingestion/observability/run_log.py
 ingestion/observability/run_recorder.py
 ingestion/orchestrator/__init__.py

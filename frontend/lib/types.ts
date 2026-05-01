@@ -1,10 +1,5 @@
 // ── Auth ─────────────────────────────────────────────────
 
-export interface LoginRequest {
-  email: string
-  password: string
-}
-
 export interface TokenResponse {
   access_token: string
   token_type: string
@@ -90,29 +85,6 @@ export interface BrandListResponse {
   total: number
 }
 
-export interface CreateBrandRequest {
-  brand_name: string
-  primary_brand_name?: string
-  official_domains: string[]
-  aliases: BrandAliasRequest[]
-  keywords: string[]
-  tld_scope: string[]
-  noise_mode?: string
-  notes?: string
-}
-
-export interface UpdateBrandRequest {
-  brand_name?: string
-  primary_brand_name?: string
-  official_domains?: string[]
-  aliases?: BrandAliasRequest[]
-  keywords?: string[]
-  tld_scope?: string[]
-  noise_mode?: string
-  notes?: string
-  is_active?: boolean
-}
-
 export interface BrandAliasRequest {
   value: string
   type: "brand_alias" | "brand_phrase" | "support_keyword"
@@ -163,95 +135,6 @@ export interface SourceSummary {
   cron_expression: string | null
   status_hint: string | null
   next_expected_run_hint: string | null
-  bulk_job_status: string | null
-  bulk_chunks_total: number
-  bulk_chunks_done: number
-  bulk_chunks_error: number
-  bulk_chunks_pending: number
-}
-
-export interface TldCoverage {
-  tld: string
-  effective_source: string
-  czds_available: boolean
-  ct_enabled: boolean
-  bulk_status: string
-  fallback_reason: string | null
-  priority_group: string
-  last_ct_stream_seen_at: string | null
-  last_crtsh_success_at: string | null
-}
-
-export interface CtBulkJob {
-  job_id: string
-  status: string
-  requested_tlds: string[]
-  resolved_tlds: string[]
-  priority_tlds: string[]
-  dry_run: boolean
-  initiated_by: string | null
-  started_at: string | null
-  finished_at: string | null
-  last_error: string | null
-  total_chunks: number
-  pending_chunks: number
-  running_chunks: number
-  done_chunks: number
-  error_chunks: number
-  total_raw_domains: number
-  total_inserted_domains: number
-}
-
-export interface CtBulkChunk {
-  chunk_id: string
-  job_id: string
-  target_tld: string
-  chunk_key: string
-  query_pattern: string
-  prefix: string
-  depth: number
-  status: string
-  attempt_count: number
-  last_error_type: string | null
-  last_error_excerpt: string | null
-  next_retry_at: string | null
-  raw_domains: number
-  inserted_domains: number
-  started_at: string | null
-  finished_at: string | null
-}
-
-export interface CtBulkJobCreateRequest {
-  tlds: string[]
-  dry_run: boolean
-}
-
-export interface TriggerSyncRequest {
-  tld: string
-  force: boolean
-}
-
-export interface TriggerSyncResponse {
-  run_id: string
-  status: string
-}
-
-export interface CzdsPolicyItem {
-  tld: string
-  is_enabled: boolean
-  priority: number
-  cooldown_hours: number
-  failure_count: number
-  last_error_code: number | null
-  last_error_at: string | null
-  suspended_until: string | null
-  notes: string | null
-}
-
-export interface CzdsPolicyPatchRequest {
-  is_enabled?: boolean
-  priority?: number
-  cooldown_hours?: number
 }
 
 export interface CycleStatus {
@@ -331,16 +214,6 @@ export interface TldHealthResponse {
   total: number
 }
 
-export interface CzdsPolicyResponse {
-  source: "database" | "env"
-  tlds: string[]
-  items: CzdsPolicyItem[]
-}
-
-export interface CzdsPolicyUpdateRequest {
-  tlds: string[]
-}
-
 // ── Similarity Matches ──────────────────────────────────
 
 export interface SimilarityMatch {
@@ -391,16 +264,6 @@ export interface SimilarityMatch {
   source_stream: string | null
 }
 
-export interface MatchListResponse {
-  items: SimilarityMatch[]
-  total: number
-}
-
-export interface UpdateMatchStatusRequest {
-  status: string
-  notes?: string
-}
-
 // ── Free Tools ─────────────────────────────────────────
 
 export type ToolType =
@@ -434,11 +297,6 @@ export interface ToolResponse {
 export interface ToolRequest {
   target: string
   reference_target?: string
-}
-
-export interface QuickAnalysisRequest {
-  target: string
-  tools?: ToolType[]
 }
 
 export interface QuickAnalysisToolResult {
@@ -513,11 +371,6 @@ export interface SimilarityMetrics {
   last_scan_job: { status: string; created_at: string; finished_at: string | null } | null
 }
 
-export interface TldDomainCount {
-  tld: string
-  count: number
-}
-
 // ── Scan ────────────────────────────────────────────────
 
 export interface ScanResultResponse {
@@ -543,10 +396,6 @@ export interface ScanJobResponse {
   force_full: boolean
   tlds_effective: string[]
   last_error: string | null
-  results: ScanResultResponse[]
-}
-
-export interface ScanSummaryResponse {
   results: ScanResultResponse[]
 }
 
@@ -600,13 +449,6 @@ export interface TldMetricsRow {
   openintel_status?: OpenintelVisualStatus
   openintel_status_reason?: string | null
   openintel_last_error_message?: string | null
-}
-
-export interface TriggerTldResponse {
-  run_id: string
-  source: string
-  tld: string
-  status: string
 }
 
 export interface TldRunMetricItem {

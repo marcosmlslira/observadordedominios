@@ -14,10 +14,6 @@ SimilaritySource = Literal["czds"]
 
 # ── Request ──────────────────────────────────────────────────
 
-class TriggerScanRequest(BaseModel):
-    tld: str | None = Field(None, description="Specific TLD to scan. Empty = all.")
-
-
 class UpdateMatchStatusRequest(BaseModel):
     status: str = Field(..., pattern=r"^(new|reviewing|dismissed|confirmed_threat)$")
     notes: str | None = None

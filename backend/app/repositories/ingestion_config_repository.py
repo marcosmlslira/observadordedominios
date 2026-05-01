@@ -27,11 +27,6 @@ class IngestionConfigRepository:
             .all()
         )
 
-    def get_cron(self, source: str) -> str | None:
-        """Return cron expression for source, or None if not found."""
-        cfg = self.get_config(source)
-        return cfg.cron_expression if cfg else None
-
     def upsert_cron(self, source: str, cron_expression: str) -> IngestionSourceConfig:
         now = datetime.now(timezone.utc)
         cfg = self.get_config(source)
@@ -63,11 +58,6 @@ class IngestionConfigRepository:
 
     def get_tld_policy(self, source: str, tld: str) -> IngestionTldPolicy | None:
         return self.db.get(IngestionTldPolicy, (source, tld))
-
-    def is_tld_enabled(self, source: str, tld: str) -> bool:
-        """Return True if TLD is enabled (also True if no row exists — default-allow)."""
-        policy = self.get_tld_policy(source, tld)
-        return policy.is_enabled if policy is not None else True
 
     def ensure_tld(self, source: str, tld: str, *, is_enabled: bool = True) -> IngestionTldPolicy:
         """Get or create a TLD policy row."""
@@ -134,26 +124,3 @@ class IngestionConfigRepository:
         self.db.flush()
         return self.list_tld_policies(source)
 
-    def list_enabled_tlds(self, source: str) -> list[str]:
-        """Return sorted list of enabled TLD names for a source."""
-        return [
-            p.tld
-            for p in self.list_tld_policies(source)
-            if p.is_enabled
-        ]
-
-    def increment_tld_stats(self, source: str, tld_counts: dict[str, int]) -> None:
-        """Increment domains_inserted and update last_seen_at for each TLD in the dict.
-
-        Only updates rows that exist and have count > 0. Caller owns the transaction.
-        """
-        counts = {tld: count for tld, count in tld_counts.items() if count > 0}
-        if not counts:
-            return
-        now = datetime.now(timezone.utc)
-        for tld, count in counts.items():
-            policy = self.db.get(IngestionTldPolicy, (source, tld))
-            if policy is not None:
-                policy.domains_inserted = (policy.domains_inserted or 0) + count
-                policy.last_seen_at = now
-        self.db.flush()

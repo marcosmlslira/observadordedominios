@@ -1,3 +1,8 @@
+---
+name: database-modeling
+description: Expert in database modeling
+---
+
 # 🗄️ SKILL: Database Modeling Expert
 
 > **Para GitHub Copilot** — Use este guia sempre que houver qualquer decisão de modelagem de dados: escolha de banco, design de entidades, relacionamentos, índices, estratégias de armazenamento ou evolução de schema.

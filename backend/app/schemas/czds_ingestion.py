@@ -6,69 +6,10 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
-
-
-# ── Request ─────────────────────────────────────────────────
-class TriggerSyncRequest(BaseModel):
-    tld: str = Field(..., min_length=2, max_length=24, pattern=r"^[a-z0-9-]+$")
-    force: bool = False
-
-
-class CzdsPolicyUpdateRequest(BaseModel):
-    tlds: list[str] = Field(default_factory=list)
-
-    @field_validator("tlds")
-    @classmethod
-    def normalize_tlds(cls, value: list[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
-
-        for raw_tld in value:
-            tld = raw_tld.strip().lower().lstrip(".")
-            if not tld:
-                continue
-            if len(tld) < 2 or len(tld) > 24:
-                raise ValueError(f"Invalid TLD length: {raw_tld}")
-            if not all(char.isalnum() or char == "-" for char in tld):
-                raise ValueError(f"Invalid TLD format: {raw_tld}")
-            if tld in seen:
-                continue
-            seen.add(tld)
-            normalized.append(tld)
-
-        if not normalized:
-            raise ValueError("At least one TLD must be provided")
-
-        return normalized
+from pydantic import BaseModel
 
 
 # ── Responses ───────────────────────────────────────────────
-class TriggerSyncResponse(BaseModel):
-    run_id: UUID
-    status: str
-
-
-class CzdsPolicyItemResponse(BaseModel):
-    tld: str
-    is_enabled: bool
-    priority: int
-    cooldown_hours: int
-    failure_count: int = 0
-    last_error_code: int | None = None
-    last_error_at: datetime | None = None
-    suspended_until: datetime | None = None
-    notes: str | None = None
-
-    model_config = {"from_attributes": True}
-
-
-class CzdsPolicyResponse(BaseModel):
-    source: str
-    tlds: list[str]
-    items: list[CzdsPolicyItemResponse]
-
-
 class RunStatusResponse(BaseModel):
     run_id: UUID
     source: str = "czds"
@@ -107,19 +48,6 @@ class SourceSummaryResponse(BaseModel):
     next_expected_run_hint: str | None = None
 
 
-class TldCoverageResponse(BaseModel):
-    tld: str
-    effective_source: str
-    czds_available: bool
-    ct_enabled: bool
-    bulk_status: str
-    fallback_reason: str | None = None
-    priority_group: str
-    last_ct_stream_seen_at: datetime | None = None
-    last_crtsh_success_at: datetime | None = None
-
-
-
 class CheckpointResponse(BaseModel):
     source: str
     tld: str
@@ -131,17 +59,6 @@ class CheckpointResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str
-
-
-# ── CZDS Policy Patch/Reorder ─────────────────────────────
-class CzdsPolicyPatchRequest(BaseModel):
-    is_enabled: bool | None = None
-    priority: int | None = None
-    cooldown_hours: int | None = None
-
-
-class CzdsPolicyReorderRequest(BaseModel):
-    tlds: list[str]  # desired order → priority = index + 1
 
 
 # ── Cycle Status ──────────────────────────────────────────

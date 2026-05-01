@@ -7,9 +7,7 @@ Usage:
 import sys
 from getpass import getpass
 
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from app.core.security import hash_password
 
 
 def main() -> None:
@@ -22,8 +20,7 @@ def main() -> None:
             print("Passwords do not match")
             sys.exit(1)
 
-    hashed = pwd_context.hash(password)
-    print(f"\nADMIN_PASSWORD_HASH={hashed}")
+    print(f"\nADMIN_PASSWORD_HASH={hash_password(password)}")
 
 
 if __name__ == "__main__":

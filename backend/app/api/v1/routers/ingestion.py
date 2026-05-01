@@ -18,7 +18,6 @@ from app.core.dependencies import get_current_admin
 from app.core.config import settings
 from app.infra.db.session import SessionLocal, get_db
 from app.repositories.ingestion_run_repository import IngestionRunRepository
-from app.repositories.czds_policy_repository import CzdsPolicyRepository
 from app.repositories.ingestion_config_repository import IngestionConfigRepository
 from app.repositories.openintel_tld_status_repository import OpenintelTldStatusRepository
 from app.schemas.czds_ingestion import (
@@ -29,7 +28,6 @@ from app.schemas.czds_ingestion import (
     IngestionCyclesResponse,
     IngestionCycleStatusResponse,
     ScheduleEntry,
-    TldCoverageResponse,
     TldHealthItem,
     TldHealthResponse,
     ErrorResponse,
@@ -55,8 +53,6 @@ from app.schemas.czds_ingestion import (
     PolicyCoverageResponse,
     TldReloadResponse,
 )
-from app.services.tld_coverage import get_target_tlds, resolve_tld_coverages
-
 router = APIRouter(
     prefix="/v1/ingestion",
     tags=["Ingestion"],
@@ -539,40 +535,6 @@ def get_cycle_status(
             tlds_failing=tlds_failing,
         ),
     )
-
-
-@router.get(
-    "/tld-coverage",
-    response_model=list[TldCoverageResponse],
-    summary="Effective ingestion source per target TLD",
-)
-def list_tld_coverage(
-):
-    authorized_czds_tlds = set(get_target_tlds())
-    with SessionLocal() as db:
-        policy_repo = CzdsPolicyRepository(db)
-        policies = {item.tld: item for item in policy_repo.list_all()}
-        resolved = resolve_tld_coverages(
-            db,
-            authorized_czds_tlds=authorized_czds_tlds,
-            policies=policies,
-    )
-    coverage_rows = []
-    for item in resolved:
-        coverage_rows.append(
-            TldCoverageResponse(
-                tld=item.tld,
-                effective_source=item.effective_source,
-                czds_available=item.czds_available,
-                ct_enabled=item.ct_enabled,
-                bulk_status=item.bulk_status,
-                fallback_reason=item.fallback_reason,
-                priority_group=item.priority_group,
-                last_ct_stream_seen_at=None,
-                last_crtsh_success_at=None,
-            )
-        )
-    return coverage_rows
 
 
 @router.get(

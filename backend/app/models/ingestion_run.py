@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import BigInteger, Column, Date, DateTime, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import Base, TimestampMixin
@@ -17,12 +17,6 @@ class IngestionRun(Base, TimestampMixin):
     status = Column(String(16), nullable=False, default="running")  # running | success | failed
     started_at = Column(DateTime(timezone=True), nullable=False)
     finished_at = Column(DateTime(timezone=True), nullable=True)
-
-    artifact_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("zone_file_artifact.id", ondelete="SET NULL"),
-        nullable=True,
-    )
 
     # ── Counters ────────────────────────────────────────────
     domains_seen = Column(BigInteger, default=0)

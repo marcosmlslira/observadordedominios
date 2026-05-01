@@ -1,4 +1,11 @@
-"""Repository for ingestion_run and ingestion_checkpoint."""
+"""Repository for ingestion_run and ingestion_checkpoint.
+
+Read-side helpers used by the admin API. The write-side (creating runs,
+finishing them, updating progress, upserting checkpoints, recovering stale
+runs) lives in the new ingestion package
+(``ingestion/observability/run_recorder.py``), which talks to PostgreSQL
+directly via psycopg2.
+"""
 
 from __future__ import annotations
 
@@ -13,52 +20,11 @@ from app.models.ingestion_run import IngestionRun
 
 
 class IngestionRunRepository:
-    """CRUD helpers for IngestionRun and IngestionCheckpoint."""
+    """Read helpers for IngestionRun + IngestionCheckpoint, plus a stale-run
+    recovery used by the API startup hook."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
-
-    # ── Run lifecycle ───────────────────────────────────────
-    def create_run(self, source: str, tld: str) -> IngestionRun:
-        now = datetime.now(timezone.utc)
-        run = IngestionRun(
-            id=uuid.uuid4(),
-            source=source,
-            tld=tld,
-            status="running",
-            started_at=now,
-            created_at=now,
-            updated_at=now,
-        )
-        self.db.add(run)
-        self.db.flush()
-        return run
-
-    def finish_run(
-        self,
-        run: IngestionRun,
-        *,
-        status: str,
-        metrics: dict[str, int] | None = None,
-        reason_code: str | None = None,
-        error_message: str | None = None,
-        artifact_id: uuid.UUID | None = None,
-    ) -> IngestionRun:
-        now = datetime.now(timezone.utc)
-        run.status = status
-        run.finished_at = now
-        run.updated_at = now
-        run.reason_code = reason_code
-        run.error_message = error_message
-        if artifact_id:
-            run.artifact_id = artifact_id
-        if metrics:
-            run.domains_seen = metrics.get("seen", 0)
-            run.domains_inserted = metrics.get("inserted", 0)
-            run.domains_reactivated = metrics.get("reactivated", 0)
-            run.domains_deleted = metrics.get("deleted", 0)
-        self.db.flush()
-        return run
 
     def get_run(self, run_id: uuid.UUID) -> IngestionRun | None:
         """Fetch a specific ingestion run."""
@@ -169,72 +135,6 @@ class IngestionRunRepository:
             query = query.filter(IngestionCheckpoint.source == source)
         return query.order_by(IngestionCheckpoint.source, IngestionCheckpoint.tld).all()
 
-    def list_checkpoint_tlds(self, source: str) -> set[str]:
-        """Return the set of TLDs that already have a successful checkpoint."""
-        rows = (
-            self.db.query(IngestionCheckpoint.tld)
-            .filter(IngestionCheckpoint.source == source)
-            .all()
-        )
-        return {row[0] for row in rows}
-
-    def has_running_run(self, source: str, tld: str, exclude_run_id: uuid.UUID | None = None) -> bool:
-        """Check if there is already a running run for this source/TLD."""
-        query = (
-            self.db.query(IngestionRun)
-            .filter(
-                IngestionRun.source == source,
-                IngestionRun.tld == tld,
-                IngestionRun.status == "running",
-            )
-        )
-        if exclude_run_id:
-            query = query.filter(IngestionRun.id != exclude_run_id)
-            
-        return query.first() is not None
-
-    def recover_stale_runs(
-        self,
-        source: str,
-        tld: str,
-        *,
-        stale_after_minutes: int,
-        exclude_run_id: uuid.UUID | None = None,
-    ) -> list[IngestionRun]:
-        """Mark orphaned running runs as failed so the TLD can progress again."""
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_after_minutes)
-        query = (
-            self.db.query(IngestionRun)
-            .filter(
-                IngestionRun.source == source,
-                IngestionRun.tld == tld,
-                IngestionRun.status == "running",
-                IngestionRun.updated_at < cutoff,
-            )
-            .order_by(IngestionRun.started_at.asc())
-        )
-        if exclude_run_id:
-            query = query.filter(IngestionRun.id != exclude_run_id)
-
-        stale_runs = query.all()
-        if not stale_runs:
-            return []
-
-        now = datetime.now(timezone.utc)
-        for run in stale_runs:
-            run.status = "failed"
-            run.finished_at = now
-            run.updated_at = now
-            age_minutes = int((now - run.started_at).total_seconds() // 60)
-            run.error_message = (
-                f"Run marked as failed automatically after exceeding the stale timeout "
-                f"({age_minutes} minutes without completion)"
-            )
-            run.reason_code = "stale_recovered"
-
-        self.db.flush()
-        return stale_runs
-
     def recover_all_stale_for_source(
         self,
         source: str,
@@ -242,6 +142,9 @@ class IngestionRunRepository:
         stale_after_minutes: int,
     ) -> list[IngestionRun]:
         """Mark runs with no progress for stale_after_minutes as failed.
+
+        Used by the API startup hook (``app.main._recover_all_stale_on_startup``)
+        so that runs orphaned by API-only restarts get cleaned up.
 
         Uses updated_at (last heartbeat / progress update) as the staleness
         criterion so that large-but-active runs (e.g. .com) are never killed
@@ -272,145 +175,6 @@ class IngestionRunRepository:
             run.reason_code = "stale_recovered"
         self.db.flush()
         return stale_runs
-
-    def touch_run(self, run: IngestionRun) -> IngestionRun:
-        """Refresh run heartbeat without changing business status."""
-        run.updated_at = datetime.now(timezone.utc)
-        self.db.flush()
-        return run
-
-    def mark_running_runs_failed(
-        self,
-        source: str,
-        tld: str,
-        *,
-        error_message: str,
-        exclude_run_id: uuid.UUID | None = None,
-    ) -> list[IngestionRun]:
-        """Fail all currently running runs for a source/TLD pair."""
-        query = (
-            self.db.query(IngestionRun)
-            .filter(
-                IngestionRun.source == source,
-                IngestionRun.tld == tld,
-                IngestionRun.status == "running",
-            )
-            .order_by(IngestionRun.started_at.asc())
-        )
-        if exclude_run_id:
-            query = query.filter(IngestionRun.id != exclude_run_id)
-
-        runs = query.all()
-        if not runs:
-            return []
-
-        now = datetime.now(timezone.utc)
-        for run in runs:
-            run.status = "failed"
-            run.finished_at = now
-            run.updated_at = now
-            run.error_message = error_message
-            run.reason_code = "unexpected_error"
-
-        self.db.flush()
-        return runs
-
-    def mark_running_source_runs_failed(
-        self,
-        source: str,
-        *,
-        error_message: str,
-    ) -> list[IngestionRun]:
-        """Fail all currently running runs for a source regardless of TLD."""
-        runs = (
-            self.db.query(IngestionRun)
-            .filter(
-                IngestionRun.source == source,
-                IngestionRun.status == "running",
-            )
-            .order_by(IngestionRun.started_at.asc())
-            .all()
-        )
-        if not runs:
-            return []
-
-        now = datetime.now(timezone.utc)
-        for run in runs:
-            run.status = "failed"
-            run.finished_at = now
-            run.updated_at = now
-            run.error_message = error_message
-            run.reason_code = "unexpected_error"
-
-        self.db.flush()
-        return runs
-
-    def update_progress(self, run_id: uuid.UUID, *, domains_seen: int) -> None:
-        """Persist progress counters and refresh heartbeat for long-running syncs."""
-        self.db.execute(
-            text(
-                """
-                UPDATE ingestion_run
-                SET domains_seen = :domains_seen,
-                    updated_at = :updated_at
-                WHERE id = :id
-                """
-            ),
-            {
-                "id": run_id,
-                "domains_seen": domains_seen,
-                "updated_at": datetime.now(timezone.utc),
-            },
-        )
-
-    def add_progress(
-        self,
-        run_id: uuid.UUID,
-        *,
-        domains_seen_delta: int = 0,
-        domains_inserted_delta: int = 0,
-    ) -> None:
-        """Accumulate metrics and refresh heartbeat for streaming ingestors."""
-        self.db.execute(
-            text(
-                """
-                UPDATE ingestion_run
-                SET domains_seen = COALESCE(domains_seen, 0) + :domains_seen_delta,
-                    domains_inserted = COALESCE(domains_inserted, 0) + :domains_inserted_delta,
-                    updated_at = :updated_at
-                WHERE id = :id
-                """
-            ),
-            {
-                "id": run_id,
-                "domains_seen_delta": domains_seen_delta,
-                "domains_inserted_delta": domains_inserted_delta,
-                "updated_at": datetime.now(timezone.utc),
-            },
-        )
-
-    # ── Checkpoint ──────────────────────────────────────────
-    def upsert_checkpoint(self, source: str, tld: str, run: IngestionRun) -> None:
-        """Update (or insert) the checkpoint for a successful run."""
-        self.db.execute(
-            text("""
-                INSERT INTO ingestion_checkpoint (source, tld, last_successful_run_id, last_successful_run_at)
-                VALUES (:source, :tld, :run_id, :run_at)
-                ON CONFLICT (source, tld) DO UPDATE SET
-                    last_successful_run_id = EXCLUDED.last_successful_run_id,
-                    last_successful_run_at = EXCLUDED.last_successful_run_at
-            """),
-            {
-                "source": source,
-                "tld": tld,
-                "run_id": run.id,
-                "run_at": run.finished_at,
-            },
-        )
-        self.db.flush()
-
-    def get_checkpoint(self, source: str, tld: str) -> IngestionCheckpoint | None:
-        return self.db.get(IngestionCheckpoint, (source, tld))
 
     def get_tld_run_metrics(self, source: str, runs_per_tld: int = 10) -> list[dict]:
         """Return last N runs per TLD for a source in a single window-function query.
@@ -448,26 +212,3 @@ class IngestionRunRepository:
             })
 
         return [{"tld": tld, "runs": runs} for tld, runs in grouped.items()]
-
-    def has_any_source_running(self, source: str) -> bool:
-        """True if any run for this source is currently in 'running' status (any TLD)."""
-        return (
-            self.db.query(IngestionRun)
-            .filter(IngestionRun.source == source, IngestionRun.status == "running")
-            .first()
-        ) is not None
-
-    def has_successful_run_after(self, source: str, tld: str, after: "date") -> bool:
-        """True if a successful run for source/tld was started on or after `after` (00:00 UTC)."""
-        from datetime import date as _date
-        after_dt = datetime(after.year, after.month, after.day, tzinfo=timezone.utc)
-        return (
-            self.db.query(IngestionRun)
-            .filter(
-                IngestionRun.source == source,
-                IngestionRun.tld == tld,
-                IngestionRun.status == "success",
-                IngestionRun.started_at >= after_dt,
-            )
-            .first()
-        ) is not None

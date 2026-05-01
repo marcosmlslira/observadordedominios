@@ -68,7 +68,6 @@ class SimilarityMatch(Base):
     # Domain lifecycle
     domain_expired_day = Column(Integer, nullable=True)
     # NULL = domain is active in zone file; YYYYMMDD = day it disappeared.
-    # Set by sync_domain_expiration_to_matches after each ingestion cycle.
 
     # ── Event-sourced monitoring fields ───────────────────────────
     state_fingerprint = Column(String(64), nullable=True)

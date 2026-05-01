@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Play, Loader2, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react"
+import { ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
@@ -34,7 +34,6 @@ interface TldMetricsTableProps {
   showPriority?: boolean
   onToggle: (tld: string, enabled: boolean) => Promise<void>
   onPatchPriority?: (tld: string, priority: number) => Promise<void>
-  onTrigger?: (tld: string) => Promise<void>
   onEnableAll: () => void
   onDisableAll: () => void
 }
@@ -131,15 +130,12 @@ export function TldMetricsTable({
   showPriority = false,
   onToggle,
   onPatchPriority,
-  onTrigger,
   onEnableAll,
   onDisableAll,
 }: TldMetricsTableProps) {
   const isOpenintel = source === "openintel"
   const [filter, setFilter] = useState("")
   const [toggling, setToggling] = useState<Set<string>>(new Set())
-  const [triggering, setTriggering] = useState<Set<string>>(new Set())
-  const [triggered, setTriggered] = useState<Set<string>>(new Set())
   const [savingPriority, setSavingPriority] = useState<Set<string>>(new Set())
   const [editingPriority, setEditingPriority] = useState<Record<string, string>>({})
 
@@ -203,7 +199,7 @@ export function TldMetricsTable({
 
   const activeCount = rows.filter((r) => r.is_enabled).length
   const baseColCount = isOpenintel ? 7 : 6  // TLD + Ativo + source-specific columns
-  const colSpan = baseColCount + (showPriority ? 1 : 0) + (onTrigger ? 1 : 0)
+  const colSpan = baseColCount + (showPriority ? 1 : 0)
 
   async function handleToggle(tld: string, enabled: boolean) {
     setToggling((prev) => new Set(prev).add(tld))
@@ -211,18 +207,6 @@ export function TldMetricsTable({
       await onToggle(tld, enabled)
     } finally {
       setToggling((prev) => { const n = new Set(prev); n.delete(tld); return n })
-    }
-  }
-
-  async function handleTrigger(tld: string) {
-    if (!onTrigger) return
-    setTriggering((prev) => new Set(prev).add(tld))
-    try {
-      await onTrigger(tld)
-      setTriggered((prev) => new Set(prev).add(tld))
-      setTimeout(() => setTriggered((prev) => { const n = new Set(prev); n.delete(tld); return n }), 3000)
-    } finally {
-      setTriggering((prev) => { const n = new Set(prev); n.delete(tld); return n })
     }
   }
 
@@ -316,7 +300,6 @@ export function TldMetricsTable({
                   <TableHead className="text-center text-xs">Últimas 10</TableHead>
                 </>
               )}
-              {onTrigger && <TableHead className="text-center text-xs">Trigger</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -393,26 +376,6 @@ export function TldMetricsTable({
                       />
                     </TableCell>
                   </>
-                )}
-                {onTrigger && (
-                  <TableCell className="text-center">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      disabled={triggering.has(row.tld) || triggered.has(row.tld)}
-                      onClick={() => handleTrigger(row.tld)}
-                      title={triggered.has(row.tld) ? "Na fila" : `Executar ${row.tld} agora`}
-                    >
-                      {triggering.has(row.tld) ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : triggered.has(row.tld) ? (
-                        <span className="text-[10px] text-green-600">✓</span>
-                      ) : (
-                        <Play className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </TableCell>
                 )}
               </TableRow>
             ))}

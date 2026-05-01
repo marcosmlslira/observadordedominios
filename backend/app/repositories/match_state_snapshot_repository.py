@@ -111,20 +111,6 @@ class MatchStateSnapshotRepository:
             .all()
         )
 
-    def count_by_bucket(self, brand_id: UUID) -> dict[str, int]:
-        """Return counts per bucket. Used by monitoring_summary in brand list."""
-        from sqlalchemy import func
-        rows = (
-            self.db.query(
-                MatchStateSnapshot.derived_bucket,
-                func.count(MatchStateSnapshot.id),
-            )
-            .filter(MatchStateSnapshot.brand_id == brand_id)
-            .group_by(MatchStateSnapshot.derived_bucket)
-            .all()
-        )
-        return {bucket: count for bucket, count in rows}
-
     def count_by_bucket_active(self, brand_id: UUID) -> dict[str, int]:
         """Return counts per bucket, excluding auto-dismissed matches."""
         from sqlalchemy import func

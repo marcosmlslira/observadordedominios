@@ -173,69 +173,6 @@ def test_ingestion_runs_accepts_started_range_filters(monkeypatch) -> None:
     assert response.json()[0]["domains_inserted"] == 8
 
 
-def test_tld_coverage_uses_short_lived_session_without_checkpoint_queries(monkeypatch) -> None:
-    app = FastAPI()
-    app.include_router(ingestion_router.router)
-
-    class FakePolicy:
-        def __init__(self, tld: str) -> None:
-            self.tld = tld
-            self.last_error_code = None
-            self.suspended_until = None
-
-    class FakeSession:
-        pass
-
-    fake_session = FakeSession()
-    seen: dict[str, object] = {}
-
-    @contextmanager
-    def fake_session_local():
-        seen["session_opened"] = True
-        yield fake_session
-        seen["session_closed"] = True
-
-    def fake_list_all(self):
-        assert self.db is fake_session
-        return [FakePolicy("com")]
-
-    def fake_resolve(db, *, authorized_czds_tlds=None, policies=None, czds_client=None):
-        assert db is fake_session
-        seen["resolved_policies"] = policies
-        return [
-            SimpleNamespace(
-                tld="com",
-                effective_source="czds_primary",
-                czds_available=True,
-                ct_enabled=False,
-                bulk_status="n/a",
-                fallback_reason=None,
-                priority_group="priority",
-            )
-        ]
-
-    monkeypatch.setattr(ingestion_router, "SessionLocal", fake_session_local)
-    monkeypatch.setattr(ingestion_router, "get_target_tlds", lambda: ["com"])
-    monkeypatch.setattr(ingestion_router.CzdsPolicyRepository, "list_all", fake_list_all)
-    monkeypatch.setattr(ingestion_router, "resolve_tld_coverages", fake_resolve)
-    app.dependency_overrides[get_current_admin] = _override_admin
-
-    try:
-        client = TestClient(app)
-        response = client.get("/v1/ingestion/tld-coverage")
-    finally:
-        app.dependency_overrides.clear()
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload[0]["tld"] == "com"
-    assert payload[0]["last_ct_stream_seen_at"] is None
-    assert payload[0]["last_crtsh_success_at"] is None
-    assert seen["session_opened"] is True
-    assert seen["session_closed"] is True
-    assert set(seen["resolved_policies"]) == {"com"}
-
-
 def test_tld_status_rejects_legacy_certstream_source() -> None:
     app = FastAPI()
     app.include_router(ingestion_router.router)

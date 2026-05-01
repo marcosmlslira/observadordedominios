@@ -19,7 +19,6 @@ import {
   patchTldPolicy,
   patchIngestionConfig,
   bulkSetTldPolicies,
-  triggerTldIngestion,
   ingestionApi,
 } from "@/lib/api"
 import type {
@@ -214,12 +213,6 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
     setMetricsRows((prev) => prev.map((r) => ({ ...r, is_enabled: false })))
   }
 
-  const canTrigger = source === "czds" || source === "openintel"
-
-  async function handleTriggerTld(tld: string) {
-    await triggerTldIngestion(source, tld)
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -323,7 +316,6 @@ export function SourceConfigPage({ source }: SourceConfigPageProps) {
             showPriority={supportsPriority}
             onToggle={handleToggleTld}
             onPatchPriority={supportsPriority ? handlePatchPriority : undefined}
-            onTrigger={canTrigger ? handleTriggerTld : undefined}
             onEnableAll={handleEnableAll}
             onDisableAll={handleDisableAll}
           />

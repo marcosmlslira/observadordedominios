@@ -24,7 +24,7 @@ OCSP_TIMEOUT = 5
 def check_ssl(domain: str, port: int = DEFAULT_PORT) -> dict:
     """Connect to domain:port via TLS, inspect the certificate chain.
 
-    Returns a dict matching SslCheckResult schema.
+    Returns a dict with the SSL check payload (placed into ToolResponse.result).
     """
     issues: list[str] = []
     certificate: dict | None = None

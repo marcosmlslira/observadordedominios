@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.api import health
-from app.api.v1.routers import auth, czds_ingestion, ingestion, ingestion_config, monitored_brands, similarity, tools
+from app.api.v1.routers import auth, ingestion, ingestion_config, monitored_brands, similarity, tools
 from app.core.config import settings
 from app.infra.db.session import SessionLocal
 from app.repositories.ingestion_run_repository import IngestionRunRepository
@@ -21,7 +21,6 @@ _STALE_THRESHOLDS = {
     "czds": settings.CZDS_RUNNING_STALE_MINUTES,
     "openintel": settings.OPENINTEL_RUNNING_STALE_MINUTES,
 }
-_LEGACY_CT_SOURCES = ("certstream", "crtsh")
 
 
 def _recover_all_stale_on_startup() -> None:
@@ -54,42 +53,10 @@ def _recover_all_stale_on_startup() -> None:
         db.close()
 
 
-def _deactivate_legacy_ct_runs_on_startup() -> None:
-    """Force-close running legacy CT runs so the old path stays disabled."""
-    db = SessionLocal()
-    try:
-        run_repo = IngestionRunRepository(db)
-        total = 0
-        for source in _LEGACY_CT_SOURCES:
-            recovered = run_repo.mark_running_source_runs_failed(
-                source,
-                error_message=(
-                    "Legacy CT ingestion path disabled. "
-                    "Run closed automatically during startup cleanup."
-                ),
-            )
-            if recovered:
-                logger.info(
-                    "Legacy CT shutdown: marked %d %s run(s) as failed: %s",
-                    len(recovered),
-                    source,
-                    [r.tld for r in recovered],
-                )
-                total += len(recovered)
-        if total:
-            db.commit()
-    except Exception:
-        logger.warning("Legacy CT startup cleanup failed", exc_info=True)
-        db.rollback()
-    finally:
-        db.close()
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("Backend API starting up…")
-    _deactivate_legacy_ct_runs_on_startup()
     _recover_all_stale_on_startup()
     yield
     logger.info("Backend API shutting down…")
@@ -111,7 +78,6 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router)
-app.include_router(czds_ingestion.router)
 app.include_router(ingestion.router)
 app.include_router(ingestion_config.router)
 app.include_router(monitored_brands.router)

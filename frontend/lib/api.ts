@@ -104,30 +104,6 @@ export const ingestionApi = {
   getCycleStatus: () =>
     api.get<import("./types").IngestionCycleStatus>("/v1/ingestion/cycle-status"),
 
-  patchPolicy: (tld: string, body: import("./types").CzdsPolicyPatchRequest) =>
-    api.patch<import("./types").CzdsPolicyItem>(`/v1/czds/policy/${tld}`, body),
-
-  reorderPolicy: (tlds: string[]) =>
-    api.post<void>("/v1/czds/policy/reorder", { tlds }),
-
-  getCoverage: () =>
-    api.get<import("./types").TldCoverage[]>("/v1/ingestion/tld-coverage"),
-
-  listBulkJobs: () =>
-    api.get<import("./types").CtBulkJob[]>("/v1/ingestion/ct-bulk/jobs"),
-
-  getBulkChunks: (jobId: string) =>
-    api.get<import("./types").CtBulkChunk[]>(`/v1/ingestion/ct-bulk/jobs/${jobId}/chunks`),
-
-  startBulkJob: (body: import("./types").CtBulkJobCreateRequest) =>
-    api.post<import("./types").CtBulkJob>("/v1/ingestion/ct-bulk/jobs", body),
-
-  resumeBulkJob: (jobId: string) =>
-    api.post<import("./types").CtBulkJob>(`/v1/ingestion/ct-bulk/jobs/${jobId}/resume`),
-
-  cancelBulkJob: (jobId: string) =>
-    api.post<import("./types").CtBulkJob>(`/v1/ingestion/ct-bulk/jobs/${jobId}/cancel`),
-
   getCheckpoints: (source: string) =>
     api.get<import("./types").CheckpointResponse[]>(`/v1/ingestion/checkpoints?source=${source}`),
 
@@ -257,13 +233,6 @@ export function bulkSetTldPolicies(
   return api.put<import("./types").IngestionTldPolicy[]>(
     `/v1/ingestion/tld-policy/${source}`,
     { tlds }
-  )
-}
-
-export function triggerTldIngestion(source: string, tld: string, force = false) {
-  return api.post<import("./types").TriggerTldResponse>(
-    `/v1/ingestion/trigger/${source}/${tld}`,
-    { force }
   )
 }
 

@@ -55,7 +55,7 @@ SECURITY_HEADERS = [
 def analyze_http_headers(domain: str) -> dict:
     """Fetch a domain over HTTPS (fallback HTTP) and analyze headers.
 
-    Returns dict matching HttpHeadersResult schema.
+    Returns a dict with the headers payload (placed into ToolResponse.result).
     """
     redirect_chain: list[dict] = []
     url = f"https://{domain}"

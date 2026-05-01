@@ -36,55 +36,9 @@ class Settings(BaseSettings):
     S3_SECRET_ACCESS_KEY: str = "minioadmin"
     S3_FORCE_PATH_STYLE: bool = True
 
-    # ── CZDS ─────────────────────────────────────────────────
-    CZDS_USERNAME: str = ""
-    CZDS_PASSWORD: str = ""
-    TARGET_TLDS: str = (
-        "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,"
-        "club,vip,icu,live,digital,world,today,email,solutions,services,"
-        "support,group,company,center,zone,agency,systems,network,works,"
-        "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,"
-        "finance,financial,money,credit,loan,bank,capital,fund,exchange,"
-        "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,"
-        "blog,press,link,click,one,pro,name,life,plus,now,global,expert,"
-        "academy,education,school,host,hosting,domains,security,safe,"
-        "protect,chat,social,community,team,studio,design,marketing,"
-        "consulting,partners,ventures,holdings,international,com.br,net.br,org.br,br"
-    )
-    CZDS_ENABLED_TLDS: str = (
-        "com,net,org,xyz,online,site,store,top,info,tech,space,website,fun,"
-        "club,vip,icu,live,digital,world,today,email,solutions,services,"
-        "support,group,company,center,zone,agency,systems,network,works,"
-        "tools,io,ai,dev,app,cloud,software,co,biz,shop,sale,deals,market,"
-        "finance,financial,money,credit,loan,bank,capital,fund,exchange,"
-        "trading,pay,cash,us,uk,ca,au,de,fr,es,it,nl,eu,asia,news,media,"
-        "blog,press,link,click,one,pro,name,life,plus,now,global,expert,"
-        "academy,education,school,host,hosting,domains,security,safe,"
-        "protect,chat,social,community,team,studio,design,marketing,"
-        "consulting,partners,ventures,holdings,international"
-    )
-    CZDS_SYNC_CRON: str = "0 7 * * *"
-    CZDS_FORCE_COOLDOWN_HOURS: int = 24
+    # ── Stale-run recovery thresholds (used by main.py startup hook) ─────
     CZDS_RUNNING_STALE_MINUTES: int = 60
-    CZDS_BASE_URL: str = "https://czds-api.icann.org"
-    CZDS_AUTH_RATE_LIMIT_BACKOFF_SECONDS: int = 300
-    CZDS_TLD_FORBIDDEN_SUSPEND_HOURS: int = 168
-    CZDS_TLD_NOT_FOUND_SUSPEND_HOURS: int = 168
-
-    # ── CT Logs (CertStream + crt.sh) ──────────────────────────
-    CT_CERTSTREAM_URL: str = "ws://certstream_server:8080/"
-    CT_CERTSTREAM_ENABLED: bool = True
-    CT_CERTSTREAM_RECONNECT_MAX_BACKOFF: int = 60
-    CT_BUFFER_FLUSH_SIZE: int = 5000
-    CT_BUFFER_FLUSH_SECONDS: int = 30
-    CT_CRTSH_ENABLED: bool = True
-    CT_FALLBACK_INCLUDE_NON_CZDS: bool = True
-    CT_FALLBACK_PRIORITY_TLDS: str = "br,com.br,net.br,org.br,uk,de,fr,au,ca,us,io,ai,co,tv,me"
-    CT_STREAM_ENABLED_TLDS: str = ""
-    CT_CRTSH_SYNC_CRON: str = "0 5 * * *"
-    CT_CRTSH_COOLDOWN_HOURS: int = 20
-    CT_CRTSH_QUERY_OVERLAP_HOURS: int = 25
-    CT_BR_SUBTLDS: str = "br,com.br,net.br,org.br,gov.br,edu.br,mil.br,app.br,dev.br,log.br,ong.br"
+    OPENINTEL_RUNNING_STALE_MINUTES: int = 60
 
     # ── Similarity Worker ──────────────────────────────────────
     SIMILARITY_SCAN_CRON: str = "0 9 * * *"
@@ -124,36 +78,15 @@ class Settings(BaseSettings):
     # S3 bucket for tool artifacts (screenshots etc.)
     TOOLS_S3_BUCKET: str = "observador-tools"
 
-    # ── OpenINTEL ────────────────────────────────────────────
-    OPENINTEL_S3_BUCKET: str = "openintel-public"
-    OPENINTEL_S3_REGION: str = "us-east-1"
-    OPENINTEL_S3_ENDPOINT: str = "https://object.openintel.nl"
-    OPENINTEL_S3_PREFIX: str = "fdns/basis=zonefile/"
-    OPENINTEL_S3_QNAME_COLUMN: str = "query_name"
-    # TLDs available in S3 zonefile (richer DNS data); all others use web CSV.GZ
-    OPENINTEL_ZONEFILE_TLDS: str = "ch,ee,fed.us,fr,gov,li,nu,root,se,sk"
-    OPENINTEL_ENABLED_TLDS: str = "ac,br,uk,de,fr,se,nu,ch,li,sk,ee"
-    OPENINTEL_SYNC_CRON: str = "0 2 * * *"  # 02:00 UTC — before CZDS at 07:00
-    OPENINTEL_FORCE_COOLDOWN_HOURS: int = 22
-    OPENINTEL_RUNNING_STALE_MINUTES: int = 60
-    OPENINTEL_MAX_LOOKBACK_DAYS: int = 14
-    # ccTLD web download source (307 ccTLDs via OpenINTEL website + S3 proxy)
-    OPENINTEL_CCTLD_WEB_URL: str = "https://openintel.nl/download/domain-lists/cctlds/"
-    OPENINTEL_CCTLD_COOKIE_NAME: str = "openintel-data-agreement-accepted"
-    OPENINTEL_CCTLD_COOKIE_VALUE: str = "true"
-    OPENINTEL_CCTLD_S3_BASE: str = "https://object.openintel.nl/seeseetld/lists"
-
     # ── Ingestion Worker Manual Trigger ────────────────────
+    # Backend POSTs to the new orchestrator (ingestion/ package) to
+    # trigger an out-of-schedule cycle from the admin UI.
     INGESTION_TRIGGER_URLS: str = (
         "http://ingestion_worker:8080/run-now,"
         "http://obs_ingestion_worker:8080/run-now"
     )
     INGESTION_TRIGGER_TIMEOUT_SECONDS: float = 5.0
     INGESTION_MANUAL_TRIGGER_TOKEN: str = ""
-
-    @property
-    def openintel_zonefile_tlds_set(self) -> set[str]:
-        return {t.strip() for t in self.OPENINTEL_ZONEFILE_TLDS.split(",") if t.strip()}
 
     # ── LLM / Groq ────────────────────────────────────────
     GROQ_API_KEY: str = ""
@@ -169,7 +102,9 @@ class Settings(BaseSettings):
     MATCH_LLM_ASSESSMENT_ENABLED: bool = False
     SEED_LLM_GENERATION_ENABLED: bool = False
 
-    model_config = {"env_file": ".env", "case_sensitive": True}
+    # extra="ignore" so the shared .env (which also feeds the ingestion/
+    # service with CZDS credentials etc.) does not break backend startup.
+    model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
 
 settings = Settings()

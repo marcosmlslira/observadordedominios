@@ -107,21 +107,6 @@ class MonitoringEventRepository:
             .all()
         )
 
-    def list_for_brand_domain(
-        self,
-        *,
-        brand_domain_id: UUID,
-        limit: int = 50,
-    ) -> list[MonitoringEvent]:
-        """Return recent events for one official domain."""
-        return (
-            self.db.query(MonitoringEvent)
-            .filter(MonitoringEvent.brand_domain_id == brand_domain_id)
-            .order_by(MonitoringEvent.created_at.desc())
-            .limit(limit)
-            .all()
-        )
-
     def event_exists_for_cycle(
         self,
         *,

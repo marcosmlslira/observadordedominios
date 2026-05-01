@@ -377,6 +377,18 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
             log.info("czds skipped (shutting down)")
             summary["czds"] = {"skipped": "shutting_down"}
 
+        # 3. Post-cycle maintenance — refresh aggregate views once per cycle.
+        # Best-effort; never fails the cycle.
+        if cfg.database_url and not _stop_event.is_set():
+            try:
+                _current_phase = "post_cycle"
+                from ingestion.observability.post_cycle import (  # noqa: PLC0415
+                    refresh_tld_domain_count_mv,
+                )
+                refresh_tld_domain_count_mv(cfg.database_url)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("post-cycle maintenance failed (non-fatal): %s", exc)
+
         summary["finished_at"] = datetime.now(timezone.utc).isoformat()
         final_status = "interrupted" if _shutting_down else (
             "failed" if tld_failed and not tld_success else "succeeded"
@@ -487,6 +499,17 @@ def _run_czds_recovery(trigger: str = "schedule_czds_recovery") -> None:
         log.exception("czds recovery cycle crashed: %s", exc)
         summary["czds"] = {"error": str(exc)}
     finally:
+        # Refresh aggregate views even if the cycle errored — a partial
+        # success may still have inserted new domains. Best-effort.
+        if cfg.database_url:
+            try:
+                _current_phase = "post_cycle"
+                from ingestion.observability.post_cycle import (  # noqa: PLC0415
+                    refresh_tld_domain_count_mv,
+                )
+                refresh_tld_domain_count_mv(cfg.database_url)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("post-cycle maintenance failed (non-fatal): %s", exc)
         _current_phase = None
         _run_in_progress = False
         _run_lock.release()
