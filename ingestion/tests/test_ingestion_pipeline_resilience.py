@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from ingestion.orchestrator.pipeline import _load_tld_from_r2
+from ingestion.orchestrator.pipeline import _load_tld_from_r2, run_cycle
 from ingestion.loader.delta_loader import load_delta
 
 def test_pipeline_r2_contract_violation_marker_without_parquets():
@@ -62,3 +62,37 @@ def test_load_delta_partial_load_recovery(mock_load_shards, mock_list_keys, mock
     assert result["status"] == "partial"
     assert result["added_loaded"] == 100
     assert result["removed_loaded"] == 0
+
+
+@patch("ingestion.orchestrator.pipeline.get_ordered_tlds", return_value=[])
+@patch("ingestion.orchestrator.pipeline.recover_stale_running_runs", return_value=0)
+@patch("ingestion.orchestrator.pipeline.recover_conflicting_running_runs", return_value=1)
+@patch("ingestion.storage.layout.Layout")
+@patch("ingestion.storage.r2.R2Storage")
+def test_run_cycle_recovers_conflicting_running_runs_first(
+    mock_r2_storage,
+    mock_layout,
+    mock_recover_conflicts,
+    mock_recover_stale,
+    mock_get_ordered_tlds,
+):
+    cfg = MagicMock()
+    cfg.database_url = "postgresql://dummy"
+    cfg.execution_mode_for_source.return_value = "local"
+    cfg.ingestion_stale_timeout_minutes = 45
+    cfg.czds_max_tlds = 0
+    cfg.openintel_max_tlds = 0
+    cfg.r2_prefix = "lake/domain_ingestion"
+
+    result = run_cycle("openintel", cfg)
+
+    assert result == []
+    mock_r2_storage.assert_called_once_with(cfg)
+    mock_layout.assert_called_once_with("lake/domain_ingestion")
+    mock_recover_conflicts.assert_called_once_with("postgresql://dummy", "openintel")
+    mock_recover_stale.assert_called_once_with(
+        "postgresql://dummy",
+        "openintel",
+        stale_after_minutes=45,
+    )
+    mock_get_ordered_tlds.assert_called_once()

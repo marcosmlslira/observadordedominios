@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     openintel_zonefile_region: str = Field(default="us-east-1", alias="OPENINTEL_ZONEFILE_REGION")
     openintel_zonefile_qname_column: str = Field(default="query_name", alias="OPENINTEL_ZONEFILE_QNAME_COLUMN")
     openintel_zonefile_tlds: str = Field(default="ch,ee,fed.us,fr,gov,li,nu,root,se,sk", alias="OPENINTEL_ZONEFILE_TLDS")
+    # Snapshots whose total Parquet bytes meet/exceed this threshold are
+    # processed via the streaming sharded stager (memory-bounded). Smaller
+    # snapshots stay on the legacy in-memory path. Default: 200 MiB.
+    openintel_shard_threshold_bytes: int = Field(
+        default=200 * 1024 * 1024, alias="OPENINTEL_SHARD_THRESHOLD_BYTES"
+    )
 
     # OpenINTEL web (cctld-web source)
     openintel_web_base: str = Field(default="https://openintel.nl/download/domain-lists/cctlds", alias="OPENINTEL_WEB_BASE")

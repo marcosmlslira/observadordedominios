@@ -932,18 +932,52 @@ def get_ingestion_cycles(
     rows = db.execute(
         text("""
             SELECT
-                cycle_id::text,
-                started_at,
-                finished_at,
-                status,
-                triggered_by,
-                tld_total,
-                tld_success,
-                tld_failed,
-                tld_skipped,
-                tld_load_only,
-                last_heartbeat_at
-            FROM ingestion_cycle
+                c.cycle_id::text,
+                c.started_at,
+                c.finished_at,
+                c.status,
+                c.triggered_by,
+                c.tld_total,
+                c.tld_success,
+                c.tld_failed,
+                c.tld_skipped,
+                c.tld_load_only,
+                c.last_heartbeat_at,
+                dbx.source AS dbx_source,
+                dbx.databricks_run_id,
+                dbx.databricks_run_url,
+                dbx.databricks_result_state,
+                dbx.tld_count,
+                dbx.tlds_preview
+            FROM ingestion_cycle c
+            LEFT JOIN LATERAL (
+                SELECT
+                    ct.source,
+                    ct.databricks_run_id,
+                    ct.databricks_run_url,
+                    ct.databricks_result_state,
+                    COUNT(*)::int AS tld_count,
+                    ARRAY(
+                        SELECT ct2.tld
+                        FROM ingestion_cycle_tld ct2
+                        WHERE ct2.cycle_id = ct.cycle_id
+                          AND ct2.source = ct.source
+                          AND ct2.databricks_run_id = ct.databricks_run_id
+                        ORDER BY ct2.tld
+                        LIMIT 10
+                    ) AS tlds_preview
+                FROM ingestion_cycle_tld ct
+                WHERE ct.cycle_id = c.cycle_id
+                  AND ct.databricks_run_id IS NOT NULL
+                GROUP BY
+                    ct.source,
+                    ct.databricks_run_id,
+                    ct.databricks_run_url,
+                    ct.databricks_result_state,
+                    ct.cycle_id
+                ORDER BY MAX(ct.started_at) DESC NULLS LAST, COUNT(*) DESC
+                LIMIT 1
+            ) dbx ON true
             ORDER BY started_at DESC
             LIMIT :limit
         """),
@@ -963,6 +997,18 @@ def get_ingestion_cycles(
             tld_skipped=row.tld_skipped,
             tld_load_only=row.tld_load_only,
             last_heartbeat_at=row.last_heartbeat_at,
+            active_databricks=(
+                IngestionCycleItem.ActiveDatabricksRun(
+                    source=row.dbx_source,
+                    databricks_run_id=row.databricks_run_id,
+                    databricks_run_url=row.databricks_run_url,
+                    databricks_result_state=row.databricks_result_state,
+                    tld_count=row.tld_count or 0,
+                    tlds_preview=list(row.tlds_preview or []),
+                )
+                if row.databricks_run_id is not None
+                else None
+            ),
         )
         for row in rows
     ]

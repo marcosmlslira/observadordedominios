@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import traceback
 from datetime import date
+from time import perf_counter
 
 from ingestion.config.settings import Settings
 from ingestion.core.diff_engine import simple_diff
@@ -66,6 +67,7 @@ def run_openintel(
     results: list[RunStats] = []
     for tld in resolved:
         stats = _process_tld(
+            cfg=cfg,
             tld=tld,
             client=client,
             storage=storage,
@@ -79,6 +81,7 @@ def run_openintel(
 
 def _process_tld(
     *,
+    cfg: Settings,
     tld: str,
     client: OpenIntelClient,
     storage: R2Storage,
@@ -116,6 +119,7 @@ def _process_tld(
         stats.status = "already_done"
         return stats
 
+    total_started_at = perf_counter()
     try:
         if dry_run:
             stats.finished_at = now_utc()
@@ -123,30 +127,61 @@ def _process_tld(
             return stats
 
         log.info("openintel tld=%s parsing snapshot_date=%s mode=%s", tld, snapshot_date, mode)
+
         if mode == "zonefile":
-            snap_df = client.parse_zonefile_snapshot(keys=keys, tld=tld)
+            total_bytes = client.total_zonefile_keys_size(keys)
+            stats.metadata["snapshot_bytes"] = total_bytes
+            stats.metadata["snapshot_keys"] = len(keys)
+            use_sharding = total_bytes >= cfg.openintel_shard_threshold_bytes
+            log.info(
+                "openintel tld=%s zonefile_bytes=%d threshold=%d sharding=%s",
+                tld, total_bytes, cfg.openintel_shard_threshold_bytes, use_sharding,
+            )
+
+            if use_sharding:
+                snap_count, added, removed, sharded_metrics = (
+                    client.parse_zonefile_snapshot_streaming(
+                        keys=keys,
+                        tld=tld,
+                        snapshot_date=snapshot_date,
+                        storage=storage,
+                        layout=layout,
+                    )
+                )
+                stats.metadata.update(sharded_metrics)
+                log.info(
+                    "openintel tld=%s sharded snapshot=%d added=%d removed=%d",
+                    tld, snap_count, added, removed,
+                )
+            else:
+                snap_df = client.parse_zonefile_snapshot(keys=keys, tld=tld)
+                snap_count, added, removed = _in_memory_diff_and_write(
+                    snap_df=snap_df,
+                    tld=tld,
+                    snapshot_date=snapshot_date,
+                    storage=storage,
+                    layout=layout,
+                    stats=stats,
+                )
         else:
-            snap_df = client.parse_web_snapshot(url=keys[0], tld=tld, snapshot_date=snapshot_date)
+            snap_df = client.parse_web_snapshot(
+                url=keys[0], tld=tld, snapshot_date=snapshot_date
+            )
+            snap_count, added, removed = _in_memory_diff_and_write(
+                snap_df=snap_df,
+                tld=tld,
+                snapshot_date=snapshot_date,
+                storage=storage,
+                layout=layout,
+                stats=stats,
+            )
 
-        snap_count = len(snap_df)
-        log.info("openintel tld=%s parsed domains=%d", tld, snap_count)
-
-        curr_key = layout.current_key(Source.OPENINTEL.value, tld)
-        curr_df = storage.get_parquet_df_or_empty(curr_key, _SNAP_COLS)
-
-        added_df, removed_df = simple_diff(snap_df, curr_df)
-        added = len(added_df)
-        removed = len(removed_df)
-        log.info("openintel tld=%s added=%d removed=%d", tld, added, removed)
-
-        if added > 0:
-            storage.put_parquet_df(layout.delta_key(Source.OPENINTEL.value, tld, snapshot_date), added_df)
-        if removed > 0:
-            storage.put_parquet_df(layout.delta_removed_key(Source.OPENINTEL.value, tld, snapshot_date), removed_df)
-
-        storage.put_parquet_df(curr_key, snap_df)
-
-        marker_payload = build_marker_payload(run_key, added_count=added, removed_count=removed, snapshot_count=snap_count)
+        marker_payload = build_marker_payload(
+            run_key,
+            added_count=added,
+            removed_count=removed,
+            snapshot_count=snap_count,
+        )
         storage.put_json(marker, marker_payload)
 
         stats.snapshot_count = snap_count
@@ -154,11 +189,49 @@ def _process_tld(
         stats.removed_count = removed
         stats.finished_at = now_utc()
         stats.status = "ok"
+        stats.metadata["total_seconds"] = round(perf_counter() - total_started_at, 3)
 
     except Exception as exc:
         stats.finished_at = now_utc()
         stats.status = "error"
         stats.error_message = str(exc)
+        stats.metadata["total_seconds"] = round(perf_counter() - total_started_at, 3)
         log.error("openintel tld=%s error: %s\n%s", tld, exc, traceback.format_exc())
 
     return stats
+
+
+def _in_memory_diff_and_write(
+    *,
+    snap_df,
+    tld: str,
+    snapshot_date: date,
+    storage: R2Storage,
+    layout: Layout,
+    stats: RunStats,
+) -> tuple[int, int, int]:
+    """Legacy in-memory path — kept for small zonefile snapshots and the cctld-web mode."""
+    stats.metadata["strategy"] = "in_memory"
+    snap_count = len(snap_df)
+    log.info("openintel tld=%s parsed domains=%d", tld, snap_count)
+
+    curr_key = layout.current_key(Source.OPENINTEL.value, tld)
+    curr_df = storage.get_parquet_df_or_empty(curr_key, _SNAP_COLS)
+
+    added_df, removed_df = simple_diff(snap_df, curr_df)
+    added = len(added_df)
+    removed = len(removed_df)
+    log.info("openintel tld=%s added=%d removed=%d", tld, added, removed)
+
+    if added > 0:
+        storage.put_parquet_df(
+            layout.delta_key(Source.OPENINTEL.value, tld, snapshot_date), added_df
+        )
+    if removed > 0:
+        storage.put_parquet_df(
+            layout.delta_removed_key(Source.OPENINTEL.value, tld, snapshot_date),
+            removed_df,
+        )
+
+    storage.put_parquet_df(curr_key, snap_df)
+    return snap_count, added, removed

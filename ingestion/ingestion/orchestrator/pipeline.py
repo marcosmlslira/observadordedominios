@@ -35,6 +35,7 @@ from ingestion.observability.run_recorder import (
     create_run,
     finish_run,
     plan_cycle_tlds,
+    recover_conflicting_running_runs,
     recover_stale_running_runs,
     touch_run,
     update_cycle_tld,
@@ -598,6 +599,36 @@ def _submit_databricks_batch(
             except Exception:
                 pass
 
+    def _on_submit(payload: dict[str, object]) -> None:
+        db_run_id_local = payload.get("run_id")
+        db_run_url_local = payload.get("run_page_url")
+        db_life_cycle_state = payload.get("life_cycle_state")
+        db_result_state_local = payload.get("result_state") or db_life_cycle_state
+        log.info(
+            "databricks batch accepted: source=%s run_id=%s state=%s url=%s tlds=%s",
+            source,
+            db_run_id_local,
+            db_result_state_local,
+            db_run_url_local,
+            tlds,
+        )
+        if cycle_id and cfg.database_url:
+            for tld in tlds:
+                try:
+                    update_cycle_tld(
+                        cfg.database_url,
+                        cycle_id,
+                        source,
+                        tld,
+                        execution_status="running",
+                        r2_run_id=run_ids.get(tld),
+                        databricks_run_id=int(db_run_id_local) if db_run_id_local is not None else None,
+                        databricks_run_url=str(db_run_url_local) if db_run_url_local else None,
+                        databricks_result_state=str(db_result_state_local) if db_result_state_local else None,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
     db_run_id: int | None = None
     db_run_url: str | None = None
     db_result_state: str | None = None
@@ -608,12 +639,20 @@ def _submit_databricks_batch(
             tlds,
             snapshot_date=today_str,
             wait=True,
+            on_submit=_on_submit,
             on_poll=_heartbeat,
         )
         # Capture Databricks metadata for all TLDs in this batch
         db_run_id = result.get("run_id")
         db_run_url = result.get("run_page_url")
         db_result_state = result.get("result_state")
+        log.info(
+            "databricks batch completed: source=%s run_id=%s result=%s url=%s",
+            source,
+            db_run_id,
+            db_result_state,
+            db_run_url,
+        )
 
         if result.get("status") != "ok":
             err = f"Databricks batch failed (result_state={db_result_state or 'UNKNOWN'})"
@@ -884,6 +923,17 @@ def run_cycle(
     execution_mode = cfg.execution_mode_for_source(source)
 
     if db_url:
+        try:
+            recovered_conflicts = recover_conflicting_running_runs(db_url, source)
+            if recovered_conflicts:
+                log.warning(
+                    "source restart recovery source=%s recovered=%d",
+                    source,
+                    recovered_conflicts,
+                )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("source restart recovery failed source=%s: %s", source, exc)
+
         try:
             recovered = recover_stale_running_runs(
                 db_url,

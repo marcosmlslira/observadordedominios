@@ -15,7 +15,6 @@ The stable shard function must be byte-identical across runs for consistency.
 from __future__ import annotations
 
 import gzip
-import hashlib
 import io
 import logging
 from datetime import date
@@ -27,6 +26,7 @@ from typing import IO
 import polars as pl
 
 from ingestion.config.constants import SHARD_COUNT
+from ingestion.core.sharding import stable_shard
 from ingestion.core.types import Source
 from ingestion.storage.layout import Layout
 from ingestion.storage.r2 import R2Storage
@@ -35,10 +35,6 @@ log = logging.getLogger(__name__)
 
 _SNAP_COLS = ["name", "tld", "label"]
 _EMPTY_SHARD = pl.DataFrame({"name": pl.Series([], dtype=pl.Utf8), "tld": pl.Series([], dtype=pl.Utf8), "label": pl.Series([], dtype=pl.Utf8)})
-
-
-def _stable_shard(domain_norm: str, num_shards: int = SHARD_COUNT) -> int:
-    return int(hashlib.md5(domain_norm.encode("utf-8")).hexdigest()[:8], 16) % num_shards
 
 
 def _stage_shards_to_tempdir(gz_bytes: bytes, tld: str, num_shards: int, staging_dir: Path) -> dict[int, Path]:
@@ -57,7 +53,7 @@ def _stage_shards_to_tempdir(gz_bytes: bytes, tld: str, num_shards: int, staging
                 norm = tokens[0].rstrip(b".").decode("latin-1").lower().strip()
                 if not norm or norm == tld or not norm.endswith("." + tld) or norm.startswith("*"):
                     continue
-                shard_id = _stable_shard(norm, num_shards)
+                shard_id = stable_shard(norm, num_shards)
                 if shard_id not in handles:
                     shard_path = staging_dir / f"shard-{shard_id:04d}.txt"
                     handles[shard_id] = shard_path.open("ab", buffering=1024 * 1024)

@@ -2,13 +2,14 @@
 
 ## Preparacao
 ```powershell
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new ubuntu@158.69.211.109 "hostname"
+```
+
+Opcional para usar o helper local `scripts/prod_server.py`:
+```powershell
 $env:PROD_HOST="158.69.211.109"
 $env:PROD_USER="ubuntu"
 $env:PROD_PASSWORD="<senha>"
-```
-
-Se faltar a biblioteca SSH:
-```powershell
 py -m pip install paramiko
 ```
 
@@ -49,26 +50,36 @@ py scripts/prod_server.py test-login --email admin@observador.com --password mls
 py scripts/prod_server.py restart --service observador_backend
 ```
 
-## Rodar backfill manual do crt.sh Bulk
-```powershell
-py scripts/prod_server.py run-crtsh-bulk
-```
-
-Dry-run:
-```powershell
-py scripts/prod_server.py run-crtsh-bulk --dry-run
-```
-
-Escopo controlado:
-```powershell
-py scripts/prod_server.py run-crtsh-bulk --subtlds com.br,net.br
-```
-
 Observacao:
-- `crtsh-bulk` continua manual de proposito.
-- Ele nao faz parte do scheduler regular de producao.
-- O comando roda dentro do container ativo de `observador_ct_ingestor`.
+- `observador_ct_ingestor` e `observador_certstream_server` sao legados e nao devem ser recriados.
+- A stack produtiva real fica em `C:\PROJETOS\docker-stack-infra\stacks\observador.yml`.
+- O worker diario valido da ingestao atual e `observador-ingestion_ingestion_worker`.
 
 ## Regra operacional
 - Corrija primeiro a origem em `docker-stack-infra`.
 - So use restart manual depois de confirmar que o stack ja contem as envs corretas.
+
+## Monitorar progresso da ingestao
+Local com PowerShell:
+```powershell
+$env:OBS_ADMIN_EMAIL="admin@observador.com"
+$env:OBS_ADMIN_PASSWORD="SUA_SENHA"
+.\scripts\watch_ingestion.ps1
+```
+
+Leitura unica com PowerShell:
+```powershell
+.\scripts\watch_ingestion.ps1 -Email "admin@observador.com" -Password "SUA_SENHA" -Once
+```
+
+Servidor/Linux:
+```bash
+export OBS_ADMIN_EMAIL="admin@observador.com"
+export OBS_ADMIN_PASSWORD="SUA_SENHA"
+bash scripts/watch_ingestion.sh
+```
+
+Leitura unica no servidor/Linux:
+```bash
+OBS_ADMIN_EMAIL="admin@observador.com" OBS_ADMIN_PASSWORD="SUA_SENHA" ONCE=1 bash scripts/watch_ingestion.sh
+```

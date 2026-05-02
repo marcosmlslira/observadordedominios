@@ -176,4 +176,29 @@
 - Do not change design system
 - Do not use docker-compose
 - Do not mix responsibilities
-- Prefer clarity and maintainability
+- Prefer clarity and maintainability
+
+## Production Access / Ingestion Ops
+- SSH access to production is allowed without password for this host/user:
+  - `ubuntu@158.69.211.109`
+- Preferred non-interactive SSH flags:
+  - `ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new ubuntu@158.69.211.109 "<command>"`
+- For ingestion validation, always use existing API endpoints (never insert manual DB records):
+  - `POST /v1/ingestion/trigger/daily-cycle`
+  - `GET /v1/ingestion/cycle-status`
+  - `GET /v1/ingestion/cycles`
+  - `GET /v1/ingestion/runs?status=running`
+  - `GET /health`
+- Swarm service names relevant to ingestion:
+  - `observador-ingestion_ingestion_worker`
+- Legacy CT services must not be restarted or recreated:
+  - `observador_ct_ingestor`
+  - `observador_certstream_server`
+- Production source of truth for the app stack is:
+  - `C:\PROJETOS\docker-stack-infra\stacks\observador.yml`
+- Production source of truth for the isolated ingestion stack is:
+  - `C:\PROJETOS\docker-stack-infra\stacks\observador-ingestion.yml`
+- If trigger returns `already_running`, confirm real execution with `runs?status=running` and latest `cycles`.
+  - If there are no running rows and no new cycle, treat as inconsistent worker state.
+- `observador_ct_ingestor` is legacy and removed from the current backend source tree.
+  - If it appears in production again, remove it from Swarm and fix the deploy source instead of restoring the module.

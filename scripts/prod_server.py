@@ -125,19 +125,9 @@ def _docker_exec_ct_ingestor(command_suffix: str, env_parts: list[str] | None = 
 
 
 def cmd_run_crtsh_bulk(args: argparse.Namespace) -> int:
-    env_parts: list[str] = []
-    if args.action:
-        env_parts.append(f"-e BULK_ACTION={args.action}")
-    if args.dry_run:
-        env_parts.append("-e BULK_DRY_RUN=true")
-    if args.subtlds:
-        env_parts.append(f"-e BULK_SUBTLDS={args.subtlds}")
-    if args.job_id:
-        env_parts.append(f"-e BULK_JOB_ID={args.job_id}")
-
-    return _docker_exec_ct_ingestor(
-        "python -m app.debug_scripts.run_crtsh_bulk_load",
-        env_parts=env_parts,
+    raise SystemExit(
+        "Legacy crt.sh bulk flow via observador_ct_ingestor was removed. "
+        "Use the isolated ingestion stack and its current endpoints/workflows instead."
     )
 
 

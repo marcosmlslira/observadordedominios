@@ -564,3 +564,41 @@ def recover_stale_running_runs(
         return affected
     finally:
         conn.close()
+
+
+def recover_conflicting_running_runs(
+    db_url: str,
+    source: str,
+    *,
+    reason_code: str = "source_restarted",
+    error_message: str = "Run closed automatically because a new source cycle started",
+) -> int:
+    """Close all still-running rows for *source* before a fresh source cycle starts.
+
+    The ingestion worker processes one source at a time, so a new `run_cycle(source)`
+    should never overlap with older `ingestion_run` rows from the same source. If the
+    worker was restarted mid-run, those rows become stale immediately even if their
+    generic timeout has not elapsed yet.
+    """
+    conn = psycopg2.connect(db_url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ingestion_run
+                SET
+                    status = 'failed',
+                    reason_code = %s,
+                    error_message = COALESCE(NULLIF(error_message, ''), %s),
+                    finished_at = now(),
+                    updated_at = now()
+                WHERE source = %s
+                  AND status = 'running'
+                """,
+                (reason_code, error_message, source),
+            )
+            affected = cur.rowcount
+        conn.commit()
+        return affected
+    finally:
+        conn.close()

@@ -15,6 +15,7 @@
 | 012 | Incidente 29/04: 16 TLDs com falha + API 500 em tld-status openintel | todo | .specs/todos/012/plan.md | 2026-04-29 |
 | 013 | Ingestão dual-fase: visibilidade R2 ↔ PostgreSQL e reprocessamento granular por TLD | todo | .specs/todos/013/plan.md | 2026-04-29 |
 | 014 | Incidente 01/05: Falha total de ingestão + Corrupção pg_catalog.pg_class | done | .specs/todos/014/plan.md | 2026-05-01 |
+| 015 | OpenINTEL zonefiles grandes no Databricks: OOM, observabilidade e estratégia de correção | in_progress | .specs/todos/015/plan.md | 2026-05-02 |
 
 ## Legenda de status
 

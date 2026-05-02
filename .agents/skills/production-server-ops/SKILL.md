@@ -9,7 +9,7 @@ Use este skill quando precisar operar ou depurar a producao do Observador de Dom
 
 ## Escopo
 - Verificar `docker service ps`, `docker service inspect` e `docker service logs`.
-- Validar envs efetivas do `observador_backend`, `observador_frontend`, `observador_czds_ingestor` e `observador_similarity_worker`.
+- Validar envs efetivas do `observador_backend`, `observador_frontend`, `observador-ingestion_ingestion_worker` e `observador_similarity_worker`.
 - Testar `https://observadordedominios.com.br` e `https://api.observadordedominios.com.br/health`.
 - Diagnosticar login admin em `POST /v1/auth/login`.
 - Fazer reinicio controlado de servicos do stack.
@@ -25,7 +25,9 @@ Use este skill quando precisar operar ou depurar a producao do Observador de Dom
 - Configs do backend: [backend/app/core/config.py](/C:/PROJETOS/observadordedominios/backend/app/core/config.py)
 - Stack produtivo da app: [infra/stack.yml](/C:/PROJETOS/observadordedominios/infra/stack.yml)
 - Stack produtivo real: `C:\PROJETOS\docker-stack-infra\stacks\observador.yml`
+- Stack produtivo real da ingestao: `C:\PROJETOS\docker-stack-infra\stacks\observador-ingestion.yml`
 - Workflow de deploy real: `C:\PROJETOS\docker-stack-infra\.github\workflows\deploy.yml`
+- Workflow de deploy da ingestao: `C:\PROJETOS\docker-stack-infra\.github\workflows\deploy-ingestion.yml`
 
 ## Fluxo recomendado
 1. Verificar se a URL publica e o `/health` respondem.
@@ -34,7 +36,7 @@ Use este skill quando precisar operar ou depurar a producao do Observador de Dom
    - `ADMIN_EMAIL`
    - `ADMIN_PASSWORD_HASH`
    - `JWT_SECRET_KEY`
-   - `CZDS_ENABLED_TLDS`
+   - `INGESTION_TRIGGER_URLS`
 4. Validar logs recentes do backend.
 5. Testar login real com `POST /v1/auth/login`.
 6. Se env estiver errada, corrigir no `docker-stack-infra` e redeployar.
@@ -61,4 +63,5 @@ py scripts/prod_server.py test-login --email admin@observador.com --password mls
 ## Diagnostico conhecido deste projeto
 - Se `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH` ou `JWT_SECRET_KEY` estiverem vazios no `observador_backend`, nao existe login valido em producao.
 - O frontend chama `POST /v1/auth/login` e nao ha fallback para banco; o login depende estritamente das envs do backend.
-- O conjunto de TLDs ingeridos hoje vem de `CZDS_ENABLED_TLDS`.
+- O ciclo diario valido roda no stack isolado `observador-ingestion`.
+- `observador_ct_ingestor`, `observador_czds_ingestor`, `observador_openintel_ingestor` e `observador_certstream_server` sao legados e nao devem ser recriados.

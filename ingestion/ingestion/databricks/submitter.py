@@ -100,6 +100,7 @@ class DatabricksSubmitter:
         wait: bool = True,
         timeout_seconds: int = 14400,
         serverless: bool = True,
+        on_submit: Callable[[dict[str, Any]], None] | None = None,
         on_poll: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """Upload the notebook for *source* and submit ONE job run for a batch of TLDs.
@@ -139,8 +140,21 @@ class DatabricksSubmitter:
         )
         log.info("databricks batch submitted: run_id=%d source=%s tlds=%s", run_id, source, tlds)
 
+        submitted_run = self.client.run_get(run_id)
+        submitted_state = submitted_run.get("state", {})
+        submitted_payload = {
+            "run_id": run_id,
+            "tlds": tlds,
+            "status": "submitted",
+            "life_cycle_state": submitted_state.get("life_cycle_state"),
+            "result_state": submitted_state.get("result_state"),
+            "run_page_url": submitted_run.get("run_page_url"),
+        }
+        if on_submit is not None:
+            on_submit(submitted_payload)
+
         if not wait:
-            return {"run_id": run_id, "tlds": tlds, "status": "submitted"}
+            return submitted_payload
 
         run = self.client.wait(run_id, on_poll=on_poll)
         result_state = run.get("state", {}).get("result_state", "UNKNOWN")
@@ -161,6 +175,7 @@ class DatabricksSubmitter:
             "run_id": run_id,
             "tlds": tlds,
             "status": "ok" if ok else "error",
+            "life_cycle_state": run.get("state", {}).get("life_cycle_state"),
             "result_state": result_state,
             "run_page_url": run.get("run_page_url"),
             "notebook_output": notebook_output,
@@ -176,6 +191,7 @@ class DatabricksSubmitter:
         wait: bool = True,
         timeout_seconds: int = 7200,
         serverless: bool = True,
+        on_submit: Callable[[dict[str, Any]], None] | None = None,
         on_poll: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
         """Upload the notebook for *source* and submit a single-TLD job run.
@@ -218,8 +234,21 @@ class DatabricksSubmitter:
         )
         log.info("databricks run submitted: run_id=%d source=%s tld=%s", run_id, source, tld)
 
+        submitted_run = self.client.run_get(run_id)
+        submitted_state = submitted_run.get("state", {})
+        submitted_payload = {
+            "run_id": run_id,
+            "tld": tld,
+            "status": "submitted",
+            "life_cycle_state": submitted_state.get("life_cycle_state"),
+            "result_state": submitted_state.get("result_state"),
+            "run_page_url": submitted_run.get("run_page_url"),
+        }
+        if on_submit is not None:
+            on_submit(submitted_payload)
+
         if not wait:
-            return {"run_id": run_id, "tld": tld, "status": "submitted"}
+            return submitted_payload
 
         run = self.client.wait(run_id, on_poll=on_poll)
         result_state = run.get("state", {}).get("result_state", "UNKNOWN")
@@ -240,6 +269,7 @@ class DatabricksSubmitter:
             "run_id": run_id,
             "tld": tld,
             "status": "ok" if ok else "error",
+            "life_cycle_state": run.get("state", {}).get("life_cycle_state"),
             "result_state": result_state,
             "run_page_url": run.get("run_page_url"),
             "notebook_output": notebook_output,

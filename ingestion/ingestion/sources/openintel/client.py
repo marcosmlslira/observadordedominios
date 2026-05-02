@@ -141,6 +141,51 @@ class OpenIntelClient:
             "label": [extract_label(n, tld) for n in sorted_names],
         })
 
+    def total_zonefile_keys_size(self, keys: list[str]) -> int:
+        """Sum the ContentLength of every key — drives the sharded-vs-in-memory choice."""
+        total = 0
+        for key in keys:
+            try:
+                head = self._s3.head_object(Bucket=self._zonefile_bucket, Key=key)
+                total += int(head.get("ContentLength", 0))
+            except Exception as exc:
+                log.warning("head_object failed key=%s err=%s", key, exc)
+        return total
+
+    def parse_zonefile_snapshot_streaming(
+        self,
+        *,
+        keys: list[str],
+        tld: str,
+        snapshot_date: date,
+        storage,
+        layout,
+        num_shards: int | None = None,
+    ) -> tuple[int, int, int, dict]:
+        """Streaming sharded path for large zonefile snapshots.
+
+        Delegates to :func:`run_sharded_openintel_diff` which parses Parquet row
+        groups one at a time, writes per-shard txt files to disk, then computes
+        the diff against the matching shard in R2. Returns the same shape as the
+        sharded CZDS path so the runner can populate stats uniformly.
+        """
+        from ingestion.sources.openintel.sharded_stager import (
+            run_sharded_openintel_diff,
+        )
+        from ingestion.config.constants import SHARD_COUNT
+
+        return run_sharded_openintel_diff(
+            s3_client=self._s3,
+            bucket=self._zonefile_bucket,
+            keys=keys,
+            tld=tld,
+            qname_column=self._zonefile_qname_column,
+            snapshot_date=snapshot_date,
+            storage=storage,
+            layout=layout,
+            num_shards=num_shards or SHARD_COUNT,
+        )
+
     # ── Web (cctld-web) discovery ─────────────────────────────────────────────
 
     def _web_file_url(self, tld: str, d: date) -> str:

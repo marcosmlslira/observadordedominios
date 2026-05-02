@@ -206,6 +206,14 @@ class IngestionIncidentsResponse(BaseModel):
 
 
 class IngestionCycleItem(BaseModel):
+    class ActiveDatabricksRun(BaseModel):
+        source: str
+        databricks_run_id: int
+        databricks_run_url: str | None = None
+        databricks_result_state: str | None = None
+        tld_count: int = 0
+        tlds_preview: list[str] = []
+
     cycle_id: str
     started_at: datetime
     finished_at: datetime | None = None
@@ -217,6 +225,7 @@ class IngestionCycleItem(BaseModel):
     tld_skipped: int
     tld_load_only: int
     last_heartbeat_at: datetime | None = None
+    active_databricks: ActiveDatabricksRun | None = None
 
 
 class IngestionCyclesResponse(BaseModel):
