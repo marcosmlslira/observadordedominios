@@ -14,4 +14,7 @@ class IngestionTldPolicy(Base, TimestampMixin):
     priority = Column(Integer, nullable=True)
     domains_inserted = Column(BigInteger, nullable=False, server_default="0")
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    # NULL = use global INGESTION_STALE_TIMEOUT_MINUTES; otherwise the watchdog
+    # uses this many seconds before marking a running run as stale_recovered.
+    stale_timeout_seconds = Column(Integer, nullable=True)
 

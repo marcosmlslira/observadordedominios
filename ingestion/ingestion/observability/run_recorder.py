@@ -516,13 +516,23 @@ def recover_stale_running_runs(
     *,
     stale_after_minutes: int,
 ) -> int:
-    """Close orphaned running runs for source using updated_at heartbeat staleness."""
+    """Close orphaned running runs for source using updated_at heartbeat staleness.
+
+    The threshold is per-TLD when ingestion_tld_policy.stale_timeout_seconds is
+    populated for the (source, tld) pair, otherwise falls back to the global
+    *stale_after_minutes* (multiplied by 60 to compare against seconds).
+
+    Large CZDS zones (xyz, info, org) routinely take more than 60 minutes to
+    finish loading; without a per-TLD override the watchdog used to kill them
+    while they were still making progress.
+    """
+    default_seconds = stale_after_minutes * 60
     conn = psycopg2.connect(db_url)
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                UPDATE ingestion_run
+                UPDATE ingestion_run AS r
                 SET
                     status = 'failed',
                     reason_code = 'stale_recovered',
@@ -532,11 +542,22 @@ def recover_stale_running_runs(
                     ),
                     finished_at = now(),
                     updated_at = now()
-                WHERE source = %s
-                  AND status = 'running'
-                  AND updated_at < (now() - (%s || ' minutes')::interval)
+                WHERE r.source = %s
+                  AND r.status = 'running'
+                  AND r.updated_at < (
+                      now() - (
+                          COALESCE(
+                              (
+                                  SELECT p.stale_timeout_seconds
+                                    FROM ingestion_tld_policy p
+                                   WHERE p.source = r.source AND p.tld = r.tld
+                              ),
+                              %s
+                          ) || ' seconds'
+                      )::interval
+                  )
                 """,
-                (source, stale_after_minutes),
+                (source, default_seconds),
             )
             affected = cur.rowcount
         conn.commit()

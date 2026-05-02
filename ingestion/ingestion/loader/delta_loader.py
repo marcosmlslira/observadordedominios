@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import logging
+import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -33,8 +34,23 @@ from ingestion.config.settings import Settings
 log = logging.getLogger(__name__)
 
 _PARALLEL_WORKERS = 4
-_SHARD_MAX_RETRIES = 3
-_SHARD_RETRY_BACKOFF = (2.0, 5.0, 15.0)  # seconds between attempts
+_SHARD_MAX_RETRIES = 6
+# Per-retry backoff in seconds. Sized to ride out multi-minute Postgres
+# instability (autovacuum crashes on pg_class, brief outages). Jitter is
+# applied multiplicatively to avoid thundering herd when several shards
+# fail at the same instant.
+_SHARD_RETRY_BACKOFF = (5.0, 30.0, 60.0, 120.0, 300.0, 600.0)
+_SHARD_RETRY_JITTER = 0.25  # ±25%
+
+# Substrings in the OperationalError message that mark a transient connection
+# loss (vs a logical error). Logged at WARNING with a distinct prefix so
+# operators can grep for them.
+_CONNECTION_LOSS_MARKERS = (
+    "server closed the connection",
+    "connection reset",
+    "terminating connection",
+    "could not receive data from server",
+)
 
 
 def _date_to_int(d: str) -> int:
@@ -87,6 +103,13 @@ class _ShardArgs:
     tld: str
     counter_lock: threading.Lock
     total_counter: list[int]  # mutable single-element list for shared counter
+    # Optional checkpoint context — when run_id is set the worker records its
+    # success in ingestion_shard_checkpoint inside the same transaction as the
+    # partition INSERT. Atomicity is what makes the resume logic safe: a row
+    # in the checkpoint table means the bulk INSERT also committed.
+    run_id: str | None = None
+    source: str | None = None
+    snapshot_date: str | None = None
 
 
 def _load_shard_worker(args: _ShardArgs) -> int:
@@ -141,11 +164,14 @@ def _load_shard_worker(args: _ShardArgs) -> int:
     # real partition with ON CONFLICT DO NOTHING.  Retried up to _SHARD_MAX_RETRIES
     # times on OperationalError (server closed the connection / max_connections).
     last_exc: Exception | None = None
+    inserted = 0
     for attempt in range(_SHARD_MAX_RETRIES):
         if attempt > 0:
-            delay = _SHARD_RETRY_BACKOFF[min(attempt - 1, len(_SHARD_RETRY_BACKOFF) - 1)]
+            base_delay = _SHARD_RETRY_BACKOFF[min(attempt - 1, len(_SHARD_RETRY_BACKOFF) - 1)]
+            jitter = random.uniform(-_SHARD_RETRY_JITTER, _SHARD_RETRY_JITTER)
+            delay = max(0.5, base_delay * (1.0 + jitter))
             log.warning(
-                "loader shard retry %d/%d tld=%s shard=%d delay=%.0fs err=%s",
+                "loader shard retry %d/%d tld=%s shard=%d delay=%.1fs err=%s",
                 attempt, _SHARD_MAX_RETRIES - 1, args.tld, args.shard_idx, delay, last_exc,
             )
             time.sleep(delay)
@@ -169,10 +195,42 @@ def _load_shard_worker(args: _ShardArgs) -> int:
                     f" ON CONFLICT DO NOTHING"
                 )
                 inserted = cur.rowcount
+                if args.run_id and args.source and args.snapshot_date:
+                    # Record success in the same transaction so the checkpoint
+                    # is consistent with the actual partition state.
+                    cur.execute(
+                        """
+                        INSERT INTO ingestion_shard_checkpoint
+                            (run_id, source, tld, snapshot_date, partition,
+                             shard_key, status, rows_loaded, loaded_at)
+                        VALUES
+                            (%s::uuid, %s, %s, %s::date, %s, %s, 'completed', %s, now())
+                        ON CONFLICT (run_id, shard_key, partition) DO UPDATE
+                          SET status = EXCLUDED.status,
+                              rows_loaded = EXCLUDED.rows_loaded,
+                              loaded_at = now()
+                        """,
+                        (
+                            args.run_id,
+                            args.source,
+                            args.tld,
+                            args.snapshot_date,
+                            args.partition,
+                            args.key,
+                            inserted,
+                        ),
+                    )
             conn.commit()
             break  # success — exit retry loop
         except psycopg2.OperationalError as exc:
             last_exc = exc
+            msg = str(exc).lower()
+            if any(marker in msg for marker in _CONNECTION_LOSS_MARKERS):
+                log.warning(
+                    "loader shard CONNECTION_LOSS tld=%s shard=%d attempt=%d/%d marker=%s",
+                    args.tld, args.shard_idx, attempt + 1, _SHARD_MAX_RETRIES,
+                    next((m for m in _CONNECTION_LOSS_MARKERS if m in msg), "unknown"),
+                )
             try:
                 conn.close()
             except Exception:  # noqa: BLE001
@@ -196,6 +254,56 @@ def _load_shard_worker(args: _ShardArgs) -> int:
     return inserted
 
 
+def _completed_shard_keys(
+    database_url: str,
+    *,
+    source: str,
+    tld: str,
+    snapshot_date: str,
+    partition: str,
+    window_hours: int = 24,
+) -> set[str]:
+    """Return the set of shard_keys already loaded successfully for this
+    (source, tld, snapshot_date, partition) within the lookback window.
+
+    Looks across runs — a previous failed run for the same trio still
+    contributes its successful shards. This is what powers checkpoint-based
+    resume after a Postgres-induced disconnect.
+    """
+    try:
+        conn = psycopg2.connect(database_url)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("checkpoint lookup failed (skip optimisation): %s", exc)
+        return set()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT shard_key
+                  FROM ingestion_shard_checkpoint
+                 WHERE source = %s
+                   AND tld = %s
+                   AND snapshot_date = %s::date
+                   AND partition = %s
+                   AND status = 'completed'
+                   AND loaded_at > now() - (%s || ' hours')::interval
+                """,
+                (source, tld, snapshot_date, partition, window_hours),
+            )
+            return {row[0] for row in cur.fetchall()}
+    except Exception as exc:  # noqa: BLE001
+        # Table may not exist yet on a stale environment that hasn't run the
+        # migration. Treat as "no checkpoint information" rather than failing
+        # the load.
+        log.warning("checkpoint lookup error (skip optimisation): %s", exc)
+        return set()
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _parallel_load_shards(
     *,
     database_url: str,
@@ -205,37 +313,85 @@ def _parallel_load_shards(
     columns: list[str],
     added_day: int,
     tld: str,
+    run_id: str | None = None,
+    source: str | None = None,
+    snapshot_date: str | None = None,
 ) -> int:
-    """Load all shards into partition using a thread pool. Returns total rows loaded."""
+    """Load all shards into partition using a thread pool. Returns total rows loaded.
+
+    When *run_id*, *source* and *snapshot_date* are all supplied the loader
+    consults ``ingestion_shard_checkpoint`` first and skips any shard whose
+    key is already recorded as completed. Each successful shard then writes
+    its own checkpoint row inside the same transaction as the partition
+    INSERT.
+    """
     if not keys:
+        return 0
+
+    completed_keys: set[str] = set()
+    if run_id and source and snapshot_date:
+        completed_keys = _completed_shard_keys(
+            database_url,
+            source=source,
+            tld=tld,
+            snapshot_date=snapshot_date,
+            partition=partition,
+        )
+        if completed_keys:
+            log.info(
+                "loader resume tld=%s partition=%s skip=%d/%d",
+                tld, partition, len(completed_keys), len(keys),
+            )
+
+    pending_keys = [k for k in keys if k not in completed_keys]
+    if not pending_keys:
+        log.info("loader nothing to do tld=%s partition=%s — all shards already loaded", tld, partition)
         return 0
 
     lock = threading.Lock()
     counter: list[int] = [0]
-    total = len(keys)
+    total = len(pending_keys)
 
-    with ThreadPoolExecutor(max_workers=_PARALLEL_WORKERS) as pool:
-        futures = [
-            pool.submit(
-                _load_shard_worker,
-                _ShardArgs(
-                    database_url=database_url,
-                    r2_settings=r2_settings,
-                    key=key,
-                    partition=partition,
-                    columns=columns,
-                    added_day=added_day,
-                    shard_idx=i,
-                    total_shards=total,
-                    tld=tld,
-                    counter_lock=lock,
-                    total_counter=counter,
-                ),
-            )
-            for i, key in enumerate(keys, 1)
-        ]
+    pool = ThreadPoolExecutor(max_workers=_PARALLEL_WORKERS)
+    futures = [
+        pool.submit(
+            _load_shard_worker,
+            _ShardArgs(
+                database_url=database_url,
+                r2_settings=r2_settings,
+                key=key,
+                partition=partition,
+                columns=columns,
+                added_day=added_day,
+                shard_idx=i,
+                total_shards=total,
+                tld=tld,
+                counter_lock=lock,
+                total_counter=counter,
+                run_id=run_id,
+                source=source,
+                snapshot_date=snapshot_date,
+            ),
+        )
+        for i, key in enumerate(pending_keys, 1)
+    ]
+    completed = 0
+    try:
         for fut in as_completed(futures):
             fut.result()  # re-raises any worker exception immediately
+            completed += 1
+    except Exception:
+        # Cancel any not-yet-started shards so we release worker slots fast
+        # instead of waiting for the whole batch to drain. In-flight workers
+        # complete naturally — cancel_futures only stops queued tasks.
+        cancelled = sum(1 for f in futures if not f.done() and f.cancel())
+        log.error(
+            "loader parallel_load aborted tld=%s partition=%s completed=%d cancelled=%d total=%d",
+            tld, partition, completed, cancelled, total,
+        )
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown(wait=True)
 
     return counter[0]
 
@@ -249,6 +405,7 @@ def load_delta(
     source: str,
     tld: str,
     snapshot_date: date | str,
+    run_id: str | None = None,
 ) -> dict:
     """Load a single (source, tld, snapshot_date) delta into PostgreSQL.
 
@@ -300,6 +457,9 @@ def load_delta(
         columns=["name", "tld", "label", "added_day"],
         added_day=added_day,
         tld=tld,
+        run_id=run_id,
+        source=source,
+        snapshot_date=snap_str,
     )
     load_added_seconds = perf_counter() - t_load_added
     log.info("loader inserted domain tld=%s added=%d in %.1fs", tld, added_loaded, load_added_seconds)
@@ -319,6 +479,9 @@ def load_delta(
             columns=["name", "tld", "removed_day"],
             added_day=added_day,
             tld=tld,
+            run_id=run_id,
+            source=source,
+            snapshot_date=snap_str,
         )
     except Exception as exc_removed:
         # ── D1: Automatic partial-load recovery ──────────────────────────

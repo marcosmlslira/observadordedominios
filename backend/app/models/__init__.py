@@ -5,6 +5,7 @@ from app.models.brand_domain_health import BrandDomainHealth
 from app.models.domain import Domain
 from app.models.ingestion_checkpoint import IngestionCheckpoint
 from app.models.ingestion_run import IngestionRun
+from app.models.ingestion_shard_checkpoint import IngestionShardCheckpoint
 from app.models.openintel_tld_status import OpenintelTldStatus
 from app.models.match_state_snapshot import MatchStateSnapshot
 from app.models.monitored_brand_alias import MonitoredBrandAlias
@@ -25,6 +26,7 @@ __all__ = [
     "Domain",
     "IngestionCheckpoint",
     "IngestionRun",
+    "IngestionShardCheckpoint",
     "OpenintelTldStatus",
     "MatchStateSnapshot",
     "MonitoredBrandAlias",

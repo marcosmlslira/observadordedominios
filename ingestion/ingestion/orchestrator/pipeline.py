@@ -315,6 +315,7 @@ def _process_tld_local(
                 source=source,
                 tld=tld,
                 snapshot_date=snap_str,
+                run_id=run_id,
             )
             # Loader counts are authoritative — override runner estimates
             domains_inserted = load_result.get("added_loaded", domains_inserted)
@@ -462,6 +463,7 @@ def _load_tld_from_r2(
                 source=source,
                 tld=tld,
                 snapshot_date=snap_str,
+                run_id=run_id,
             )
             added = load_result.get("added_loaded", 0)
             removed = load_result.get("removed_loaded", 0)

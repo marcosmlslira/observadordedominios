@@ -80,12 +80,18 @@ class IngestionConfigRepository:
         *,
         is_enabled: bool | None = None,
         priority: int | None = None,
+        stale_timeout_seconds: int | None = None,
+        clear_stale_timeout: bool = False,
     ) -> IngestionTldPolicy:
         policy = self.ensure_tld(source, tld)
         if is_enabled is not None:
             policy.is_enabled = is_enabled
         if priority is not None:
             policy.priority = priority
+        if clear_stale_timeout:
+            policy.stale_timeout_seconds = None
+        elif stale_timeout_seconds is not None:
+            policy.stale_timeout_seconds = stale_timeout_seconds
         policy.updated_at = datetime.now(timezone.utc)
         self.db.flush()
         return policy

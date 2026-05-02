@@ -36,6 +36,7 @@ class IngestionConfigPatchRequest(BaseModel):
 class TldPolicyPatchRequest(BaseModel):
     is_enabled: bool | None = None
     priority: int | None = None
+    stale_timeout_seconds: int | None = None
 
 
 class TldPolicyBulkItem(BaseModel):
@@ -65,6 +66,7 @@ class TldPolicyResponse(BaseModel):
     priority: int | None = None
     domains_inserted: int = 0
     last_seen_at: datetime | None = None
+    stale_timeout_seconds: int | None = None
     updated_at: datetime
 
     model_config = {"from_attributes": True}

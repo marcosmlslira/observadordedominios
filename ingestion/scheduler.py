@@ -57,11 +57,16 @@ def _handle_sigterm(signum: int, frame: Any) -> None:
 # ── Stale heartbeat watchdog ──────────────────────────────────────────────────
 
 
-def _start_stale_watchdog(db_url: str, interval: float = 600.0, stale_minutes: int = 60) -> None:
+def _start_stale_watchdog(db_url: str, interval: float = 600.0, stale_minutes: int | None = None) -> None:
     """Periodic background thread: recover stale runs/cycles every *interval* seconds.
 
     Runs independently of the active ingestion cycle — safe to call from main().
+
+    *stale_minutes* is the global default when ingestion_tld_policy doesn't carry
+    a per-TLD override. When None we read it from settings.
     """
+    if stale_minutes is None:
+        stale_minutes = get_settings().ingestion_stale_timeout_minutes
 
     def _check() -> None:
         try:
@@ -272,7 +277,10 @@ def _run_daily_cycle(trigger: str = "schedule") -> None:
                 open_cycle,
                 recover_stale_running_cycles,
             )
-            recover_stale_running_cycles(cfg.database_url, stale_after_minutes=60)
+            recover_stale_running_cycles(
+                cfg.database_url,
+                stale_after_minutes=cfg.ingestion_stale_timeout_minutes,
+            )
             tld_total: int | None = None
             try:
                 tld_total = count_enabled_tlds(cfg.database_url)
